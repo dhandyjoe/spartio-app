@@ -6,6 +6,12 @@ import { fileURLToPath } from "node:url";
 import {
    transposeNote,
    transposeChord,
+   transposeBeats,
+   transposeChordMap,
+   transposeKeyName,
+   spellPitch,
+   isKnownKey,
+   keyNames,
    normalizeSection,
    removeBar,
    safeFileName,
@@ -14,8 +20,14 @@ import {
    lyricValue,
    setLyric,
    prepareLyricsForDuration,
+   prepareChordAboveForDuration,
+   collapseChordAbove,
+   moveChordAbove,
    chordAboveValue,
    setChordAbove,
+   chordAboveShownForBar,
+   sectionShowsChordAbove,
+   setChordAboveForBar,
    barHasContent,
    slotBarIndex,
    splitSyllables,
@@ -34,7 +46,15 @@ import {
 } from "../src/cloud.js";
 import { friendlyName } from "../src/identity.js";
 import { parseYoutubeUrl, canonicalUrl, thumbnailUrl } from "../src/youtube.js";
-import { chordProSectionHTML } from "../src/render.js";
+import { beatHTML, chordProSectionHTML } from "../src/render.js";
+import { isValidChordSpelling, withTypedSpelling } from "../src/chordEditor.js";
+import {
+   PDF_BAR_NUMBERS,
+   defaultPdfOptions,
+   sanitize,
+   applyPdfOptions,
+} from "../src/pdfOptions.js";
+import { getState, setState } from "../src/store.js";
 import {
    MAX_CHORDPRO_CHARS,
    normalizeChordPro,
@@ -50,11 +70,96 @@ import {
    chordProFromFile,
 } from "../src/chordPro.js";
 
-test("transposeNote wraps around 12 notes and prefers flat spelling", () => {
+test("transposeNote wraps around 12 notes and spells for the target key", () => {
    assert.equal(transposeNote("B", 1), "C");
    assert.equal(transposeNote("C", -1), "B");
-   assert.equal(transposeNote("C", 1), "D♭");
+   // Without a key context the readable chromatic defaults apply (C♯/E♭/F♯/A♭/B♭).
+   assert.equal(transposeNote("C", 1), "C♯");
+   assert.equal(transposeNote("F", 1), "F♯");
+   // With a target key the spelling follows that key's side, so a flat chart stays flat.
+   assert.equal(transposeNote("C", 1, { key: "D♭" }), "D♭");
+   assert.equal(transposeNote("E", 2, { key: "D" }), "F♯");
    assert.equal(transposeNote("X", 1), "X"); // unknown note is left untouched
+});
+
+// ---- The sharp-vs-flat spelling standard ------------------------------------
+// Transposition moves INTERVALS, so the result is spelled for the TARGET key: a sharp key writes
+// F♯/C♯/G♯, a flat key writes G♭/D♭/A♭, and a slash bass that is a chord tone follows the chord's
+// own degree. This is what keeps `D/F♯` (the spelling players expect) instead of `D/G♭`.
+test("transposed chords are spelled for the target key, not always with flats", () => {
+   // Sharp keys: the third of D is F♯, never G♭.
+   assert.equal(transposeChord("Em", 2, { key: "D" }), "F♯m");
+   assert.equal(transposeChord("C", 2, { key: "D" }), "D");
+   assert.equal(transposeChord("F", 2, { key: "D" }), "G");
+   assert.equal(transposeChord("Am", 2, { key: "D" }), "Bm");
+   // Flat keys keep their own side (no stray sharps appear in an existing flat chart).
+   assert.equal(transposeChord("G♭", 2, { key: "A♭" }), "A♭");
+   assert.equal(transposeChord("D♭m7", 2, { key: "A♭" }), "E♭m7");
+   assert.equal(transposeChord("E♭", 1, { key: "E♭" }), "E");
+   // The classic slash basses stay chord degrees: D/F♯ → E/G♯, A/C♯ → B/D♯, G/B → A♭/C.
+   assert.equal(transposeChord("D/F#", 2, { key: "E" }), "E/G♯");
+   assert.equal(transposeChord("A/C#", 2, { key: "B" }), "B/D♯");
+   assert.equal(transposeChord("G/B", 1, { key: "A♭" }), "A♭/C");
+   assert.equal(transposeChord("C/E", 2, { key: "D" }), "D/F♯");
+   // Borrowed (chromatic) chords follow the key's side too: flat in a flat key, readable flats
+   // in a sharp/neutral one (a ♭VI/♭III is never written as a sharp).
+   assert.equal(transposeChord("A♭/G♭", 0, { key: "A♭" }), "A♭/G♭");
+   assert.equal(spellPitch(6, "A♭"), "G♭", "a flat key spells the borrowed ♭VII as G♭");
+   assert.equal(spellPitch(3, "D"), "E♭", "a sharp key still reads the borrowed ♭III as E♭");
+   assert.equal(spellPitch(1, "F♯"), "C♯", "diatonic degrees follow the key signature");
+});
+
+test("transposeKeyName picks the name with the smallest signature and keeps the chart's side", () => {
+   assert.equal(transposeKeyName("C", 1), "D♭"); // 5♭ beats 7♯
+   assert.equal(transposeKeyName("C", 2), "D");
+   assert.equal(transposeKeyName("C", 6), "F♯"); // F♯/G♭ tie → neutral/sharp source gets F♯
+   assert.equal(transposeKeyName("F", 1), "G♭"); // ...but a flat source stays flat
+   assert.equal(transposeKeyName("D♭", 5), "G♭");
+   assert.equal(transposeKeyName("G♭", 1), "G");
+   assert.equal(transposeKeyName("G", 1), "A♭");
+   assert.equal(transposeKeyName("D", 1), "E♭");
+   assert.equal(transposeKeyName("A", 1), "B♭");
+   assert.equal(transposeKeyName("B", 1), "C");
+   assert.equal(transposeKeyName("C", 11), "B");
+   assert.equal(transposeKeyName("B♭", 1), "B"); // never C♭
+   assert.ok(isKnownKey("F♯") && isKnownKey("D♭") && isKnownKey("F#"));
+   assert.ok(!isKnownKey("H"));
+});
+
+test("no transposition ever produces an unreadable spelling", () => {
+   // Sweep every key × every shift: chord symbols must never contain C♭/F♭/E♯/B♯ or a double
+   // accidental, which is exactly what a naive letter+accidental algorithm produces.
+   const chords = ["C", "Dm7", "E♭maj7", "F♯m7", "G7sus4", "A♭", "Bm7♭5", "C/F♯", "G/B", "D/A"];
+   const bad = /C♭|F♭|E♯|B♯|♯♯|♭♭/;
+   keyNames.forEach((key) => {
+      for (let steps = -11; steps <= 11; steps += 1) {
+         const target = transposeKeyName(key, steps);
+         chords.forEach((chord) => {
+            const out = transposeChord(chord, steps, { key: target });
+            assert.ok(!bad.test(out), `${chord} ${steps} in ${key} → ${out} (key ${target})`);
+         });
+      }
+   });
+   // spellPitch itself must never hand back an unreadable name either.
+   for (let pc = 0; pc < 12; pc += 1) {
+      keyNames.forEach((key) => assert.ok(!bad.test(spellPitch(pc, key)), `${pc} in ${key}`));
+   }
+});
+
+test("transposeChord moves the root of a hand-typed chord too", () => {
+   // A suffix our grammar doesn't know still keeps the chart in key: the ROOT moves and
+   // the suffix is preserved exactly as the user wrote it.
+   assert.equal(transposeChord("Cxyz", 1), "C♯xyz"); // no context → readable default
+   assert.equal(transposeChord("Cxyz", 1, { key: "D♭" }), "D♭xyz"); // a flat key keeps flats
+   assert.equal(transposeChord("Cxyz", 2), "Dxyz");
+   assert.equal(transposeChord("Gm7b5", 1), "A♭m7b5"); // ascii spelling kept
+   assert.equal(transposeChord("Bm7♭5", 1), "Cm7♭5"); // unicode spelling kept
+   assert.equal(transposeChord("Cmaj9", 2), "Dmaj9");
+   assert.equal(transposeChord("C6/9", 2), "D6/9");
+   assert.equal(transposeChord("Cxyz/G", 2), "Dxyz/A");
+   // Text that isn't a chord token stays put, so a stray word is never rewritten.
+   assert.equal(transposeChord("N.C.", 1), "N.C.");
+   assert.equal(transposeChord("Amazing grace", 1), "Amazing grace");
 });
 
 test("transposeChord keeps quality and slash bass", () => {
@@ -161,9 +266,11 @@ test("normalizeSection preserves and sanitizes chordAboveBeats", () => {
    const out = normalizeSection(section, "4/4");
    assert.equal(out.chordAboveBeats["0-0"], "C");
    assert.equal(out.chordAboveBeats["0-1"], undefined);
-   assert.equal(out.chordAboveEnabled, true);
-   assert.equal(normalizeSection({ name: "X", bars: 1 }).chordAboveEnabled, true);
-   assert.equal(normalizeSection({ name: "X", bars: 1, chordAboveEnabled: false }).chordAboveEnabled, false);
+   // The chord row is a PER-SECTION opt-in now: only an explicit `true` turns it on.
+   assert.equal(out.chordAboveEnabled, false);
+   assert.equal(normalizeSection({ name: "X", bars: 1 }).chordAboveEnabled, false);
+   assert.equal(normalizeSection({ name: "X", bars: 1, chordAboveEnabled: true }).chordAboveEnabled, true);
+   assert.equal(normalizeSection({ name: "X", bars: 1, chordAboveEnabled: "yes" }).chordAboveEnabled, false);
 });
 
 test("extractBar/replaceBarContent preserve chordAboveBeats", () => {
@@ -194,6 +301,236 @@ test("extractBars/overwriteBars preserve chordAboveBeats for multi-bar ranges", 
    overwriteBars(target, 2, payload);
    assert.equal(target.chordAboveBeats["2-0"], "C");
    assert.equal(target.chordAboveBeats["3-0"], "F");
+});
+
+// ---- Chord row visibility: section → bar ----------------------------------
+// The chord row is a PER-SECTION feature (no song-wide switch). Resolution is
+// "section default → explicit per-bar override", and an absent per-bar key always
+// means "inherit from the section".
+test("chordAboveShownForBar resolves the section → bar chain", () => {
+   const section = { bars: 3, chordAboveEnabled: true, chordAboveBars: {} };
+   // Section on → every bar inherits "shown".
+   assert.equal(chordAboveShownForBar(section, 2), true);
+   // An explicit override wins over the section default.
+   section.chordAboveBars = { "1": false };
+   assert.equal(chordAboveShownForBar(section, 1), false);
+   assert.equal(chordAboveShownForBar(section, 0), true);
+   // A forced-on bar works even when the section default is off.
+   section.chordAboveEnabled = false;
+   section.chordAboveBars = { "2": true };
+   assert.equal(chordAboveShownForBar(section, 2), true);
+   assert.equal(chordAboveShownForBar(section, 0), false);
+   // A section without the flag at all (fresh / older file) is off.
+   assert.equal(chordAboveShownForBar({ bars: 1 }, 0), false);
+});
+
+test("sectionShowsChordAbove reserves the row when a single bar is forced on", () => {
+   const section = { bars: 4, chordAboveEnabled: false, chordAboveBars: {} };
+   assert.equal(sectionShowsChordAbove(section), false);
+   setChordAboveForBar(section, 3, true);
+   assert.equal(sectionShowsChordAbove(section), true);
+   const all = { bars: 2, chordAboveEnabled: true, chordAboveBars: {} };
+   assert.equal(sectionShowsChordAbove(all), true);
+   all.chordAboveEnabled = false;
+   assert.equal(sectionShowsChordAbove(all), false);
+});
+
+test("the chord row is restored exactly as saved and never turns itself on", () => {
+   // 1) What was saved comes back: normalizeSection restores the file's own per-section flag, so
+   // Save to Cloud / Export .file round-trips the row (the reported "saved it, reopened OFF" bug).
+   const saved = normalizeSection(
+      {
+         name: "Verse",
+         bars: 2,
+         chordAboveEnabled: true,
+         chordAboveBeats: { "0-0": "C" },
+         chordAboveBars: { "1": false },
+      },
+      "4/4",
+   );
+   assert.equal(saved.chordAboveEnabled, true);
+   assert.deepEqual(saved.chordAboveBeats, { "0-0": "C" });
+   assert.deepEqual(saved.chordAboveBars, { "1": false });
+   assert.equal(sectionShowsChordAbove(saved), true);
+   // 2) Nothing enables it by itself. A song that never switched the row on stays OFF even when it
+   // holds chord-row data — the removed migration used to force those sections ON ("Chords+ turns
+   // itself on" for existing songs).
+   const dataOnly = normalizeSection(
+      { name: "Intro", bars: 2, chordAboveBeats: { "0-0": "G" } },
+      "4/4",
+   );
+   assert.equal(dataOnly.chordAboveEnabled, false);
+   assert.equal(sectionShowsChordAbove(dataOnly), false);
+   assert.deepEqual(dataOnly.chordAboveBeats, { "0-0": "G" }, "the chords themselves are kept");
+   // A legacy song-wide `CHORDS+` flag is ignored outright (it is not read anywhere).
+   assert.equal(normalizeSection({ name: "Intro", bars: 1 }, "4/4").chordAboveEnabled, false);
+   // 3) Wiring: no load path resets the row, and the auto-enable migration is gone for good.
+   const events = readProjectFile("src/events.js");
+   const notation = readProjectFile("src/notation.js");
+   assert.ok(!/resetChordRow/.test(events), "loading must never reset the chord row");
+   assert.ok(!/migrateSongChordAbove/.test(notation), "the auto-enable migration is gone");
+   assert.ok(!/migrateSongChordAbove|chordAboveEnabled === true\)\)/.test(events));
+   assert.match(events, /\n\s+applyProject\(snapshot\);\n/, "undo/redo replay the snapshot as-is");
+});
+
+test("setChordAboveForBar writes and clears the per-bar override", () => {
+   const section = { bars: 3, chordAboveEnabled: true, chordAboveBars: { "2": false } };
+   setChordAboveForBar(section, 0, false);
+   assert.equal(section.chordAboveBars["0"], false);
+   // Clearing returns that bar to "inherit from the section".
+   setChordAboveForBar(section, 0, undefined);
+   assert.equal(section.chordAboveBars["0"], undefined);
+   assert.equal(chordAboveShownForBar(section, 0, true), true);
+   // A bar may be forced ON even while the section default is off.
+   const off = { bars: 2, chordAboveEnabled: false, chordAboveBars: {} };
+   setChordAboveForBar(off, 1, true);
+   assert.equal(sectionShowsChordAbove(off), true);
+   assert.equal(chordAboveShownForBar(off, 0), false);
+});
+
+test("removeBar shifts and drops the per-bar chord-row overrides", () => {
+   const section = {
+      bars: 3,
+      beats: {},
+      lyricBeats: {},
+      chordAboveBeats: {},
+      chordAboveBars: { "0": true, "2": false },
+   };
+   removeBar(section, 1);
+   // Bar 0 keeps its flag, the deleted bar is gone, old bar 2 moves up to bar 1.
+   assert.deepEqual(section.chordAboveBars, { "0": true, "1": false });
+   assert.equal(section.bars, 2);
+   // The removed bar's own override disappears with it.
+   const dropped = { bars: 2, beats: {}, lyricBeats: {}, chordAboveBeats: {}, chordAboveBars: { "0": true, "1": false } };
+   removeBar(dropped, 1);
+   assert.deepEqual(dropped.chordAboveBars, { "0": true });
+});
+
+test("normalizeSection sanitizes per-bar chord-row overrides", () => {
+   const out = normalizeSection({
+      name: "Verse",
+      bars: 2,
+      chordAboveBars: { "0": true, "1": false, "7": true, "-1": true, x: true, "0.5": true, "1b": "yes" },
+   });
+   // Only explicit booleans for bars that actually exist survive.
+   assert.deepEqual(out.chordAboveBars, { "0": true, "1": false });
+   assert.deepEqual(normalizeSection({ name: "X", bars: 1 }).chordAboveBars, {});
+   assert.deepEqual(normalizeSection({ name: "X", bars: 1, chordAboveBars: null }).chordAboveBars, {});
+});
+
+// ---- Chord row above the numbers: transpose + rhythm markers --------------
+test("transposeChordMap moves letter chords and leaves Nashville numbers alone", () => {
+   const map = { "0-0": "C", "0-1": "G/B", "0-2": "1", "0-3": "♭7", "0-4": "N.C.", "0-5": "" };
+   assert.equal(transposeChordMap(map, 1), 2);
+   assert.deepEqual(map, {
+      "0-0": "C♯",
+      "0-1": "A♭/C",
+      "0-2": "1",
+      "0-3": "♭7",
+      "0-4": "N.C.",
+      "0-5": "",
+   });
+   // A number-only row is a no-op, and a missing map never throws.
+   assert.equal(transposeChordMap({ "0-0": "1", "0-1": "5" }, 1), 0);
+   assert.equal(transposeChordMap(undefined, 1), 0);
+});
+
+test("transposeBeats handles both slot shapes and reports the count", () => {
+   const beats = {
+      "0-0": { chord: "C", duration: null },
+      "0-1": "Am",
+      "0-2": { chord: "1", duration: null },
+   };
+   assert.equal(transposeBeats(beats, 1), 2);
+   assert.deepEqual(beats, {
+      "0-0": { chord: "C♯", duration: null },
+      "0-1": "B♭m",
+      "0-2": { chord: "1", duration: null },
+   });
+   assert.equal(transposeBeats(undefined, 1), 0);
+});
+
+test("prepareChordAboveForDuration moves the chord row into the first subdivision", () => {
+   const section = {
+      beats: { "0-0": { chord: "1", duration: null } },
+      chordAboveBeats: { "0-0": "C" },
+   };
+   prepareChordAboveForDuration(section, "0-0", "quarter");
+   // The single cell follows its beat into the first of the four quarter cells.
+   assert.deepEqual(section.chordAboveBeats, { "0-0:0": "C" });
+   // quarter → half collapses :2/:3 into the 2nd half (:1); a chord cell holds ONE
+   // chord, so the first non-empty cell wins instead of being joined.
+   section.chordAboveBeats = { "0-0:0": "C", "0-0:1": "G", "0-0:2": "Am", "0-0:3": "F" };
+   section.beats["0-0"].duration = "quarter";
+   prepareChordAboveForDuration(section, "0-0", "half");
+   assert.deepEqual(section.chordAboveBeats, { "0-0:0": "C", "0-0:1": "G" });
+   // Nothing to move → the map is left untouched.
+   const empty = { beats: { "0-1": { chord: null, duration: null } }, chordAboveBeats: {} };
+   prepareChordAboveForDuration(empty, "0-1", "half");
+   assert.deepEqual(empty.chordAboveBeats, {});
+});
+
+test("collapseChordAbove pulls the first chord back onto the beat", () => {
+   const section = { chordAboveBeats: { "0-0:2": "Am", "0-0:0": "C", "0-0:1": "G", "1-0": "F" } };
+   assert.equal(collapseChordAbove(section, "0-0"), true);
+   assert.deepEqual(section.chordAboveBeats, { "0-0": "C", "1-0": "F" });
+   // No descendant cells → nothing to collapse, and neighbours stay untouched.
+   assert.equal(collapseChordAbove(section, "2-0"), false);
+   assert.deepEqual(section.chordAboveBeats, { "0-0": "C", "1-0": "F" });
+});
+
+test("moveChordAbove relocates a chord cell and clears the source slot", () => {
+   const section = { chordAboveBeats: { "0-0:0": "C" } };
+   assert.equal(moveChordAbove(section, "0-0:0", "0-0:0.0"), true);
+   assert.deepEqual(section.chordAboveBeats, { "0-0:0.0": "C" });
+   // Nothing to move → the map is untouched.
+   assert.equal(moveChordAbove(section, "9-9", "0-0"), false);
+   assert.deepEqual(section.chordAboveBeats, { "0-0:0.0": "C" });
+});
+
+// ---- Chord row: the rendered cell (no ghost row when it is off) ------------
+// Regression guard for the reported bug: an extra chord cell inside a single-row
+// column became a SECOND grid row, which pushed the beats down and left an empty
+// strip above a score that must look exactly like one without the feature.
+test("beatHTML emits no chord-row cell while the row is switched off", () => {
+   const section = {
+      id: "sec-chord-above",
+      name: "Intro",
+      bars: 1,
+      beats: { "0-0": { chord: "1", duration: null } },
+      lyricBeats: {},
+      chordAboveEnabled: false,
+      chordAboveBeats: { "0-0": "C" },
+      chordAboveBars: {},
+   };
+   const before = getState();
+   setState({ ...before, editorMode: "chords", lyricsEnabled: false, sections: [section], activeId: section.id });
+   try {
+      // Section OFF → the column has exactly ONE child (the notation cell): no
+      // reserved track and no placeholder, i.e. the pre-feature layout.
+      const off = beatHTML(section, 0, 0, false, false);
+      assert.match(off, /^<span class="beat-column\s*"><span class="notation-cell">/, off);
+      assert.ok(!/chord-above-(input|editor|print)/.test(off), off);
+      assert.ok(!off.includes("with-chord-above"), off);
+      assert.ok(!off.includes("is-chord-above-off"), off);
+      // Section ON → a real input sits in the reserved track, and the value is kept
+      // verbatim: the CSS gives EVERY cell the same wide box, so nothing is clipped.
+      const on = beatHTML(section, 0, 0, true, true);
+      assert.match(on, /with-chord-above/);
+      assert.match(on, /class="chord-above-input"/);
+      section.chordAboveBeats["0-0"] = "Em/C#";
+      const wide = beatHTML(section, 0, 0, true, true);
+      assert.match(wide, /value="Em\/C#"/, wide);
+      assert.ok(!wide.includes("chord-above-sizer"), wide);
+      // Bar switched OFF inside an ON section → the track stays (so the notation
+      // lane and the barlines keep their pitch) but there is nothing to type in.
+      const barOff = beatHTML(section, 0, 0, true, false);
+      assert.match(barOff, /with-chord-above/);
+      assert.match(barOff, /is-chord-above-off/);
+      assert.ok(!barOff.includes("chord-above-input"), barOff);
+   } finally {
+      setState(before);
+   }
 });
 
 test("safeFileName produces a filesystem-safe slug", () => {
@@ -237,8 +574,36 @@ import {
    detectMode,
    foldChordKey,
    foldNashvilleKey,
+   normalizeQuality,
    BANK_QUALITIES,
 } from "../src/chordBank.js";
+
+test("normalizeQuality folds every alias onto the spelling the audio engine voices", () => {
+   // The reported case: Bm7♭5 must resolve to the canonical half-diminished symbol, so
+   // playback cannot disagree with the suggestion list any more.
+   assert.equal(normalizeQuality("m7♭5"), "ø7");
+   assert.equal(normalizeQuality("m7b5"), "ø7");
+   assert.equal(normalizeQuality("min7b5"), "ø7");
+   assert.equal(normalizeQuality("ø"), "ø7");
+   assert.equal(normalizeQuality("o7"), "ø7");
+   assert.equal(normalizeQuality("dim"), "°");
+   assert.equal(normalizeQuality("diminished"), "°");
+   assert.equal(normalizeQuality("aug"), "+");
+   assert.equal(normalizeQuality("augmented"), "+");
+   // Generic spelling rules (min/mi, omit, Δ/ma) run before the alias lookup.
+   assert.equal(normalizeQuality("min7"), "m7");
+   assert.equal(normalizeQuality("mi7"), "m7");
+   assert.equal(normalizeQuality("ma7"), "maj7");
+   assert.equal(normalizeQuality("Δ7"), "maj7");
+   assert.equal(normalizeQuality("omit3"), "no3");
+   // Known spellings outside the alias table stay as they are (just folded for audio).
+   assert.equal(normalizeQuality("maj9"), "maj9");
+   assert.equal(normalizeQuality("7♭9"), "7b9");
+   // A custom suffix is preserved, so it can still fall back to the default voicing.
+   assert.equal(normalizeQuality("xyz"), "xyz");
+   assert.equal(normalizeQuality(""), "");
+   assert.equal(normalizeQuality(undefined), "");
+});
 
 test("detectMode distinguishes letter chords from Nashville degrees", () => {
    assert.equal(detectMode("Cmaj7"), "chord");
@@ -376,7 +741,12 @@ test("extractBar pulls out a single bar's beats and lyrics normalized to bar 0",
       lyricBeats: {},
    };
    const payload = extractBar(section, 0);
-   assert.deepStrictEqual(payload, { beats: { "0-0": "C", "0-1:0": "G" }, lyricBeats: {}, chordAboveBeats: {} });
+   assert.deepStrictEqual(payload, {
+      beats: { "0-0": "C", "0-1:0": "G" },
+      lyricBeats: {},
+      chordAboveBeats: {},
+      chordAboveBars: {},
+   });
 });
 
 test("extractBar includes lyrics", () => {
@@ -388,7 +758,12 @@ test("extractBar includes lyrics", () => {
       lyricBeats: { "1-0": "hallelujah" },
    };
    const payload = extractBar(section, 1);
-   assert.deepStrictEqual(payload, { beats: {}, lyricBeats: { "0-0": "hallelujah" }, chordAboveBeats: {} });
+   assert.deepStrictEqual(payload, {
+      beats: {},
+      lyricBeats: { "0-0": "hallelujah" },
+      chordAboveBeats: {},
+      chordAboveBars: {},
+   });
 });
 
 test("replaceBarContent overwrites target bar with copied payload", () => {
@@ -438,6 +813,20 @@ test("replaceBarContent clears existing content before writing payload", () => {
    replaceBarContent(section, 1, payload);
    assert.equal(section.beats["1-0"], "Z");
    assert.equal(section.beats["1-1"], undefined); // cleared
+});
+
+test("extractBar/replaceBarContent carry the per-bar chord-row override", () => {
+   const source = { bars: 3, beats: {}, lyricBeats: {}, chordAboveBeats: {}, chordAboveBars: { "1": false } };
+   const payload = extractBar(source, 1);
+   assert.deepEqual(payload.chordAboveBars, { "0": false });
+   const target = { bars: 3, beats: {}, lyricBeats: {}, chordAboveBeats: {}, chordAboveBars: { "2": true } };
+   replaceBarContent(target, 2, payload);
+   // The copied bar's own visibility wins.
+   assert.equal(target.chordAboveBars["2"], false);
+   // A source bar without an explicit override resets the target to "inherit".
+   const plain = extractBar({ bars: 1, beats: {}, lyricBeats: {}, chordAboveBeats: {}, chordAboveBars: {} }, 0);
+   replaceBarContent(target, 2, plain);
+   assert.equal(target.chordAboveBars["2"], undefined);
 });
 
 test("extractBars pulls a contiguous range normalized to bar 0", () => {
@@ -490,6 +879,46 @@ test("insertBars respects MAX_BARS and refuses to overflow", () => {
    const ok = insertBars(section, 0, payload); // 95 + 2 = 97 > 96
    assert.equal(ok, false);
    assert.equal(section.bars, 95); // unchanged
+});
+
+test("extractBars/insertBars/overwriteBars keep per-bar chord-row overrides aligned", () => {
+   const source = {
+      bars: 4,
+      beats: {},
+      lyricBeats: {},
+      chordAboveBeats: {},
+      chordAboveBars: { "1": true, "2": false, "3": true },
+   };
+   const payload = extractBars(source, 1, 2);
+   assert.deepEqual(payload.chordAboveBars, { "0": true, "1": false });
+   // insert before bar 2 → flags at/after bar 2 shift right by `count`
+   const inserted = {
+      bars: 4,
+      beats: {},
+      lyricBeats: {},
+      chordAboveBeats: {},
+      chordAboveBars: { "0": true, "1": false, "2": false, "3": true },
+   };
+   insertBars(inserted, 2, payload);
+   assert.equal(inserted.bars, 6);
+   assert.deepEqual(inserted.chordAboveBars, {
+      "0": true,
+      "1": false,
+      "2": true,
+      "3": false,
+      "4": false,
+      "5": true,
+   });
+   // overwrite clears the target range first, then writes the payload there
+   const overwritten = {
+      bars: 4,
+      beats: {},
+      lyricBeats: {},
+      chordAboveBeats: {},
+      chordAboveBars: { "0": true, "2": false, "3": true },
+   };
+   overwriteBars(overwritten, 2, payload);
+   assert.deepEqual(overwritten.chordAboveBars, { "0": true, "2": true, "3": false });
 });
 
 // --- share.js: encode/decode roundtrip -------------------------------------
@@ -1032,8 +1461,13 @@ test("parseChordPro returns an empty block list for empty input", () => {
 });
 
 test("transposeChordProText transposes letter and slash chords only", () => {
-   assert.equal(transposeChordProText("[C]Amazing [G/B]grace", 1), "[D♭]Amazing [A♭/C]grace");
+   assert.equal(transposeChordProText("[C]Amazing [G/B]grace", 1), "[C♯]Amazing [A♭/C]grace");
    assert.equal(transposeChordProText("[F#m7]how [Cmaj7]sweet", 2), "[A♭m7]how [Dmaj7]sweet");
+   // With the target key as context the spelling matches the new key (here D → F♯m, not G♭m).
+   assert.equal(
+      transposeChordProText("[Em]Sing [D/F#]on", 2, { key: "D" }),
+      "[F♯m]Sing [E/G♯]on",
+   );
 });
 
 test("transposeChordProText never transposes Nashville degrees or N.C.", () => {
@@ -1073,7 +1507,8 @@ test("transposeChordProText is reversible", () => {
 test("transposeChordToken keeps an unknown token as-is", () => {
    assert.equal(transposeChordToken("N.C.", 1), "N.C.");
    assert.equal(transposeChordToken("1", 1), "1");
-   assert.equal(transposeChordToken("C", 1), "D♭");
+   assert.equal(transposeChordToken("C", 1), "C♯");
+   assert.equal(transposeChordToken("C", 1, { key: "D♭" }), "D♭");
 });
 
 test("normalizeChordPro normalises line endings, control chars and blank runs", () => {
@@ -1565,6 +2000,518 @@ test("the in-app help dialog documents the ChordPro mode", () => {
    assert.match(dialog[0], /Type your lyric here/);
    assert.match(dialog[0], /\{sov\}/);
    assert.match(dialog[0], /\{c: play softly\}/);
+});
+
+// ---- Chord row above the numbers: print + editor-chrome contract -----------
+// Real print geometry needs a browser (see tests/regression.mjs), so the print
+// contract is pinned here at the CSS level: the live input is swapped for the
+// rendered chord token in BOTH print scopes, the reserved track is decided by the
+// SECTION class (never by bar data, so every bar keeps the same height and the
+// barlines stay aligned), and the editor-only chrome for the row can't reach paper.
+test("the chord row above the numbers prints as a chord and never prints chrome", () => {
+   const preview = readProjectFile("styles/preview.css");
+   const ui = readProjectFile("styles/ui.css");
+   // Screen: the live input is shown and the print-only span is hidden.
+   assert.match(preview, /\.chord-above-print \{\s*display: none;/);
+   // @media print: input hidden, rendered chord token shown.
+   assert.match(preview, /\.chord-above-input \{\s*display: none;/);
+   assert.match(preview, /\.chord-above-print \{\s*display: block;/);
+   // The on-screen PDF-layout preview (html.is-print-layout) mirrors a real print.
+   assert.match(
+      preview,
+      /html\.is-print-layout #previewCard \.chord-above-input \{[^}]*display: none/,
+   );
+   assert.match(
+      preview,
+      /html\.is-print-layout #previewCard \.chord-above-print \{[^}]*display: block/,
+   );
+   // Reserved track: section-level class on screen and at paper scale.
+   assert.match(
+      preview,
+      /\.beat-column\.with-chord-above \{\s*grid-template-rows: var\(--chord-above-h, 28px\) 54px/,
+   );
+   // PRINT geometry: the chord row adds NO height — it is a zero-height track whose
+   // cell is drawn ABOVE the lane with a relative offset — so the printed lane,
+   // rhythm beams and notes keep the exact default geometry and the line pitch is
+   // unchanged. The row only moves up, into the bar's top band.
+   assert.match(preview, /--print-chord-above-size: calc\(var\(--print-chord-size\) \* 0\.9\)/);
+   assert.match(preview, /--print-chord-above-row: calc\(var\(--print-chord-above-size\) \+ 0\.2mm\)/);
+   const floatingRows =
+      preview.match(
+         /\.beat-column\.with-chord-above \{[^}]*grid-template-rows: 0 var\(--print-notation-h\)/g,
+      ) || [];
+   assert.equal(floatingRows.length, 2, "@media print and is-print-layout must both float the row");
+   const offsets = preview.match(/top: calc\(-1 \* var\(--print-chord-above-row\)\);/g) || [];
+   assert.equal(offsets.length, 2, "the offset must be applied in both print scopes");
+   // Each chord-row LINE reserves headroom for the row floating above it, so the row of
+   // line N can never touch the chords of line N-1 — and ONLY such lines: the selector
+   // carries .has-chord-above, so a section with the row switched OFF keeps its default
+   // spacing (the user's requirement). The amount is a single token, so it can be tuned
+   // without touching the structure.
+   assert.match(preview, /--print-chord-above-line-gap: 6mm/);
+   const lineHeadroom =
+      preview.match(/margin-top: var\(--print-chord-above-line-gap\);/g) || [];
+   assert.equal(lineHeadroom.length, 2, "both print scopes must reserve the line headroom");
+   // The chord row's distance to the number below must be IDENTICAL whatever the beat
+   // type: the plain cell and every ½/⅓/¼ sub-cell share one height/token, so the
+   // gap can never differ between a beat with a rhythm marker and one without.
+   const equalCells =
+      preview.match(/\.sub-chord-above \.chord-above-editor \{\s*height: var\(--print-chord-above-row\);/g) ||
+      [];
+   assert.equal(equalCells.length, 2, "both print scopes must equalise the sub-cell height");
+   assert.match(
+      preview,
+      /\.bar\.has-chord-above \.sub-chord-above \.chord-above-editor \{\s*height: var\(--chord-above-h, 32px\);/,
+   );
+   assert.match(preview, /\.chord-above-input \{[^}]*font:\s*800 14px\/1\.15/);
+   // The `top: -row` offset must be applied ONCE. Without `align-self: start` the
+   // screen rule's `align-self: end` adds its own shift inside the zero-height track,
+   // leaving a PLAIN beat's chord row ~4mm higher than a ½/⅓/¼ beat's — the exact
+   // difference the user reported.
+   const singleOffsets =
+      preview.match(/align-self: start;\s*top: calc\(-1 \* var\(--print-chord-above-row\)\);/g) || [];
+   assert.equal(singleOffsets.length, 2, "both print scopes must pin the offset exactly once");
+   // A subdivided beat with a chord row above spreads its number slots over the SAME
+   // width as its chord cells, using the same slot centres (natural widths + space-around,
+   // so a long chord still can't wrap). That is what makes the beat spacing below follow
+   // the chord content above — the reported PDF issue.
+   const spreadTracks =
+      preview.match(
+         /\.bar\.has-chord-above \.duration-(half|triplet|quarter) \.sub-beats \{\s*grid-template-columns: repeat\(\d, minmax\(var\(--print-slot\), max-content\)\);\s*justify-content: space-around;/g,
+      ) || [];
+   assert.equal(
+      spreadTracks.length,
+      6,
+      "half/triplet/quarter must follow the chord row in both print scopes",
+   );
+   const spreadChords =
+      preview.match(
+         /\.sub-chord-above \{\s*width: 100%;[\s\S]{0,400}?grid-template-columns: repeat\(var\(--lyric-leaves\), minmax\(var\(--print-slot\), max-content\)\);\s*justify-content: space-around;/g,
+      ) || [];
+   assert.equal(spreadChords.length, 2, "the chord cells must use the same slot centres");
+   const fillsColumn = preview.match(/\.bar\.has-chord-above \.sub-beats \{\s*width: 100%;/g) || [];
+   assert.equal(fillsColumn.length, 2, "both print scopes must let the sub-beats fill the column");
+   const firstLineHeadroom =
+      preview.match(/margin-top: calc\(var\(--print-chord-above-line-gap\) \+ 0\.4mm\);/g) || [];
+   assert.equal(firstLineHeadroom.length, 2, "both print scopes must pad the first line");
+   assert.ok(
+      !/\.bar-batch \.bar \{[^}]*margin-top: [1-9]/.test(preview),
+      "a plain bar (row OFF) must never gain extra top margin",
+   );
+   // The per-bar toggle is editor chrome: it lives inside .bar-tools, which both
+   // print scopes hide.
+   assert.match(ui, /\.chord-above-bar-toggle \{/);
+   assert.match(preview, /html\.is-print-layout \.bar-tools,/);
+   // Read-only members keep the row readable but cannot type into it.
+   assert.match(ui, /body\[data-member-readonly="1"\] \.chord-above-input/);
+   // The chord field is a UNIFORM width, wide enough for chords like `Em/C#` — no
+   // ragged, content-sized boxes (that version was rejected).
+   assert.match(preview, /--chord-above-w: 68px/);
+   assert.match(preview, /\.chord-above-editor \{[^}]*width: var\(--chord-above-w, 68px\)/);
+   assert.match(preview, /\.sub-chord-above \.chord-above-editor \{\s*width: var\(--chord-above-w, 68px\)/);
+   // The beat pitch is the JS-distributed --leaf (+ a delta, see the dedicated test
+   // below). The sheet must NEVER pin --leaf for chord rows: that is what silently
+   // shrank the beats when the row was switched on.
+   assert.ok(
+      !/\.bar\.has-chord-above \{\s*--leaf:/.test(preview),
+      "the chord row must not override the distributed --leaf",
+   );
+   assert.ok(!preview.includes("chord-above-sizer"), "the content-sizing sizer is gone");
+   // A filled cell reads as a soft green chip; empty / hover / focus and the dark
+   // theme are styled too (the row must look tidy above the beats).
+   assert.match(preview, /\.chord-above-input:focus \{[^}]*box-shadow: 0 0 0 3px rgba\(100, 167, 123/);
+   assert.match(preview, /\.chord-above-editor\.has-chord-above \.chord-above-input \{[^}]*background: #e4f5ea/);
+   assert.match(
+      preview,
+      /html\[data-theme="dark"\] \.chord-above-editor\.has-chord-above \.chord-above-input \{[^}]*background: #14201a/,
+   );
+   // A chord-row bar is a touch taller (32px cell) and keeps its top band free — the
+   // absolutely positioned hover tools (✕ delete bar / ⧉ ⎘ / ♪, first 25px) must not
+   // crop the field above the first beat.
+   assert.match(preview, /--chord-above-h: 32px/);
+   assert.match(
+      preview,
+      /html:not\(\.is-print-layout\) \.bar\.has-chord-above \{\s*padding-top: \d+px;/,
+   );
+   // ...and that room is screen-only: the printed bar keeps its own padding tokens (plus the
+   // optional bar-number band, which is 0mm unless a score draws numbers).
+   assert.match(preview, /padding: calc\(var\(--print-bar-pad-y-top\) \+ var\(--print-bar-num-extra-top\)\)/);
+});
+
+test("the chord row clears the rhythm beams drawn under it", () => {
+   const css = readProjectFile("styles/preview.css");
+   // 1) Breathing room: the gap between the chord row and the notation lane must
+   //    clear the beams (6px tucked them into the chord input's box).
+   const gap = Number(css.match(/--chord-above-gap: (\d+)px/)?.[1]);
+   assert.ok(gap >= 20, `--chord-above-gap must clear the lifted beams (got ${gap}px)`);
+   // 2) Hard guarantee: with the row switched on, the whole ½ / ⅓ / ¼ marker keeps
+   //    its line (and therefore its 28px hit area) INSIDE the notation lane, so it
+   //    can never touch the chord field, whatever the zoom.
+   assert.match(
+      css,
+      /html:not\(\.is-print-layout\) \.bar\.has-chord-above \.duration-line \{\s*top: -20px;\s*height: 20px;/,
+   );
+   assert.match(
+      css,
+      /html:not\(\.is-print-layout\) \.bar\.has-chord-above \.nested-duration-line \{\s*top: -11px;/,
+   );
+   // The maths that makes it work: the capped marker draws its line 6px into the
+   // box (-20px + 6px = -14px from the group top) while the group sits 20px above
+   // the lane's bottom (54px lane − 34px group) → the line stays 6px below the
+   // lane's top edge, i.e. below the chord row's gap.
+   assert.match(css, /\.duration-line::before \{\s*top: 6px;/);
+   // Print geometry is deliberately untouched (its beams live inside the lane).
+   assert.match(css, /\.duration-line \{\s*top: var\(--print-beam-top\);/);
+});
+
+test("the help dialog and README document the chord row above the numbers", () => {
+   const html = readProjectFile("index.html");
+   const dialog = html.match(/id="howToDialog"[\s\S]*?<\/ul>/);
+   assert.ok(dialog, "the help dialog must exist");
+   assert.match(dialog[0], /Chords above the numbers/);
+   assert.match(dialog[0], /Chords On\/Off/);
+   assert.match(dialog[0], /♪<\/strong> button in a bar/);
+   // The ••• menu keeps copy/paste/delete only: the bulk "Chord row: all bars / no bars"
+   // entries were deliberately removed, so the ♪ button is the ONLY per-bar control.
+   assert.ok(
+      !/Chord row: (?:all|no) bars/.test(html),
+      "the section menu must not offer the bulk chord-row actions",
+   );
+   // There is deliberately NO song-wide switch any more.
+   assert.ok(!/CHORDS\+/.test(dialog[0]), "the help must not mention a global CHORDS+ switch");
+   const readme = readProjectFile("README.md");
+   assert.match(readme, /### Chord row above the numbers \(Chord Chart mode\)/);
+   assert.match(readme, /chordAboveBars/);
+   assert.ok(!/Chord row: (?:all|no) bars/.test(readme), "the README must not document them either");
+   assert.match(readme, /\| Section \|[\s\S]{0,220}?Chords On\/Off/);
+   assert.match(readme, /\| Bar \|[\s\S]{0,220}?♪/);
+   assert.ok(!/\| Song \|/.test(readme), "the README must not list a song-level switch");
+   // ...and the album doc lists the new controls as locked for members.
+   const album = readProjectFile("docs/ALBUM-FEATURE.md");
+   assert.match(album, /chord row's own controls/);
+   assert.ok(!/header `CHORDS\+`/.test(album), "no global switch to lock any more");
+});
+
+test("a chord-row line keeps the distributed beat pitch and only ADDS a little", () => {
+   const events = readProjectFile("src/events.js");
+   // The JS-distributed leaf stays the BASE (never replaced by a fixed value) and a
+   // small delta is added on chord-row lines, so the beats can only get wider — a
+   // line that no longer fits scrolls horizontally instead of squeezing.
+   assert.match(events, /const CHORD_ABOVE_LEAF_EXTRA = (\d+);/);
+   assert.match(events, /const base = Math\.max\(MIN_LEAF, available \/ leaves\);/);
+   assert.match(
+      events,
+      /const extra = batch\.classList\.contains\("has-chord-above"\) \? CHORD_ABOVE_LEAF_EXTRA : 0;/,
+   );
+   assert.match(events, /batch\.style\.setProperty\("--leaf", `\$\{base \+ extra\}px`\);/);
+   // render.js marks the batch (per section) that reserves the chord row.
+   assert.match(readProjectFile("src/render.js"), /bar-batch[^`]*has-chord-above/);
+   // ...and the stylesheet must NOT pin --leaf for those bars (the shrink bug).
+   assert.ok(
+      !/\.bar\.has-chord-above \{\s*--leaf:/.test(readProjectFile("styles/preview.css")),
+      "the chord row must not override the distributed --leaf",
+   );
+});
+
+// ---- Bar numbers in the PDF ------------------------------------------------
+// The number already lives in every bar (render.js); the option decides whether paper shows it
+// and how densely. It is ON by default in the "line" density: ONE big number above the first
+// barline of every printed line. Rows are laid out with `row-gap: 0`, so a number above EVERY bar
+// ends up squeezed between two rows of music — one number per line is what reads on paper.
+test("bar numbers number the line starts by default and can be made dense or invisible", () => {
+   // NOTE: the stylesheets are hand-formatted and get re-wrapped by editors, so every assertion
+   // below runs against whitespace-normalised text instead of relying on indentation/newlines.
+   const preview = readProjectFile("styles/preview.css").replace(/\s+/g, " ");
+   // The hide rule stays the BASELINE: a number only appears where the per-song attribute
+   // and the Chord Chart mode agree (both are set by default — see pdfOptions.js).
+   assert.ok(
+      preview.includes(
+         ".history-toolbar, .bar-num, .chord-remove, .section-chip, .placing-banner { display: none !important;",
+      ),
+      "@media print must keep the hide baseline",
+   );
+   assert.match(preview, /html\.is-print-layout \.bar-num,/);
+   assert.ok(
+      !/html\.is-print-layout \.bar-num \{[^}]*display: block/.test(preview),
+      "the default hide rule must not be rewritten into a show rule",
+   );
+   // The LINE density numbers only the bar that starts a printed row; src/pdf.js tags every
+   // other bar `.pdf-mid-bar`, so the show rule skips them (and the hide rule is explicit too).
+   assert.equal(
+      (preview.match(/\.bar:not\(\.pdf-mid-bar\) \.bar-num,/g) || []).length,
+      2,
+      "both print scopes must skip mid-row bars",
+   );
+   assert.equal((preview.match(/\.bar\.pdf-mid-bar \.bar-num \{/g) || []).length, 2);
+   // ...and the mode guard is still on every stamp selector (Chord Chart only).
+   assert.equal(
+      (preview.match(/data-pdf-bar-numbers="line"\] body\[data-editor-mode="chords"\]/g) || []).length,
+      6,
+      "line density: show + hide + band, in both print scopes",
+   );
+   assert.equal(
+      (preview.match(/data-pdf-bar-numbers="every"\] body\[data-editor-mode="chords"\]/g) || []).length,
+      6,
+      "every-bar density: show + size override + band, in both print scopes",
+   );
+   // Sizes: the line-start number is the BIG one, the dense variant is smaller and lighter.
+   assert.equal((preview.match(/--print-bar-num-size: 3mm;/g) || []).length, 1);
+   assert.equal((preview.match(/--print-bar-num-size-every: 2\.6mm;/g) || []).length, 1);
+   assert.equal((preview.match(/--print-bar-num-inset: 1\.3mm;/g) || []).length, 1);
+   assert.equal((preview.match(/--print-bar-num-top: 3\.5mm;/g) || []).length, 1);
+   // The band tracks the nudge and always keeps the same clearance to the notation (0.5mm).
+   assert.equal((preview.match(/\+ var\(--print-bar-num-top\) \+ 0\.5mm\);/g) || []).length, 2);
+   assert.equal((preview.match(/--print-bar-num-weight: 800;/g) || []).length, 1);
+   assert.equal((preview.match(/--print-bar-num-opacity: 1;/g) || []).length, 1);
+   assert.equal(
+      (preview.match(/--print-bar-num-extra-top: 0mm;/g) || []).length,
+      1,
+      "the reserved band must be a no-op until numbers are drawn",
+   );
+   assert.equal((preview.match(/--print-bar-num-extra-bottom: 0mm;/g) || []).length, 1);
+   // The dense variant swaps the size + band through the card, so one pair of rules serves both.
+   assert.equal((preview.match(/--print-bar-num-size: var\(--print-bar-num-size-every\);/g) || []).length, 2);
+   assert.equal((preview.match(/font-size: var\(--print-bar-num-size\);/g) || []).length, 2);
+   assert.equal((preview.match(/font-weight: var\(--print-bar-num-weight\);/g) || []).length, 2);
+   assert.equal((preview.match(/opacity: var\(--print-bar-num-opacity\);/g) || []).length, 2);
+   assert.equal((preview.match(/left: var\(--print-bar-num-inset\);/g) || []).length, 2);
+   // The stamp sits ABOVE the barline: anchored to the top, bottom cleared, in both scopes.
+   assert.equal(
+      (preview.match(/bottom: var\(--print-bar-num-bottom\);/g) || []).length,
+      0,
+      "the stamp must not sit in the bar's bottom corner",
+   );
+   assert.equal((preview.match(/top: var\(--print-bar-num-top\);/g) || []).length, 2);
+   assert.equal(
+      (
+         preview.match(
+            /top: var\(--print-bar-num-top\); bottom: auto; left: var\(--print-bar-num-inset\);/g,
+         ) || []
+      ).length,
+      2,
+      "one stamp block per print scope",
+   );
+   // The reserved band is added to the top padding of BOTH bar layouts (plain + lyrics) in
+   // BOTH scopes, and the barlines compensate so they stay locked to the notation.
+   assert.equal(
+      (
+         preview.match(
+            /calc\(var\(--print-bar-pad-y-top\) \+ var\(--print-bar-num-extra-top\)\)/g,
+         ) || []
+      ).length,
+      4,
+   );
+   assert.equal(
+      (
+         preview.match(
+            /calc\(var\(--print-bar-pad-y-bottom\) \+ var\(--print-bar-num-extra-bottom\)\)/g,
+         ) || []
+      ).length,
+      4,
+   );
+   assert.equal(
+      (
+         preview.match(
+            /top: calc\(50% \+ \(var\(--print-bar-num-extra-top\) - var\(--print-bar-num-extra-bottom\)\) \/ 2\);/g,
+         ) || []
+      ).length,
+      2,
+   );
+   assert.equal(
+      (
+         preview.match(
+            /--print-bar-num-extra-top: calc\(var\(--print-bar-num-row\) - var\(--print-bar-pad-y-top\)\);/g,
+         ) || []
+      ).length,
+      2,
+      "both print scopes must switch the band on when a density is chosen",
+   );
+});
+
+test("every surface that draws bar numbers tags the line starts first", () => {
+   // The line-starts density needs `.pdf-mid-bar`, which only markMidRowBars() (src/pdf.js) sets.
+   // All three surfaces call it: the real print job (beforeprint), the PDF-options pane, and the
+   // manual "PDF layout" preview — otherwise a preview would number every bar while the PDF
+   // numbers only the line starts.
+   const pdf = readProjectFile("src/pdf.js");
+   assert.match(pdf, /const MID_BAR_CLASS = "pdf-mid-bar";/);
+   assert.match(pdf, /markMidRowBars\(\{ forExport: true \}\);/);
+   const options = readProjectFile("src/pdfOptions.js");
+   assert.match(options, /markMidRowBars\(\);/);
+   assert.match(
+      options,
+      /if \(previewWasOn && typeof isPreviewOn === "function" && isPreviewOn\(\)\) markMidRowBars\(\);/,
+      "closing the dialog must re-tag when the user's own layout preview stays on",
+   );
+   const events = readProjectFile("src/events.js");
+   assert.match(events, /import \{[^}]*markMidRowBars[^}]*\} from "\.\/pdf\.js/);
+   assert.match(events, /if \(printLayoutPreview\) requestAnimationFrame\(\(\) => markMidRowBars\(\)\);/);
+   assert.match(events, /else clearMidRowBars\(\);/);
+});
+
+test("the live PDF preview shows exactly the bar numbers the PDF will print", () => {
+   // The dialog moves the LIVE #previewCard into .pdf-preview-page, so its own rule only HIDES the
+   // editor's faint 10px/0.34 numbers. The stamp itself comes from the shared
+   // html.is-print-layout rules in preview.css (active in the pane too, opening the dialog turns
+   // that class on), i.e. there is exactly ONE definition for paper and pane.
+   const ui = readProjectFile("styles/ui.css").replace(/\s+/g, " ");
+   assert.match(
+      ui,
+      /\.pdf-preview-page > #previewCard \.bar-num \{ display: none !important;/,
+      "Off must hide the editor's own numbers in the pane too",
+   );
+   assert.equal(
+      (ui.match(/body\[data-editor-mode="chords"\]/g) || []).length,
+      0,
+      "the pane must NOT duplicate the stamp rules",
+   );
+   // Same stamp geometry + SAME INK as the print scopes, so preview and paper cannot drift apart.
+   // The ink is pinned by a token because var(--ink) turns near-white in dark mode while every
+   // preview/print surface is a white sheet.
+   const preview = readProjectFile("styles/preview.css");
+   assert.equal((preview.match(/--print-bar-num-ink: #173a28;/g) || []).length, 1);
+   assert.equal((preview.match(/color: var\(--print-bar-num-ink\);/g) || []).length, 2, "both print scopes");
+   assert.ok(!/\[data-pdf-bar-numbers[\s\S]{0,400}color: var\(--ink\);/.test(preview));
+});
+
+test("the PDF options dialog never drags the site footer into view", () => {
+   // Opening the dialog switches the editor behind it into the PDF layout, which compacts
+   // the page — and the site footer is a full-width band that paper never contains, so it
+   // used to slide up right behind the modal. It must be hidden in that scope too, but
+   // ONLY on screen: a real print job sets the very same class, and there @media print
+   // keeps its own rules.
+   const ui = readProjectFile("styles/ui.css").replace(/\s+/g, " ");
+   assert.match(
+      ui,
+      /@media screen \{ html\.is-print-layout \.site-footer \{ display: none;/,
+      "the layout preview must drop the site footer on screen",
+   );
+   assert.match(
+      ui,
+      /\.scroll-affordance, \.site-footer, \.pdf-options-modal,/,
+      "paper still hides the site footer with the rest of the app chrome",
+   );
+});
+
+test("the PDF options dialog exposes the bar-number choice", () => {
+   const html = readProjectFile("index.html");
+   const group = html.match(/id="pdfBarNumGroup"[\s\S]{0,700}?<\/div>/);
+   assert.ok(group, "the bar-numbers choice group must exist in the dialog");
+   for (const value of PDF_BAR_NUMBERS)
+      assert.match(group[0], new RegExp(`data-barnum="${value}"`), `${value} button`);
+   // The labels describe the DENSITY (the horizontal side is gone).
+   assert.match(group[0], />\s*Line starts\s*</);
+   assert.match(group[0], />\s*Every bar\s*</);
+   assert.ok(
+      !/Above left|Above right|Bottom left|Bottom right|Top left|Top right/.test(group[0]),
+      "stale corner labels must be gone",
+   );
+   const options = readProjectFile("src/pdfOptions.js");
+   // ON by default (line starts), and clicking a button records the choice so an explicit
+   // Off survives the legacy migration in sanitize().
+   assert.match(options, /barNumbers: "line",/);
+   assert.match(options, /export const PDF_BAR_NUMBERS = \["off", "line", "every"\];/);
+   assert.match(options, /const LEGACY_BAR_NUMBERS = \{ left: "line", right: "line" \};/);
+   assert.match(options, /const BAR_NUMBERS_CHOICE = "barNumbersChoice";/);
+   assert.match(options, /settings\[BAR_NUMBERS_CHOICE\] = 1;/);
+   assert.match(options, /const barNumWrap = \$\("#pdfBarNumGroup"\);/);
+   assert.match(options, /settings\.barNumbers = btn\.dataset\.barnum;/);
+});
+
+// ---- Bar numbers are Chord-Chart-only ---------------------------------------
+// Nashville Numbers mode already IS numbers (a corner stamp duplicates the notation)
+// and ChordPro has no bars, so the option is taken out of those modes — in the dialog
+// AND in the print CSS, so an older per-song value can't leak onto their pages.
+test("bar numbers are a Chord Chart-only option (Numbers/ChordPro never get them)", () => {
+   const html = readProjectFile("index.html");
+   assert.match(html, /<div class="pdf-field-divider" id="pdfBarsDivider">/);
+   assert.match(html, /<section class="pdf-field" id="pdfBarNumField">/);
+   const options = readProjectFile("src/pdfOptions.js");
+   assert.match(options, /onExport, getCard, barNumbersAvailable \} = \{\}\) \{/);
+   assert.match(options, /const barNumField = \$\("#pdfBarNumField"\);/);
+   assert.match(options, /const barsDivider = \$\("#pdfBarsDivider"\);/);
+   assert.match(options, /function syncBarNumAvailability\(\) \{/);
+   assert.match(options, /barNumField\.hidden = !offered;/);
+   assert.match(options, /barsDivider\.hidden = !offered;/);
+   // It has to run when the dialog OPENS (the mode may have changed while it was shut).
+   assert.match(options, /applyPdfOptions\(settings\);\n      syncBarNumAvailability\(\);/);
+   // events.js answers from the live editor mode ("chords" is the Chord Chart id).
+   assert.match(
+      readProjectFile("src/events.js"),
+      /barNumbersAvailable: \(\) => normalizeEditorMode\(getState\(\)\.editorMode\) === "chords",/,
+   );
+   // `hidden` must beat the flex layouts of .pdf-field / .pdf-field-divider, and the dialog pane
+   // must NOT redeclare the stamp: one definition (preview.css) covers paper AND pane.
+   const ui = readProjectFile("styles/ui.css").replace(/\s+/g, " ");
+   assert.match(ui, /\.pdf-options-panel \[hidden\] \{ display: none !important;/);
+   assert.equal((ui.match(/body\[data-editor-mode="chords"\]/g) || []).length, 0);
+});
+
+test("bar numbers default to the line-starts density, and only a deliberate Off keeps them away", () => {
+   assert.equal(defaultPdfOptions().barNumbers, "line");
+   assert.equal(sanitize({}).barNumbers, "line");
+   assert.equal(sanitize({ barNumbers: "line" }).barNumbers, "line");
+   assert.equal(sanitize({ barNumbers: "every" }).barNumbers, "every");
+   // Anything unknown falls back to the DEFAULT (not to "off"), so a garbled value can
+   // never silently strip the numbers from a chart.
+   assert.equal(sanitize({ barNumbers: "bogus" }).barNumbers, "line");
+   assert.equal(sanitize(null).barNumbers, "line");
+   // The option briefly stored a horizontal side; that axis is gone, so the legacy values map
+   // onto the look they described instead of being dropped.
+   assert.equal(sanitize({ barNumbers: "left" }).barNumbers, "line");
+   assert.equal(sanitize({ barNumbers: "right" }).barNumbers, "line");
+   // LEGACY migration: OFF used to be the default and the dialog persisted the whole
+   // settings object on any tweak, so a stored "off" WITHOUT the deliberate marker is the
+   // old default — those songs get their numbers back instead of staying number-less.
+   assert.equal(sanitize({ barNumbers: "off" }).barNumbers, "line");
+   // ...while a real Off (marker written when the button was clicked) is respected and
+   // survives the sanitize → store → sanitize round-trip.
+   const deliberate = sanitize({ barNumbers: "off", barNumbersChoice: 1 });
+   assert.equal(deliberate.barNumbers, "off");
+   assert.equal(deliberate.barNumbersChoice, 1);
+   assert.equal(sanitize(deliberate).barNumbers, "off");
+   // The attribute is the single print switch: written whenever a density is chosen — the
+   // DEFAULT included, which is what numbers a zero-configuration export — and removed only
+   // for a real Off.
+   const hadDocument = "document" in globalThis;
+   const previous = globalThis.document;
+   try {
+      const root = { style: { setProperty() {}, removeProperty() {} }, dataset: {} };
+      globalThis.document = { documentElement: root, getElementById: () => null };
+      applyPdfOptions(defaultPdfOptions());
+      assert.equal(root.dataset.pdfBarNumbers, "line", "a fresh export numbers every line start");
+      applyPdfOptions(sanitize({ barNumbers: "every" }));
+      assert.equal(root.dataset.pdfBarNumbers, "every");
+      applyPdfOptions(sanitize({ barNumbers: "line" }));
+      assert.equal(root.dataset.pdfBarNumbers, "line");
+      applyPdfOptions(sanitize({ barNumbers: "off", barNumbersChoice: 1 }));
+      assert.equal(root.dataset.pdfBarNumbers, undefined);
+   } finally {
+      if (hadDocument) globalThis.document = previous;
+      else delete globalThis.document;
+   }
+});
+
+// ---- chordEditor: typing a chord in your OWN spelling ----------------------
+// `Bm7♭5` (the reported case) is canonicalised by the bank to `Bø7`; the editor now
+// echoes the typed spelling as the first suggestion so a player can keep their
+// notation, while the canonical spelling stays available right below it.
+test("a chord typed in the user's own spelling is offered back as a suggestion", () => {
+   assert.deepEqual(
+      withTypedSpelling(["Bø7", "D♭ø7"], "Bm7♭5", "chords"),
+      ["Bm7♭5", "Bø7", "D♭ø7"],
+   );
+   // Already-canonical input is not duplicated (folding ignores accidental glyphs).
+   assert.deepEqual(withTypedSpelling(["B♭"], "Bb", "chords"), ["B♭"]);
+   // Slash chords are generated by the bank; Numbers mode keeps its degrees; plain
+   // text that isn't a chord spelling is left to the custom-chord path.
+   assert.deepEqual(withTypedSpelling([], "Bm7♭5/G", "chords"), []);
+   assert.deepEqual(withTypedSpelling([], "1", "numbers"), []);
+   assert.deepEqual(withTypedSpelling([], "Amazing", "chords"), []);
+   assert.equal(isValidChordSpelling("Cmaj9"), true);
+   assert.equal(isValidChordSpelling("C6/9"), true);
+   assert.equal(isValidChordSpelling("Cxyz"), false);
+   assert.equal(isValidChordSpelling("H7"), false);
 });
 
 test("the README documents the ChordPro mode and its starters", () => {

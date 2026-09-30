@@ -2,7 +2,7 @@
 // Depends on notation.js (pure), dom.js (helpers), store.js (state).
 // Event-binding hooks (from events.js) are injected via initRender() to keep the graph acyclic.
 import {
-   keys,
+   keyNames,
    chordQualities,
    bassNotes,
    nashvilleNumbers,
@@ -15,6 +15,9 @@ import {
    beatValue,
    lyricValue,
    chordAboveValue,
+   chordAboveShownForBar,
+   moveChordAbove,
+   sectionShowsChordAbove,
    editorModeMeta,
    normalizeEditorMode,
 } from "./notation.js?v=__BUILD__";
@@ -108,10 +111,10 @@ function warnIfChordProCssMissing() {
 
 export function renderControls() {
    const state = getState();
-   $("#keySelect").innerHTML = keys
+   $("#keySelect").innerHTML = keyNames
       .map((key) => `<option ${key === state.key ? "selected" : ""}>${key}</option>`)
       .join("");
-   $("#chordRootPicker").innerHTML = keys
+   $("#chordRootPicker").innerHTML = keyNames
       .map((key) => `<button class="key ${key === state.chordRoot ? "active" : ""}" data-root="${key}">${key}</button>`)
       .join("");
    $("#chordBank").innerHTML = chordQualities
@@ -120,7 +123,7 @@ export function renderControls() {
             `<span class="chord" draggable="true" data-chord="${chordName(value)}">${chordName(value)}</span>`,
       )
       .join("");
-   $("#slashRoot").innerHTML = keys.map((key) => `<option value="${key}">${key}</option>`).join("");
+   $("#slashRoot").innerHTML = keyNames.map((key) => `<option value="${key}">${key}</option>`).join("");
    $("#slashQuality").innerHTML = chordQualities
       .map(({ value, label }) => `<option value="${value}">${label}</option>`)
       .join("");
@@ -172,21 +175,9 @@ export function renderControls() {
       const topLabel = $("#lyricsEnabledTopLabel");
       if (topLabel) topLabel.textContent = state.lyricsEnabled ? "On" : "Off";
    }
-   // Chord-above (Chord Chart mode) global switch — keep checkbox + label in sync.
-   const chordAboveToggle = $("#chordAboveEnabled");
-   if (chordAboveToggle) {
-      chordAboveToggle.checked = !!state.chordAboveEnabled;
-      const chordAboveLabel = $("#chordAboveEnabledLabel");
-      if (chordAboveLabel)
-         chordAboveLabel.textContent = state.chordAboveEnabled ? "Chords above on" : "Chords above off";
-   }
-   // Mirror onto the visible topbar toggle (ribbon is hidden by default).
-   const chordAboveTop = $("#chordAboveEnabledTop");
-   if (chordAboveTop) {
-      chordAboveTop.checked = !!state.chordAboveEnabled;
-      const topLabel = $("#chordAboveEnabledTopLabel");
-      if (topLabel) topLabel.textContent = state.chordAboveEnabled ? "On" : "Off";
-   }
+   // The chord row above the numbers is a PER-SECTION feature: every section owns a
+   // "Chords On/Off" button (section.chordAboveEnabled) plus optional per-bar
+   // overrides, so there is no song-wide switch left to keep in sync here.
    // Reflect the current editing mode on <body> so mode-specific UI (lyrics
    // toggle placement, suggestion hints, mode badge, the ChordPro workspace) can be
    // driven purely by CSS. The label + glyph mapping lives in notation.js (pure and
@@ -242,12 +233,21 @@ function lyricInputHTML(section, slot) {
 // Chord-above cell (Chord Chart mode): a letter chord shown ABOVE the number.
 // Mirrors lyricInputHTML but sits in the top grid row. An empty value renders a
 // faint "+" placeholder so users can discover the affordance.
+// The width is uniform for every cell (--chord-above-w) and the beat pitch under
+// a chord row widens as a whole (--chord-above-leaf), so the double row reads as a
+// tidy grid instead of ragged, content-sized boxes.
 function chordAboveInputHTML(section, slot) {
    const chord = chordAboveValue(section, slot),
       label = `Chord above beat ${slot.replace(":", " part ")}`,
       filled = chord ? "has-chord-above" : "";
    return `<span class="chord-above-editor ${filled}"><input class="chord-above-input" type="text" value="${escapeHTML(chord)}" placeholder="+" data-section="${section.id}" data-slot="${slot}" aria-label="${label}" autocomplete="off" spellcheck="false"><span class="chord-above-print">${chord ? chordLabel(chord) : ""}</span></span>`;
 }
+// A bar whose chord row is switched OFF still gets an (empty) cell: the grid
+// track is reserved by .beat-column.with-chord-above, so the notation lane and
+// the printed barlines stay aligned with the neighbouring bars instead of
+// jumping up by one row. This is what fills that reserved track.
+const CHORD_ABOVE_TRACK_PLACEHOLDER =
+   '<span class="chord-above-editor is-chord-above-off" aria-hidden="true"></span>';
 function subdivisionTargetHTML(section, baseSlot, index, parentDuration) {
    const subSlot = `${baseSlot}:${index}`,
       subValue = beatValue(section, subSlot);
@@ -257,6 +257,9 @@ function subdivisionTargetHTML(section, baseSlot, index, parentDuration) {
          subValue.chord = null;
          section.beats[subSlot] = subValue;
       }
+      // The chord row moves with the split chord, so nothing is left behind on a
+      // slot that is no longer rendered.
+      moveChordAbove(section, subSlot, `${subSlot}.0`);
       const children = Array.from({ length: 2 }, (_, childIndex) => {
          const childSlot = `${subSlot}.${childIndex}`,
             childValue = beatValue(section, childSlot);
@@ -266,17 +269,26 @@ function subdivisionTargetHTML(section, baseSlot, index, parentDuration) {
    }
    return `<span class="sub-beat drop-target ${subValue.chord ? "has-chord" : ""}" data-section="${section.id}" data-slot="${subSlot}" data-base-slot="${baseSlot}" data-parent-duration="${parentDuration}" data-level="1">${chordOrDot(section, subSlot)}</span>`;
 }
-function beatHTML(section, bar, beat) {
+export function beatHTML(section, bar, beat, chordAboveTrack = false, chordAboveShown = false) {
    const state = getState();
    const slot = `${bar}-${beat}`,
       value = beatValue(section, slot),
-      showLyrics = lyricsFeatureAvailable && state.lyricsEnabled && section.lyricsEnabled !== false,
-      showChordAbove = state.editorMode === "chords" && state.chordAboveEnabled && section.chordAboveEnabled !== false;
+      showLyrics = lyricsFeatureAvailable && state.lyricsEnabled && section.lyricsEnabled !== false;
+   // `chordAboveTrack` reserves the top chord row for this bar, while
+   // `chordAboveShown` decides whether the bar receives an editable/printable chord
+   // cell or just the (empty) reserved track.
+   //
+   // The cell is only emitted when a track exists: an extra child would otherwise
+   // become a SECOND grid row in a single-row column, pushing the beats down and
+   // leaving an empty strip above a score that must look exactly like one without
+   // the feature (this is the "switched off leaves a gap" regression).
+   const chordAboveCell = (cellSlot) =>
+      chordAboveShown ? chordAboveInputHTML(section, cellSlot) : CHORD_ABOVE_TRACK_PLACEHOLDER;
+   const chordAboveLead = chordAboveTrack ? chordAboveCell(slot) : "";
    if (!value.duration) {
       const notation = `<span class="beat drop-target ${value.chord ? "has-chord" : ""}" data-section="${section.id}" data-slot="${slot}" data-base-slot="${slot}" data-level="0">${chordOrDot(section, slot)}</span>`;
-      const columnClasses = `beat-column ${showChordAbove ? "with-chord-above" : ""} ${showLyrics ? "with-lyrics" : ""}`;
-      const chordAbove = showChordAbove ? chordAboveInputHTML(section, slot) : "";
-      return `<span class="${columnClasses}">${chordAbove}<span class="notation-cell">${notation}</span>${showLyrics ? lyricInputHTML(section, slot) : ""}</span>`;
+      const columnClasses = `beat-column ${chordAboveTrack ? "with-chord-above" : ""} ${showLyrics ? "with-lyrics" : ""}`;
+      return `<span class="${columnClasses}">${chordAboveLead}<span class="notation-cell">${notation}</span>${showLyrics ? lyricInputHTML(section, slot) : ""}</span>`;
    }
    if (value.chord && !section.beats[`${slot}:0`]) {
       section.beats[`${slot}:0`] = { chord: value.chord, duration: null };
@@ -303,10 +315,10 @@ function beatHTML(section, bar, beat) {
    const subLyrics = showLyrics
       ? `<span class="sub-lyrics" style="--lyric-leaves:${lyricSlots.length}">${lyricSlots.map((lyricSlot) => lyricInputHTML(section, lyricSlot)).join("")}</span>`
       : "";
-   const subChordAbove = showChordAbove
-      ? `<span class="sub-chord-above" style="--lyric-leaves:${lyricSlots.length}">${lyricSlots.map((chordSlot) => chordAboveInputHTML(section, chordSlot)).join("")}</span>`
+   const subChordAbove = chordAboveTrack
+      ? `<span class="sub-chord-above" style="--lyric-leaves:${lyricSlots.length}">${lyricSlots.map((chordSlot) => chordAboveCell(chordSlot)).join("")}</span>`
       : "";
-   const columnClasses = `beat-column duration-column duration-${value.duration} ${showChordAbove ? "with-chord-above" : ""} ${showLyrics ? "with-lyrics" : ""}`;
+   const columnClasses = `beat-column duration-column duration-${value.duration} ${chordAboveTrack ? "with-chord-above" : ""} ${showLyrics ? "with-lyrics" : ""}`;
    return `<span class="${columnClasses}">${subChordAbove}<span class="notation-cell"><span class="beat-group duration-${value.duration} ${nestedSplitSlots.length ? "has-nested-duration" : ""}" data-section="${section.id}" data-base-slot="${slot}"><span class="duration-line" title="Click to remove rhythm marker"></span>${quarterPrintLine}<span class="sub-beats">${subBeats}</span></span></span>${subLyrics}</span>`;
 }
 function sectionTypeClass(name) {
@@ -324,7 +336,13 @@ function sectionHTML(section) {
    const state = getState();
    const { beats } = meterInfo();
    const showLyrics = lyricsFeatureAvailable && state.lyricsEnabled && section.lyricsEnabled !== false,
-      showChordAbove = state.editorMode === "chords" && state.chordAboveEnabled && section.chordAboveEnabled !== false,
+      // The chord row exists in Chord Chart mode only, and each SECTION decides
+      // whether it uses it (its own Chords On/Off button + per-bar overrides).
+      chordRowAvailable = state.editorMode === "chords",
+      // Strategy "uniform": a section that shows the row in ANY of its bars
+      // reserves the track for ALL of them, so the notation lane and the printed
+      // barlines stay aligned instead of jumping up by one row.
+      chordAboveTrack = chordRowAvailable && sectionShowsChordAbove(section),
       hasLyricContent = Object.values(section.lyricBeats || {}).some((text) => String(text).trim());
    // Track cumulative bar count across sections
    if (!renderPreview._cumulativeBarCount) renderPreview._cumulativeBarCount = 0;
@@ -342,12 +360,24 @@ function sectionHTML(section) {
       const inRange = selecting && bar >= selLo && bar <= selHi;
       const barSelClass = selecting ? " is-selectable" : "";
       const barSelectedClass = inRange ? " is-selected" : "";
-      return `<div class="bar ${showLyrics ? "has-lyrics" : ""}${showChordAbove ? " has-chord-above" : ""}${barSelClass}${barSelectedClass}" style="--beats:${beats}" data-bar="${bar}"><span class="bar-num" aria-hidden="true">${globalBarNum}</span><span class="bar-tools"><button class="copy-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Copy bar ${globalBarNum}" aria-label="Copy bar ${globalBarNum}">⧉</button><button class="paste-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Paste into bar ${globalBarNum}" aria-label="Paste into bar ${globalBarNum}">⎘</button></span><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Delete bar ${globalBarNum}" aria-label="Delete bar ${globalBarNum}">×</button>${Array.from({ length: beats }, (_, beat) => beatHTML(section, bar, beat)).join("")}</div>`;
+      // Per-bar answer for the chord row: the track may be reserved section-wide
+      // while this bar has the row switched off — or forced on even though the
+      // section default is off (see chordAboveShownForBar).
+      const chordAboveShown = chordAboveTrack && chordAboveShownForBar(section, bar);
+      const chordAboveOffClass = chordAboveTrack && !chordAboveShown ? " is-chord-above-off" : "";
+      // Per-bar toggle (Chord Chart mode only) — lives in .bar-tools, so it is
+      // hidden while selecting bars and never printed (see styles/ui.css). It is the
+      // per-bar entry point of the feature: a single bar can be switched on without
+      // switching the whole section on.
+      const barChordAboveToggle = chordRowAvailable
+         ? `<button class="chord-above-bar-toggle ${chordAboveShown ? "active" : ""}" type="button" data-section="${section.id}" data-bar="${bar}" aria-pressed="${chordAboveShown}" title="${chordAboveShown ? "Hide" : "Show"} the chord row in bar ${globalBarNum}" aria-label="${chordAboveShown ? "Hide" : "Show"} chord row in bar ${globalBarNum}"><span aria-hidden="true">♪</span></button>`
+         : "";
+      return `<div class="bar ${showLyrics ? "has-lyrics" : ""}${chordAboveTrack ? " has-chord-above" : ""}${chordAboveOffClass}${barSelClass}${barSelectedClass}" style="--beats:${beats}" data-bar="${bar}"><span class="bar-num" aria-hidden="true">${globalBarNum}</span><span class="bar-tools">${barChordAboveToggle}<button class="copy-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Copy bar ${globalBarNum}" aria-label="Copy bar ${globalBarNum}">⧉</button><button class="paste-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Paste into bar ${globalBarNum}" aria-label="Paste into bar ${globalBarNum}">⎘</button></span><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Delete bar ${globalBarNum}" aria-label="Delete bar ${globalBarNum}">×</button>${Array.from({ length: beats }, (_, beat) => beatHTML(section, bar, beat, chordAboveTrack, chordAboveShown)).join("")}</div>`;
    });
    const batches = Array.from(
       { length: Math.ceil(bars.length / 4) },
       (_, index) =>
-         `<div class="bar-batch ${showLyrics ? "has-lyrics" : ""}">${bars.slice(index * 4, index * 4 + 4).join("")}</div>`,
+         `<div class="bar-batch ${showLyrics ? "has-lyrics" : ""}${chordAboveTrack ? " has-chord-above" : ""}">${bars.slice(index * 4, index * 4 + 4).join("")}</div>`,
    ).join("");
    const title =
       section.id === state.editingId
@@ -357,11 +387,10 @@ function sectionHTML(section) {
       lyricsFeatureAvailable && state.lyricsEnabled
          ? `<button class="section-lyrics-toggle ${section.lyricsEnabled !== false ? "active" : ""}" data-section="${section.id}" aria-pressed="${section.lyricsEnabled !== false}"><span aria-hidden="true">${section.lyricsEnabled !== false ? "✓" : "–"}</span> Lyrics ${section.lyricsEnabled !== false ? "On" : "Off"}</button>`
          : "";
-   // Chord-above toggle only appears in Chord Chart mode with the global switch on.
-   const chordAboveToggle =
-      state.editorMode === "chords" && state.chordAboveEnabled
-         ? `<button class="section-chord-above-toggle ${section.chordAboveEnabled !== false ? "active" : ""}" data-section="${section.id}" aria-pressed="${section.chordAboveEnabled !== false}"><span aria-hidden="true">${section.chordAboveEnabled !== false ? "✓" : "–"}</span> Chords ${section.chordAboveEnabled !== false ? "On" : "Off"}</button>`
-         : "";
+   // Chord-above toggle — the section's own switch, shown in Chord Chart mode only.
+   const chordAboveToggle = chordRowAvailable
+      ? `<button class="section-chord-above-toggle ${section.chordAboveEnabled === true ? "active" : ""}" data-section="${section.id}" aria-pressed="${section.chordAboveEnabled === true}"><span aria-hidden="true">${section.chordAboveEnabled === true ? "✓" : "–"}</span> Chords ${section.chordAboveEnabled === true ? "On" : "Off"}</button>`
+      : "";
    const deleteDisabled = state.sections.length === 1;
    const sectionMenu = `<details class="section-menu"><summary title="Section options" aria-label="Options for ${escapeHTML(section.name)}">•••</summary><div class="section-menu-popover"><button class="select-bars" type="button" data-section="${section.id}">Copy bars</button><button class="copy-section" type="button" data-section="${section.id}">Copy section</button><button class="paste-section" type="button" data-section="${section.id}">Paste section</button><button class="delete-section" type="button" data-section="${section.id}" ${deleteDisabled ? "disabled" : ""}>Delete section</button></div></details>`;
    const typeClass = sectionTypeClass(section.name);

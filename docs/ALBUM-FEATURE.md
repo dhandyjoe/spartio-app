@@ -92,7 +92,7 @@ controls stay usable:
 
 | Allowed for a member | Locked for a member |
 | --- | --- |
-| **Key** (`#keySelect` / inline `#previewKey`), **Time signature** (`#timeSignature` / `#previewMeter`), **BPM** (`#bpmInput`), **Transpose −/+**, play/stop, Export `.pdf`, theme, zoom | chords & Nashville numbers (click / drag / palette / rhythm menu / remove subdivision), lyrics + chord-above typing & paste, auto-syllable, **+ Add 1 bar**, **delete bar**, **delete section**, **+ Add section**, **Copy bar / Copy bars (range selection)**, **copy/paste section**, rename section, **Reset Sheet**, Title/Artist edits, palette pickers / custom chord / slash builder, Load `.file` |
+| **Key** (`#keySelect` / inline `#previewKey`), **Time signature** (`#timeSignature` / `#previewMeter`), **BPM** (`#bpmInput`), **Transpose −/+**, play/stop, Export `.pdf`, theme, zoom | chords & Nashville numbers (click / drag / palette / rhythm menu / remove subdivision), lyrics + chord-above typing & paste, **the chord row's own controls** (the section *Chords On/Off* button and the per-bar **♪** button), auto-syllable, **+ Add 1 bar**, **delete bar**, **delete section**, **+ Add section**, **Copy bar / Copy bars (range selection)**, **copy/paste section**, rename section, **Reset Sheet**, Title/Artist edits, palette pickers / custom chord / slash builder, Load `.file` |
 
 How it is enforced (three layers, so a single missed handler can't leak):
 

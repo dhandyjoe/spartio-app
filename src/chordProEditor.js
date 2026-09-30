@@ -19,7 +19,7 @@
 //    what keeps the caret and focus alive while typing.
 import { $ } from "./dom.js?v=__BUILD__";
 import { getState } from "./store.js?v=__BUILD__";
-import { keys, escapeHTML, newSection, MAX_SECTIONS, normalizeEditorMode } from "./notation.js?v=__BUILD__";
+import { keyNames, escapeHTML, newSection, MAX_SECTIONS, normalizeEditorMode } from "./notation.js?v=__BUILD__";
 
 // Injected app hooks (set once at bootstrap by events.js).
 const deps = {
@@ -139,7 +139,8 @@ function applyReadOnly(readOnly) {
 function syncMeta(state, readOnly) {
    const keySelect = $("#cpKeySelect");
    if (keySelect) {
-      if (!keySelect.options.length) keySelect.innerHTML = keys.map((key) => `<option value="${key}">${key}</option>`).join("");
+      if (!keySelect.options.length)
+         keySelect.innerHTML = keyNames.map((key) => `<option value="${key}">${key}</option>`).join("");
       if (keySelect.value !== state.key) keySelect.value = state.key;
    }
    const meterSelect = $("#cpMeterSelect");

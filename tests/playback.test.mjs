@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import {
    chordToMidiNotes,
    chordToFrequencies,
+   resolveEntryNotes,
+   resolveEntryFrequencies,
+   buildPlaybackQueue,
 } from "../src/playback.js";
 import { noteNameToMidi } from "../src/synth.js?v=20260824-chordAbove";
 
@@ -463,5 +466,106 @@ test("noteNameToMidi returns null for invalid names", () => {
    assert.equal(noteNameToMidi("H4"), null);
    assert.equal(noteNameToMidi(""), null);
    assert.equal(noteNameToMidi("C-1"), null);
+});
+
+// ---- Quality aliases + extended voicings (Bm7♭5 etc.) ----------------------
+
+test("alias spellings sound exactly like their canonical symbol", () => {
+   // The reported case: `Bm7♭5` (offered by the bank as `Bø7`) used to fall back to a
+   // plain B major triad. Every half-diminished spelling must voice the same notes.
+   const halfDim = chordToMidiNotes("Bø7", "B");
+   assert.deepEqual(halfDim, [47, 71, 74, 77, 81]);
+   for (const spelling of ["Bm7♭5", "Bm7b5", "Bmin7b5", "Bø", "Bo7"]) {
+      assert.deepEqual(chordToMidiNotes(spelling, "B"), halfDim, spelling);
+   }
+   assert.deepEqual(chordToMidiNotes("Bdim", "B"), chordToMidiNotes("B°", "B"));
+   assert.deepEqual(chordToMidiNotes("Baug", "B"), chordToMidiNotes("B+", "B"));
+   assert.deepEqual(chordToMidiNotes("Bmin7", "B"), chordToMidiNotes("Bm7", "B"));
+   assert.deepEqual(chordToMidiNotes("Bma7", "B"), chordToMidiNotes("Bmaj7", "B"));
+   assert.deepEqual(chordToMidiNotes("BΔ7", "B"), chordToMidiNotes("Bmaj7", "B"));
+});
+
+test("extended qualities keep their colour instead of falling back to major", () => {
+   assert.deepEqual(chordToMidiNotes("Bmaj9", "B"), [47, 71, 75, 78, 82, 85]);
+   assert.deepEqual(chordToMidiNotes("B6/9", "B"), [47, 71, 75, 78, 80, 85]);
+   assert.deepEqual(chordToMidiNotes("B7sus4", "B"), [47, 71, 76, 78, 81]);
+   assert.deepEqual(chordToMidiNotes("Bdim7", "B"), [47, 71, 74, 77, 80]);
+   assert.deepEqual(chordToMidiNotes("Baug7", "B"), [47, 71, 75, 79, 81]);
+   // A custom suffix we don't know still makes a sound (major fallback), never silence.
+   assert.deepEqual(chordToMidiNotes("Bxyz", "B"), chordToMidiNotes("B", "B"));
+   // ...and an unreadable root stays silent (nothing to voice).
+   assert.deepEqual(chordToMidiNotes("H7", "B"), []);
+});
+
+// ---- Chord row above the numbers (section.chordAboveBeats) -----------------
+test("resolveEntryNotes keeps the old behavior when the chord row is empty", () => {
+   // Letter chord → historical voicing; number alone → historical single note.
+   assert.deepEqual(resolveEntryNotes({ chord: "C" }, "C"), [36, 60, 64, 67]);
+   assert.deepEqual(resolveEntryNotes({ chord: "1" }, "C"), [60]);
+   assert.deepEqual(resolveEntryNotes({ chord: null, chordAbove: null }, "C"), []);
+   assert.deepEqual(resolveEntryNotes(undefined, "C"), []);
+});
+
+test("resolveEntryNotes lets an empty beat sound its chord row instead of clicking", () => {
+   // G2 + G4-B4-D5 — the scheduler plays notes whenever this array is non-empty.
+   assert.deepEqual(resolveEntryNotes({ chord: null, chordAbove: "G" }, "C"), [43, 67, 71, 74]);
+   assert.deepEqual(resolveEntryFrequencies({}, "C"), []);
+});
+
+test("resolveEntryNotes lifts the number one octave above its chord", () => {
+   // 1 + chord C above → C2 bass, C4-E4-G4 harmony, and the number as C5 (72).
+   assert.deepEqual(resolveEntryNotes({ chord: "1", chordAbove: "C" }, "C"), [36, 60, 64, 67, 72]);
+   // In G: 5 is D, so the melody is D5 while the D chord sits below it.
+   assert.deepEqual(resolveEntryNotes({ chord: "5", chordAbove: "D" }, "G"), [38, 62, 66, 69, 74]);
+   // Octave markers still apply BEFORE the lift: 1̣ = C3 → lifted to C4, which is
+   // already a chord tone here, so de-duplication leaves the union at 4 notes.
+   assert.deepEqual(resolveEntryNotes({ chord: "1̣", chordAbove: "C" }, "C"), [36, 60, 64, 67]);
+   // ...while 1̇ = C5 lifts to C6 and stays clearly above the triad.
+   assert.deepEqual(resolveEntryNotes({ chord: "1̇", chordAbove: "C" }, "C"), [36, 60, 64, 67, 84]);
+});
+
+test("resolveEntryNotes stacks both voicings when both rows hold chords", () => {
+   // G on the beat + C above → both voicings, with shared notes played once.
+   assert.deepEqual(
+      resolveEntryNotes({ chord: "G", chordAbove: "C" }, "C"),
+      [36, 43, 60, 64, 67, 71, 74],
+   );
+});
+
+test("resolveEntryFrequencies converts the resolved notes to Hz", () => {
+   const freqs = resolveEntryFrequencies({ chord: "1", chordAbove: "C" }, "C");
+   assert.equal(freqs.length, 5);
+   // freqs[1] is C4 = MIDI 60 → 261.626 Hz.
+   assert.ok(Math.abs(freqs[1] - 261.6255653005986) < 1e-6, `unexpected ${freqs[1]}`);
+   assert.deepEqual(resolveEntryFrequencies({ chord: "1" }, "C"), [261.6255653005986]);
+});
+
+test("buildPlaybackQueue carries the chord row into subdivisions", () => {
+   const section = {
+      id: "s1",
+      bars: 1,
+      beats: {
+         "0-0": { chord: "1", duration: "quarter" },
+         "0-0:0": { chord: "1", duration: null },
+      },
+      // Only the base slot holds a cell (older/edited files): the children of the
+      // split must inherit it rather than going silent.
+      chordAboveBeats: { "0-0": "C" },
+   };
+   const queue = buildPlaybackQueue([section], 4);
+   const first = queue.find((entry) => entry.slot === "0-0:0");
+   assert.equal(first.chordAbove, "C");
+   assert.equal(first.beatUnit, 0.25);
+   // An empty beat stays empty (metronome click), and a slot without a rhythm
+   // marker keeps beatUnit 1.
+   const empty = queue.find((entry) => entry.slot === "0-1");
+   assert.equal(empty.chord, null);
+   assert.equal(empty.chordAbove, null);
+   assert.equal(empty.beatUnit, 1);
+   // A child with its own cell wins over the inherited one.
+   section.chordAboveBeats["0-0:1"] = "G";
+   const next = buildPlaybackQueue([section], 4);
+   assert.equal(next.find((entry) => entry.slot === "0-0:1").chordAbove, "G");
+   assert.equal(next.find((entry) => entry.slot === "0-0:2").chordAbove, "C");
 });
 

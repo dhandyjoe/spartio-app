@@ -483,8 +483,24 @@ html:not(.is-print-layout) .nashville-octave-low .nashville-octave-dot {
    --lyric-h: 32px; /* lyric input + lyric row height */
    --lyric-gap: 8px; /* gap between notation lane and lyric row */
    --lyric-bar-pad: 14px; /* breathing room between barline and beats (lyrics ON only) */
-   --chord-above-h: 28px; /* chord-above input + row height */
-   --chord-above-gap: 6px; /* gap between chord-above row and notation lane */
+   --chord-above-h: 32px; /* chord-above input + row height (a touch taller than the old 28px) */
+   --chord-above-w: 68px; /* uniform chord-cell width (fits Em/C#, F#m7/C#) */
+   /*
+     NOTE: the beat pitch under a chord row is NOT set here. It is the JS-computed
+     `--leaf` (distributeLeafWidth() in events.js, "stretch the line to the score
+     width") plus a small `CHORD_ABOVE_LEAF_EXTRA` delta, so a line with the chord
+     row keeps the default pitch and simply scrolls horizontally when it no longer
+     fits.
+   */
+   /*
+     Gap between the chord-above row and the notation lane. It must clear the
+     rhythm beams: the ½ / ⅓ / ¼ marker is lifted above the beat group and, with
+     the row switched on, is capped by the `has-chord-above .duration-line` rule
+     below so it can never leave the notation lane. This token adds the breathing
+     room on top of that guarantee (it was 6px, which tucked the beams into the
+     chord input's box).
+   */
+   --chord-above-gap: 24px;
 }
 .bar-batch .bar {
    flex: 0 0 auto;
@@ -839,6 +855,25 @@ html:not(.is-print-layout) .nashville-octave-low .nashville-octave-dot {
    height: 2px;
    border-radius: 2px;
    background: var(--dark-green);
+}
+/*
+  Chord Chart WITH the chord row (CHORDS On): keep the whole ½ / ⅓ / ¼ marker
+  INSIDE the notation lane. The beams are normally lifted above the beat group
+  (top: -28px, visible line ~2px above the lane top) which put the green line and
+  its 28px hit area inside the chord input's box. Shifting the marker 8px down —
+  primary beam line at -14px, secondary / nested at -9px from the group top, i.e.
+  spacing preserved — makes the collision impossible at any zoom, while
+  `--chord-above-gap` adds the breathing room above it.
+
+  Scoped to `html:not(.is-print-layout)` on purpose: the PDF / print geometry
+  (--print-beam-top) and the on-screen PDF-layout preview are untouched.
+*/
+html:not(.is-print-layout) .bar.has-chord-above .duration-line {
+   top: -20px;
+   height: 20px;
+}
+html:not(.is-print-layout) .bar.has-chord-above .nested-duration-line {
+   top: -11px;
 }
 
 /*
@@ -1311,13 +1346,17 @@ body {
 /* ---- Chord-above (Chord Chart mode) ------------------------------------
    A letter-chord row above each number. Mirrors the lyric editor styling but
    sits in the top grid row. Only rendered when the toggle is ON, so it never
-   affects layout when OFF. */
+   affects layout when OFF.
+
+   Sizing: every cell is the SAME width (--chord-above-w, wide enough for chords
+   like `Em/C#`) and the beat pitch under the row widens as a whole
+   (--chord-above-leaf), so the two rows read as a tidy grid. */
 .chord-above-editor {
    display: block;
    justify-self: center;
    align-self: end;
    min-width: 0;
-   width: 44px;
+   width: var(--chord-above-w, 68px);
 }
 .chord-above-print {
    display: none;
@@ -1326,28 +1365,30 @@ body {
    width: 100%;
    min-width: 0;
    height: var(--chord-above-h, 28px);
-   border: 1px solid #d8e7dc;
-   border-radius: 7px;
-   padding: 3px 5px;
-   background: rgba(255, 255, 255, 0.78);
-   color: #1f704a;
+   border: 1px solid #cfe0d3;
+   border-radius: 8px;
+   padding: 2px 6px;
+   background: #f2faf4; /* the row reads as a soft band above the beats */
+   color: #14513a;
    font:
-      750 13px/1.2 Inter,
+      800 14px/1.15 Inter,
       ui-sans-serif,
       sans-serif;
+   letter-spacing: 0.005em;
    text-align: center;
    outline: 0;
    transition:
       border-color 0.15s,
       box-shadow 0.15s,
-      background 0.15s;
+      background 0.15s,
+      color 0.15s;
 }
 .chord-above-input::placeholder {
-   color: #bccabe;
-   font-weight: 500;
+   color: #b8c9be;
+   font-weight: 600;
 }
 .chord-above-input:hover {
-   border-color: #b7d3be;
+   border-color: #8eb99a;
    background: #fff;
 }
 .chord-above-input:focus {
@@ -1355,7 +1396,35 @@ body {
    z-index: 2;
    border-color: #64a77b;
    background: #fff;
-   box-shadow: 0 0 0 3px rgba(100, 167, 123, 0.14);
+   box-shadow: 0 0 0 3px rgba(100, 167, 123, 0.16);
+}
+/* A filled cell gets a touch more presence so the harmony line scans quickly. */
+.chord-above-editor.has-chord-above .chord-above-input {
+   border-color: #a9d2b8;
+   background: #e4f5ea;
+   color: #0f4a31;
+}
+.chord-above-editor.has-chord-above .chord-above-input:hover {
+   background: #fff;
+}
+/* Dark theme mirrors the lyric row: a soft dark chip with green text. */
+html[data-theme="dark"] .chord-above-input {
+   border-color: #343a35;
+   background: rgba(10, 10, 10, 0.82);
+   color: #8fd8ac;
+}
+html[data-theme="dark"] .chord-above-input::placeholder {
+   color: #55635a;
+}
+html[data-theme="dark"] .chord-above-input:hover,
+html[data-theme="dark"] .chord-above-input:focus {
+   border-color: #4e8a67;
+   background: #0a0a0a;
+}
+html[data-theme="dark"] .chord-above-editor.has-chord-above .chord-above-input {
+   border-color: #3f6a52;
+   background: #14201a;
+   color: #a6e3c0;
 }
 .sub-chord-above {
    min-width: 0;
@@ -1364,7 +1433,14 @@ body {
    grid-template-columns: repeat(var(--lyric-leaves), minmax(var(--leaf, 60px), max-content));
 }
 .sub-chord-above .chord-above-editor {
-   width: 40px;
+   width: var(--chord-above-w, 68px);
+}
+/* The ½ / ⅓ / ¼ sub-cells share the plain cell's box (same height, anchored to the
+   bottom of the chord track), so the gap from the chord row down to the number is
+   uniform for every beat type — with or without a rhythm marker. */
+.bar.has-chord-above .sub-chord-above .chord-above-editor {
+   height: var(--chord-above-h, 32px);
+   align-self: end;
 }
 
 /*
@@ -1418,6 +1494,22 @@ body {
 }
 .bar.has-lyrics .sub-lyrics .lyric-editor {
    width: 40px;
+}
+/*
+  Chord Chart with the chord row ON keeps the JS-distributed beat pitch (see the
+  token comment above) — the small extra room per leaf is added by
+  distributeLeafWidth(), never subtracted here.
+*/
+
+/*
+  A chord-row bar keeps the top band of the bar (the absolutely positioned hover
+  affordances: ✕ delete bar at top:3px, ⧉ ⎘ ♪ tools next to it — 22px tall, so they
+  occupy the first 25px) clear, otherwise those buttons sit on top of the chord
+  field above the first beat and visually crop it. Screen only: on paper those
+  buttons are hidden and the bar uses its own --print-bar-pad-y-* tokens.
+*/
+html:not(.is-print-layout) .bar.has-chord-above {
+   padding-top: 32px;
 }
 /* Keep beat pitch uniform when chord-above is ON (mirrors .has-lyrics). */
 .bar.has-chord-above .beat-column:not(.duration-column),
@@ -2009,7 +2101,41 @@ html[data-theme="dark"] .placing-cancel:hover {
       lyrics are printed, so the sung chart is easier to read. Matches the
       no-lyric bar padding (--print-bar-pad-x) so spacing is uniform. */
    --print-bar-pad-x-lyrics: 2.6mm;
+   /* Bar numbers (PDF options → Bars) in two densities:
+      • "line"  (default) — ONE big number per printed line, above that line's first barline.
+      • "every"           — a small number above every barline (dense rehearsal reference).
+      Only "line"/"every" draw anything; "off" keeps every token below at its 0mm default, so the
+      base bar geometry stays byte-identical. The band tokens reserve room at the top of a bar so
+      a digit can never land on the notation (see the html[data-pdf-bar-numbers] rules).
+
+      Tuning the stamp's position: `--print-bar-num-top` moves it DOWN from the bar's top edge and
+      `--print-bar-num-inset` moves it RIGHT from the barline. The band below grows/shrinks with
+      both, and the trailing constant is the clearance kept between the digit and the notation
+      (the digit's box ends `+ 0.5mm` above the first line of music). */
+   --print-bar-num-size: 3mm;
+   --print-bar-num-size-every: 2.6mm;
+   --print-bar-num-inset: 1.3mm;
+   --print-bar-num-top: 3.5mm;
+   --print-bar-num-weight: 800;
+   --print-bar-num-opacity: 1;
+   --print-bar-num-row: calc(var(--print-bar-num-size) + var(--print-bar-num-top) + 0.5mm);
+   --print-bar-num-row-every: calc(var(--print-bar-num-size-every) + var(--print-bar-num-top) + 0.5mm);
+   --print-bar-num-extra-top: 0mm;
+   --print-bar-num-extra-bottom: 0mm;
+   /* Stamp ink is PINNED to the paper colour instead of var(--ink): the dialog's
+      live preview is always a white sheet, but --ink flips to near-white
+      (#f1f4f2) in dark mode, which would make the pane promise a stamp the PDF
+      never draws. Matches the ink of the on-screen PDF-layout preview card. */
+   --print-bar-num-ink: #173a28;
    --print-chord-size: 4.3mm;
+   /* The chord row ABOVE the numbers floats in the bar's top band, so it prints a
+      shade smaller than the main chords (and scales with the same PDF slider). */
+   --print-chord-above-size: calc(var(--print-chord-size) * 0.9);
+   --print-chord-above-row: calc(var(--print-chord-above-size) + 0.2mm);
+   /* Extra space above a printed line that shows the chord row, so the floating row
+      never crowds the chords of the line above. Single knob: raise/lower this value
+      (it only applies to sections that actually show the row). */
+   --print-chord-above-line-gap: 6mm;
    --print-lyric-size: 3.2mm;
    /* Extra headroom so raised beams + high-octave dots never collide/clip. */
    --print-notation-h: 11.5mm;
@@ -2058,13 +2184,53 @@ html[data-theme="dark"] .placing-cancel:hover {
    .transpose-control,
    .playback-control,
    .song-meta-lyrics-toggle,
-   .song-meta-chord-above-toggle,
    .history-toolbar,
    .bar-num,
    .chord-remove,
    .section-chip,
    .placing-banner {
       display: none !important;
+   }
+
+   /* PDF option → bar numbers (Bars → Line starts / Every bar). ACTIVE by default
+      (pdfOptions.js stamps `data-pdf-bar-numbers="line"`), so the hide rule above is the
+      baseline that only these rules may override — and only in CHORD CHART mode, see
+      body[data-editor-mode] below.
+      "line" (default) numbers ONLY the bar that starts a printed row: src/pdf.js tags every
+      other bar `.pdf-mid-bar`, and because rows are laid out with `row-gap: 0` a number per
+      bar would sit squeezed between two rows of music — one big number per line is what
+      actually reads on paper. "every" keeps the dense small-number variant. */
+   html[data-pdf-bar-numbers="line"] body[data-editor-mode="chords"] .bar-batch .bar:not(.pdf-mid-bar) .bar-num,
+   html[data-pdf-bar-numbers="every"] body[data-editor-mode="chords"] .bar-batch .bar .bar-num {
+      display: block !important;
+      top: var(--print-bar-num-top);
+      bottom: auto;
+      left: var(--print-bar-num-inset);
+      font-size: var(--print-bar-num-size);
+      font-weight: var(--print-bar-num-weight);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      color: var(--print-bar-num-ink);
+      opacity: var(--print-bar-num-opacity);
+   }
+   html[data-pdf-bar-numbers="line"] body[data-editor-mode="chords"] .bar-batch .bar.pdf-mid-bar .bar-num {
+      display: none !important;
+   }
+   html[data-pdf-bar-numbers="every"] body[data-editor-mode="chords"] #previewCard {
+      /* Dense variant: smaller, lighter, and the band shrinks with it. */
+      --print-bar-num-size: var(--print-bar-num-size-every);
+      --print-bar-num-row: var(--print-bar-num-row-every);
+      --print-bar-num-weight: 700;
+      --print-bar-num-opacity: 0.85;
+   }
+   /* Reserve the stamp's band at the top of EVERY bar in a counted row — not just the bar that
+      draws the digit. The bars share one flex row (align-items: stretch), so a band on the first
+      bar alone would stretch its neighbours and shift their notation: same padding on all bars
+      keeps the line perfectly aligned, and costs nothing extra (the row height is set by its
+      tallest bar anyway). See the extras tokens. */
+   html[data-pdf-bar-numbers="line"] body[data-editor-mode="chords"] .bar-batch .bar,
+   html[data-pdf-bar-numbers="every"] body[data-editor-mode="chords"] .bar-batch .bar {
+      --print-bar-num-extra-top: calc(var(--print-bar-num-row) - var(--print-bar-pad-y-top));
    }
 
    body {
@@ -2143,6 +2309,24 @@ html[data-theme="dark"] .placing-cancel:hover {
       margin-bottom: 0;
       break-after: avoid;
    }
+   /* A section that shows the chord row needs a little headroom above its FIRST
+      printed line, because the row floats above the lane (into the bar's top
+      padding). Later lines already sit under the previous line's bottom padding. */
+   /*
+      Each chord-row line reserves headroom for the floating chord row above it, so
+      the row of line N can never touch the chords of line N-1. Scoped to
+      `.bar.has-chord-above` on purpose: only sections that actually show the chord
+      row get the extra spacing — with the row OFF the printed sheet is untouched.
+      Tune the amount with `--print-chord-above-line-gap`.
+   */
+   .bar-batch .bar.has-chord-above {
+      margin-top: var(--print-chord-above-line-gap);
+   }
+   /* The FIRST line of a section sits right under the section title, so it gets a
+      touch more headroom for its floating chord row. */
+   .bar-grid > .bar-batch:first-child .bar.has-chord-above {
+      margin-top: calc(var(--print-chord-above-line-gap) + 0.4mm);
+   }
    .section-title {
       color: #000;
       font-size: 13px;
@@ -2174,7 +2358,10 @@ html[data-theme="dark"] .placing-cancel:hover {
       min-height: calc(var(--print-notation-h) + var(--print-bar-pad-y-top) + var(--print-bar-pad-y-bottom));
       margin-top: 0;
       margin-left: 0;
-      padding: var(--print-bar-pad-y-top) var(--print-bar-pad-x) var(--print-bar-pad-y-bottom);
+      /* The top/bottom padding also carry the optional bar-number band
+         (--print-bar-num-extra-* is 0mm unless the score draws numbers). */
+      padding: calc(var(--print-bar-pad-y-top) + var(--print-bar-num-extra-top)) var(--print-bar-pad-x)
+         calc(var(--print-bar-pad-y-bottom) + var(--print-bar-num-extra-bottom));
       gap: 0;
       border: 0 !important;
       overflow: visible;
@@ -2185,7 +2372,10 @@ html[data-theme="dark"] .placing-cancel:hover {
    .bar-batch .bar::after {
       content: "";
       position: absolute;
-      top: 50%;
+      /* Locked to the notation, not to the box: the bar-number band at the top makes the box
+         taller and would otherwise drag the barlines down with it (both extras are 0mm when
+         numbers are off, so this is exactly 50% then). */
+      top: calc(50% + (var(--print-bar-num-extra-top) - var(--print-bar-num-extra-bottom)) / 2);
       z-index: 2;
       display: block;
       width: 2.5px;
@@ -2211,11 +2401,17 @@ html[data-theme="dark"] .placing-cancel:hover {
       min-width: 0;
       min-height: calc(var(--print-notation-h) + 3.8mm + var(--print-bar-pad-y-top) + var(--print-bar-pad-y-bottom));
       grid-template-columns: repeat(var(--beats), max-content);
-      padding: var(--print-bar-pad-y-top) var(--print-bar-pad-x-lyrics) var(--print-bar-pad-y-bottom);
+      padding: calc(var(--print-bar-pad-y-top) + var(--print-bar-num-extra-top)) var(--print-bar-pad-x-lyrics)
+         calc(var(--print-bar-pad-y-bottom) + var(--print-bar-num-extra-bottom));
       column-gap: 0;
    }
    .preview-section:not(.has-lyric-content) .beat-column.with-lyrics {
       grid-template-rows: var(--print-notation-h);
+   }
+   /* A chord-above column keeps its (zero-height) chord track even when the section
+      prints without lyric rows. */
+   .preview-section:not(.has-lyric-content) .beat-column.with-chord-above.with-lyrics {
+      grid-template-rows: 0 var(--print-notation-h);
    }
    .preview-section:not(.has-lyric-content) .lyric-editor,
    .preview-section:not(.has-lyric-content) .sub-lyrics {
@@ -2234,13 +2430,20 @@ html[data-theme="dark"] .placing-cancel:hover {
       grid-template-rows: var(--print-notation-h) minmax(4.2mm, auto);
       row-gap: 1.5mm;
    }
+   /*
+      Chord Chart with the chord row ON: the row takes NO height. It is a zero-height
+      track whose cell is drawn just above it (relative offset below), so the printed
+      lane, the rhythm beams and the notes keep the EXACT default geometry of a score
+      without the row — the chord tokens simply sit higher, in the bar's top padding
+      plus the gap between printed lines.
+   */
    .beat-column.with-chord-above {
-      grid-template-rows: minmax(3.6mm, auto) var(--print-notation-h);
-      row-gap: 1.2mm;
+      grid-template-rows: 0 var(--print-notation-h);
+      row-gap: 0;
    }
    .beat-column.with-chord-above.with-lyrics {
-      grid-template-rows: minmax(3.6mm, auto) var(--print-notation-h) minmax(4.2mm, auto);
-      row-gap: 1.2mm 1.5mm;
+      grid-template-rows: 0 var(--print-notation-h) minmax(4.2mm, auto);
+      row-gap: 0 1.5mm;
    }
    .notation-cell {
       height: var(--print-notation-h);
@@ -2271,11 +2474,33 @@ html[data-theme="dark"] .placing-cancel:hover {
       text-align: center;
       overflow-wrap: anywhere;
    }
-   /* Chord-above in print: hide the input, show the rendered chord token. */
+   /* Chord-above in print: hide the input, show the rendered chord token drawn
+      ABOVE the notation lane. The offset is relative (not absolute) on purpose: the
+      cell stays in flow, so it still contributes to the column's width and a long
+      chord can neither wrap nor overlap its neighbour. */
    .chord-above-editor {
       width: 100%;
       min-width: var(--print-slot);
-      align-self: end;
+   }
+   .beat-column.with-chord-above > .chord-above-editor,
+   .beat-column.with-chord-above > .sub-chord-above {
+      position: relative;
+      /* `align-self: start` is load-bearing: the screen rule sets `align-self: end`
+         on the chord cell, which inside this ZERO-height track would already push the
+         box up by its full height — and `top: -row` would then shift it a second
+         time, leaving a plain beat's chord row ~4mm higher than a ½/⅓/¼ beat's
+         (i.e. visibly different gaps). Starting the box at the track's top keeps one
+         single offset for every cell type. */
+      align-self: start;
+      top: calc(-1 * var(--print-chord-above-row));
+   }
+   /* Every chord-row cell — the plain one and each ½/⅓/¼ sub-cell — shares the SAME
+      height, so the distance from the row to the number below is identical whether or
+      not the beat carries a rhythm marker. */
+   .beat-column.with-chord-above > .chord-above-editor,
+   .beat-column.with-chord-above > .sub-chord-above,
+   .beat-column.with-chord-above .sub-chord-above .chord-above-editor {
+      height: var(--print-chord-above-row);
    }
    .chord-above-input {
       display: none;
@@ -2283,10 +2508,10 @@ html[data-theme="dark"] .placing-cancel:hover {
    .chord-above-print {
       display: block;
       min-width: 0;
-      padding: 0.2mm 0.4mm;
+      padding: 0 0.4mm;
       color: #0e4d2e;
       font:
-         800 var(--print-chord-size)/1.2 Inter,
+         800 var(--print-chord-above-size)/1 Inter,
          ui-sans-serif,
          sans-serif;
       text-align: center;
@@ -2305,8 +2530,34 @@ html[data-theme="dark"] .placing-cancel:hover {
    }
    .bar.has-chord-above .sub-chord-above {
       width: 100%;
-      grid-template-columns: repeat(var(--lyric-leaves), minmax(var(--print-slot), 1fr));
+      /* Natural cell widths (so a long chord never wraps) distributed evenly across the
+         beat: every chord cell's centre lands on the same slot centre as the numbers
+         below it, which is what keeps the two rows aligned. */
+      grid-template-columns: repeat(var(--lyric-leaves), minmax(var(--print-slot), max-content));
+      justify-content: space-around;
       gap: var(--print-sub-gap);
+   }
+   /*
+      A subdivided beat that carries a chord row: the number slots BELOW spread over the
+      SAME width as the chord cells ABOVE them, using the same slot centres, so a wide
+      chord widens its own beat and the number stays aligned under its chord — instead of
+      the numbers keeping the default pitch while the chord row stretches away from them.
+   */
+   .bar.has-chord-above .beat-group,
+   .bar.has-chord-above .sub-beats {
+      width: 100%;
+   }
+   .bar.has-chord-above .duration-half .sub-beats {
+      grid-template-columns: repeat(2, minmax(var(--print-slot), max-content));
+      justify-content: space-around;
+   }
+   .bar.has-chord-above .duration-triplet .sub-beats {
+      grid-template-columns: repeat(3, minmax(var(--print-slot), max-content));
+      justify-content: space-around;
+   }
+   .bar.has-chord-above .duration-quarter .sub-beats {
+      grid-template-columns: repeat(4, minmax(var(--print-slot), max-content));
+      justify-content: space-around;
    }
    .bar.has-chord-above .sub-chord-above .chord-above-editor {
       width: 100%;
@@ -2586,7 +2837,6 @@ html.is-print-layout .transpose-control,
 html.is-print-layout .playback-control,
 html.is-print-layout .bpm-control,
 html.is-print-layout .song-meta-lyrics-toggle,
-html.is-print-layout .song-meta-chord-above-toggle,
 html.is-print-layout .history-toolbar,
 html.is-print-layout .bar-tools,
 html.is-print-layout .copy-bar,
@@ -2600,6 +2850,44 @@ html.is-print-layout .placing-banner,
 html.is-print-layout .section-menu,
 html.is-print-layout .preview-footer {
    display: none !important;
+}
+
+/* PDF option → bar numbers (Bars → Line starts / Every bar). Mirrors the @media print rules
+   above so the on-screen PDF layout (and the dialog pane, which hosts the live #previewCard)
+   shows EXACTLY what will be exported — including the Chord-Chart-only rule and the
+   line-starts density (`.pdf-mid-bar` is tagged here too, see markMidRowBars() callers). */
+html.is-print-layout[data-pdf-bar-numbers="line"]
+   body[data-editor-mode="chords"]
+   .bar-batch
+   .bar:not(.pdf-mid-bar)
+   .bar-num,
+html.is-print-layout[data-pdf-bar-numbers="every"] body[data-editor-mode="chords"] .bar-batch .bar .bar-num {
+   display: block !important;
+   top: var(--print-bar-num-top);
+   bottom: auto;
+   left: var(--print-bar-num-inset);
+   font-size: var(--print-bar-num-size);
+   font-weight: var(--print-bar-num-weight);
+   font-variant-numeric: tabular-nums;
+   line-height: 1;
+   color: var(--print-bar-num-ink);
+   opacity: var(--print-bar-num-opacity);
+}
+html.is-print-layout[data-pdf-bar-numbers="line"] body[data-editor-mode="chords"] .bar-batch .bar.pdf-mid-bar .bar-num {
+   display: none !important;
+}
+html.is-print-layout[data-pdf-bar-numbers="every"] body[data-editor-mode="chords"] #previewCard {
+   /* Dense variant: smaller, lighter, and the band shrinks with it. */
+   --print-bar-num-size: var(--print-bar-num-size-every);
+   --print-bar-num-row: var(--print-bar-num-row-every);
+   --print-bar-num-weight: 700;
+   --print-bar-num-opacity: 0.85;
+}
+/* Reserve the stamp's band at the top of EVERY bar in a counted row (same reasoning as the
+   @media print rules: one shared flex row must stay aligned). */
+html.is-print-layout[data-pdf-bar-numbers="line"] body[data-editor-mode="chords"] .bar-batch .bar,
+html.is-print-layout[data-pdf-bar-numbers="every"] body[data-editor-mode="chords"] .bar-batch .bar {
+   --print-bar-num-extra-top: calc(var(--print-bar-num-row) - var(--print-bar-pad-y-top));
 }
 
 html.is-print-layout #previewCard {
@@ -2677,6 +2965,17 @@ html.is-print-layout #previewCard .section-preview-heading {
    break-after: avoid;
    page-break-after: avoid;
 }
+/* Each chord-row line reserves headroom for the floating chord row above it, so the
+   row of line N never touches the chords of line N-1. Scoped to .has-chord-above:
+   sections without the row keep their default spacing (knob:
+   --print-chord-above-line-gap). */
+html.is-print-layout #previewCard .bar-batch .bar.has-chord-above {
+   margin-top: var(--print-chord-above-line-gap);
+}
+/* A touch more headroom for the section's first line (right under its title). */
+html.is-print-layout #previewCard .bar-grid > .bar-batch:first-child .bar.has-chord-above {
+   margin-top: calc(var(--print-chord-above-line-gap) + 0.4mm);
+}
 html.is-print-layout #previewCard .section-title {
    display: inline-block;
    color: #000;
@@ -2720,7 +3019,10 @@ html.is-print-layout #previewCard .bar-batch .bar {
    min-height: calc(var(--print-notation-h) + var(--print-bar-pad-y-top) + var(--print-bar-pad-y-bottom));
    margin-top: 0;
    margin-left: 0;
-   padding: var(--print-bar-pad-y-top) var(--print-bar-pad-x) var(--print-bar-pad-y-bottom);
+   /* The top/bottom padding also carry the optional bar-number band
+      (--print-bar-num-extra-* is 0mm unless the score draws numbers). */
+   padding: calc(var(--print-bar-pad-y-top) + var(--print-bar-num-extra-top)) var(--print-bar-pad-x)
+      calc(var(--print-bar-pad-y-bottom) + var(--print-bar-num-extra-bottom));
    gap: 0;
    border: 0 !important;
    overflow: visible;
@@ -2732,7 +3034,10 @@ html.is-print-layout #previewCard .bar-batch .bar::before,
 html.is-print-layout #previewCard .bar-batch .bar::after {
    content: "";
    position: absolute;
-   top: 50%;
+   /* Locked to the notation, not to the box: the bar-number band at the top makes the box
+      taller and would otherwise drag the barlines down with it (both extras are 0mm when
+      numbers are off, so this is exactly 50% then). */
+   top: calc(50% + (var(--print-bar-num-extra-top) - var(--print-bar-num-extra-bottom)) / 2);
    z-index: 2;
    display: block;
    width: 2.5px;
@@ -2766,10 +3071,14 @@ html.is-print-layout #previewCard .bar-batch.has-lyrics .bar.has-lyrics {
    min-width: 0;
    min-height: calc(var(--print-notation-h) + 3.8mm + var(--print-bar-pad-y-top) + var(--print-bar-pad-y-bottom));
    grid-template-columns: repeat(var(--beats), max-content);
-   padding: var(--print-bar-pad-y-top) var(--print-bar-pad-x-lyrics) var(--print-bar-pad-y-bottom);
+   padding: calc(var(--print-bar-pad-y-top) + var(--print-bar-num-extra-top)) var(--print-bar-pad-x-lyrics)
+      calc(var(--print-bar-pad-y-bottom) + var(--print-bar-num-extra-bottom));
 }
 html.is-print-layout #previewCard .preview-section:not(.has-lyric-content) .beat-column.with-lyrics {
    grid-template-rows: var(--print-notation-h);
+}
+html.is-print-layout #previewCard .preview-section:not(.has-lyric-content) .beat-column.with-chord-above.with-lyrics {
+   grid-template-rows: 0 var(--print-notation-h);
 }
 html.is-print-layout #previewCard .preview-section:not(.has-lyric-content) .lyric-editor,
 html.is-print-layout #previewCard .preview-section:not(.has-lyric-content) .sub-lyrics {
@@ -2788,12 +3097,14 @@ html.is-print-layout #previewCard .beat-column.with-lyrics {
    row-gap: 1.5mm;
 }
 html.is-print-layout #previewCard .beat-column.with-chord-above {
-   grid-template-rows: minmax(3.6mm, auto) var(--print-notation-h);
-   row-gap: 1.2mm;
+   /* Zero-height chord track: the row is drawn ABOVE the lane (relative offset
+      below), so the printed notation keeps the exact default geometry. */
+   grid-template-rows: 0 var(--print-notation-h);
+   row-gap: 0;
 }
 html.is-print-layout #previewCard .beat-column.with-chord-above.with-lyrics {
-   grid-template-rows: minmax(3.6mm, auto) var(--print-notation-h) minmax(4.2mm, auto);
-   row-gap: 1.2mm 1.5mm;
+   grid-template-rows: 0 var(--print-notation-h) minmax(4.2mm, auto);
+   row-gap: 0 1.5mm;
 }
 html.is-print-layout #previewCard .notation-cell {
    height: var(--print-notation-h);
@@ -2827,7 +3138,20 @@ html.is-print-layout #previewCard .lyric-print {
 html.is-print-layout #previewCard .chord-above-editor {
    width: 100%;
    min-width: var(--print-slot);
-   align-self: end;
+}
+html.is-print-layout #previewCard .beat-column.with-chord-above > .chord-above-editor,
+html.is-print-layout #previewCard .beat-column.with-chord-above > .sub-chord-above {
+   position: relative;
+   /* One single offset for every cell type — see the @media print note. */
+   align-self: start;
+   top: calc(-1 * var(--print-chord-above-row));
+}
+/* Every chord-row cell — the plain one and each ½/⅓/¼ sub-cell — shares the SAME
+   height, so the distance to the number below is identical in every case. */
+html.is-print-layout #previewCard .beat-column.with-chord-above > .chord-above-editor,
+html.is-print-layout #previewCard .beat-column.with-chord-above > .sub-chord-above,
+html.is-print-layout #previewCard .beat-column.with-chord-above .sub-chord-above .chord-above-editor {
+   height: var(--print-chord-above-row);
 }
 html.is-print-layout #previewCard .chord-above-input {
    display: none;
@@ -2835,10 +3159,10 @@ html.is-print-layout #previewCard .chord-above-input {
 html.is-print-layout #previewCard .chord-above-print {
    display: block;
    min-width: 0;
-   padding: 0.2mm 0.4mm;
+   padding: 0 0.4mm;
    color: #1f704a;
    font:
-      800 var(--print-chord-size)/1.2 Inter,
+      800 var(--print-chord-above-size)/1 Inter,
       ui-sans-serif,
       sans-serif;
    text-align: center;
@@ -2858,8 +3182,27 @@ html.is-print-layout #previewCard .bar.has-chord-above .duration-column {
 }
 html.is-print-layout #previewCard .bar.has-chord-above .sub-chord-above {
    width: 100%;
-   grid-template-columns: repeat(var(--lyric-leaves), minmax(var(--print-slot), 1fr));
+   /* Natural widths + even distribution — see the @media print note. */
+   grid-template-columns: repeat(var(--lyric-leaves), minmax(var(--print-slot), max-content));
+   justify-content: space-around;
    gap: var(--print-sub-gap);
+}
+/* The number slots below follow the chord cells above — see the @media print note. */
+html.is-print-layout #previewCard .bar.has-chord-above .beat-group,
+html.is-print-layout #previewCard .bar.has-chord-above .sub-beats {
+   width: 100%;
+}
+html.is-print-layout #previewCard .bar.has-chord-above .duration-half .sub-beats {
+   grid-template-columns: repeat(2, minmax(var(--print-slot), max-content));
+   justify-content: space-around;
+}
+html.is-print-layout #previewCard .bar.has-chord-above .duration-triplet .sub-beats {
+   grid-template-columns: repeat(3, minmax(var(--print-slot), max-content));
+   justify-content: space-around;
+}
+html.is-print-layout #previewCard .bar.has-chord-above .duration-quarter .sub-beats {
+   grid-template-columns: repeat(4, minmax(var(--print-slot), max-content));
+   justify-content: space-around;
 }
 html.is-print-layout #previewCard .bar.has-chord-above .sub-chord-above .chord-above-editor {
    width: 100%;

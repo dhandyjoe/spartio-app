@@ -4,15 +4,22 @@
 //  • Letter chords (A–G) → play as CHORD (block harmony, multiple notes).
 //  • Nashville numbers (1–7) → play as SINGLE NOTE (melodic, Do-Re-Mi).
 //  • Nashville octave markers: 1̇ = +1 octave, 1̣ = -1 octave, plain = middle.
+//  • The chord row ABOVE the numbers (section.chordAboveBeats) sounds with its
+//    beat: the number stays the melody (lifted one octave) over that chord, so a
+//    player hears the written harmony and the melodic line at the same time.
 //  • Empty beats (·) → metronome click (toggleable).
 //  • One-shot playback (no loop), stop at end.
 //  • Supports both Synthesis (instant) and SoundFont (real samples) modes.
 
-import { notePitches, isNashvilleChord, beatValue, durationMeta } from "./notation.js?v=__BUILD__";
+import { notePitches, isNashvilleChord, beatValue, chordAboveValue, durationMeta } from "./notation.js?v=__BUILD__";
+import { normalizeQuality } from "./chordBank.js?v=__BUILD__";
 import { getState } from "./store.js?v=__BUILD__";
 import { initAudioContext, closeAudioContext, playSoundFontChord, checkSoundFontSize, downloadSoundFont, getDownloadState, askForDownload, loadSamplesFromCache } from "./synth.js?v=__BUILD__";
 
 // ---- Chord quality → semitone intervals (from root) ----
+// Keys are the canonical (or folded) quality spellings produced by
+// chordBank.normalizeQuality(), so `m7♭5`, `m7b5`, `min7b5`, `ø` and `o7` all reach
+// `ø7` here instead of silently falling back to a major triad.
 const QUALITY_INTERVALS = {
    "": [0, 4, 7], // major triad
    m: [0, 3, 7], // minor triad
@@ -31,6 +38,24 @@ const QUALITY_INTERVALS = {
    m9: [0, 3, 7, 10, 2], // minor 9th
    13: [0, 4, 7, 10, 14], // dominant 13th
    "7b9": [0, 4, 7, 10, 1], // 7 flat 9
+   // ---- extended set: the rest of the bank's palette + common custom spellings ----
+   maj: [0, 4, 7], // `maj` written out
+   5: [0, 7], // power chord
+   maj9: [0, 4, 7, 11, 14],
+   11: [0, 4, 7, 10, 2, 5],
+   m11: [0, 3, 7, 10, 5],
+   "6/9": [0, 4, 7, 9, 14],
+   "m6/9": [0, 3, 7, 9, 14],
+   add11: [0, 4, 7, 5], // voiced like add9: the 11th in the same octave
+   madd9: [0, 3, 7, 2],
+   "7sus4": [0, 5, 7, 10],
+   "9sus4": [0, 5, 7, 10, 2],
+   dim7: [0, 3, 6, 9],
+   aug7: [0, 4, 8, 10],
+   "7#5": [0, 4, 8, 10],
+   "7#9": [0, 4, 7, 10, 3],
+   "7b5": [0, 4, 6, 10],
+   mmaj7: [0, 3, 7, 11], // minor-major 7th
 };
 
 // Nashville number → scale degree (0-indexed semitone offset from key root).
@@ -66,7 +91,7 @@ function parseLetterChord(chord) {
    const rootPitch = notePitches[root];
    if (rootPitch === undefined) return null;
 
-   const quality = rootMatch[3] || "";
+   const quality = normalizeQuality(rootMatch[3]);
    const bassPitch = bass ? notePitches[bass] : null;
 
    return { rootPitch, quality, bassPitch };
@@ -143,6 +168,38 @@ export function chordToFrequencies(chord, songKey) {
    return chordToMidiNotes(chord, songKey).map(MIDI_TO_FREQ);
 }
 
+/**
+ * Resolve the notes for ONE playback entry.
+ *
+ * A beat can carry two rows at once: its own chord/Nashville number and the
+ * optional chord row above it (`section.chordAboveBeats`). The registers are
+ * chosen so the two never fight:
+ *  • number on the beat + chord above → the NUMBER is the melody, played one
+ *    octave above its normal register, with the chord as harmony underneath;
+ *  • letter chord on the beat + chord above → the historical voicings are kept
+ *    and simply stacked (identical notes are played once);
+ *  • only one row filled → exactly the old single-row behavior.
+ *
+ * @param {{chord?: string|null, chordAbove?: string|null}} entry
+ * @param {string} songKey
+ * @returns {number[]} sorted, de-duplicated MIDI note numbers
+ */
+export function resolveEntryNotes({ chord, chordAbove } = {}, songKey) {
+   const mainNotes = chordToMidiNotes(chord, songKey);
+   const aboveNotes = chordToMidiNotes(chordAbove, songKey);
+   if (!aboveNotes.length) return mainNotes;
+   if (!mainNotes.length) return aboveNotes;
+   // Nashville number = the melodic line → lift it above the harmony so it stays
+   // audible instead of being swallowed by (or doubling) the chord's triad.
+   const melody = isNashvilleChord(chord) ? mainNotes.map((note) => note + 12) : mainNotes;
+   return [...new Set([...aboveNotes, ...melody])].sort((a, b) => a - b);
+}
+
+/** Convenience: the same resolution, as Hz, ready for the audio schedulers. */
+export function resolveEntryFrequencies(entry, songKey) {
+   return resolveEntryNotes(entry, songKey).map(MIDI_TO_FREQ);
+}
+
 // ---- Web Audio playback engine ----
 
 let audioCtx = null;
@@ -164,7 +221,7 @@ const scheduleAheadTime = 0.1; // seconds — how far ahead to schedule
  * Traverses sections → bars → beats → subdivisions (depth-first), collecting
  * every slot that has a chord or is a leaf beat (for metronome click).
  */
-function buildPlaybackQueue(sections, beatsPerBar) {
+export function buildPlaybackQueue(sections, beatsPerBar) {
    const queue = [];
    for (const section of sections) {
       for (let bar = 0; bar < section.bars; bar++) {
@@ -180,10 +237,15 @@ function buildPlaybackQueue(sections, beatsPerBar) {
 /**
  * Recursively collect a beat and its subdivisions into the queue.
  * If a beat has a duration (half/triplet/quarter), we MUST split its chord
- * into multiple sub-beat entries with timing info.
+ * into multiple sub-beat entries with timing info. The chord row above the
+ * numbers (chordAboveBeats) rides along with the same fallback rule as the chord
+ * itself, so a rhythm marker can never silence it.
  */
-function collectBeat(section, slot, queue, level = 0, unit = 1) {
+function collectBeat(section, slot, queue, level = 0, unit = 1, parentChordAbove = null) {
    const value = beatValue(section, slot);
+   // The row above is inherited by the children of a subdivided beat, unless a
+   // child has its own cell (that is what prepareChordAboveForDuration creates).
+   const chordAbove = chordAboveValue(section, slot) || parentChordAbove || null;
 
    if (value.duration && durationMeta[value.duration]) {
       // This beat is subdivided — split the parent chord into children
@@ -201,7 +263,7 @@ function collectBeat(section, slot, queue, level = 0, unit = 1) {
          // Nested subdivision (only "half" can nest per editor rules) → recurse,
          // passing the reduced time-unit so deep nesting keeps correct duration.
          if (subValue.duration && durationMeta[subValue.duration]) {
-            collectBeat(section, subSlot, queue, level + 1, childUnit);
+            collectBeat(section, subSlot, queue, level + 1, childUnit, chordAbove);
          } else {
             // Use sub-slot chord if exists, otherwise use parent chord
             const chordToPlay = subValue.chord || value.chord || null;
@@ -209,6 +271,7 @@ function collectBeat(section, slot, queue, level = 0, unit = 1) {
                slot: subSlot,
                sectionId: section.id,
                chord: chordToPlay,
+               chordAbove: chordAboveValue(section, subSlot) || chordAbove || null,
                beatUnit: childUnit, // fraction of ONE whole beat this entry occupies
             });
          }
@@ -219,6 +282,7 @@ function collectBeat(section, slot, queue, level = 0, unit = 1) {
          slot,
          sectionId: section.id,
          chord: value.chord,
+         chordAbove,
          beatUnit: unit, // fraction of ONE whole beat (1 for a plain beat)
       });
    }
@@ -288,8 +352,10 @@ function scheduler() {
       const mainBeatDuration = 60 / bpm;
       const subBeatDuration = (beat.beatUnit ?? 1) * mainBeatDuration;
 
-      if (beat.chord) {
-         const freqs = chordToFrequencies(beat.chord, getState().key);
+      // A slot sounds when EITHER row has something to play — the chord row above
+      // the numbers counts, so it must not fall through to the metronome click.
+      const freqs = resolveEntryFrequencies(beat, getState().key);
+      if (freqs.length) {
          scheduleNote(freqs, nextNoteTime, subBeatDuration * 0.9);
       } else if (metronomeEnabled) {
          scheduleClick(nextNoteTime);
@@ -327,10 +393,11 @@ function schedulerWithSamples() {
       const bpm = getState().bpm || 120;
       const subBeatDuration = (beat.beatUnit ?? 1) * (60 / bpm);
       
-      if (beat.chord) {
-         // Play chord using SoundFont samples, scheduled at the SWING time so
-         // notes stay in sync with the metronome/BPM (previously ignored time).
-         const freqs = chordToFrequencies(beat.chord, getState().key);
+      // Both rows (beat + the chord row above it) are voiced together through the
+      // shared resolver, scheduled at the SWING time so notes stay in sync with
+      // the metronome/BPM (previously ignored time).
+      const freqs = resolveEntryFrequencies(beat, getState().key);
+      if (freqs.length) {
          playSoundFontChord(freqs, {
             time: nextNoteTime,
             duration: subBeatDuration,
@@ -374,6 +441,9 @@ function schedulerWithSamples() {
  *        Used to update UI download progress bar during SoundFont loading.
  * @param {Function} [opts.onEnd] Optional callback called once playback stops
  *        (including when it finishes naturally or is stopped manually).
+ * @returns {Promise<boolean>} true when playback actually started; false when it could
+ *        not (no AudioContext, nothing to play, or the sample download was cancelled) —
+ *        the caller surfaces that to the user instead of leaving a silent no-op.
  */
 export async function startPlayback({ onBeat, metronome = true, onProgress, onEnd } = {}) {
    if (isPlaying) return;
@@ -384,13 +454,13 @@ export async function startPlayback({ onBeat, metronome = true, onProgress, onEn
       audioCtx = initAudioContext();
    } catch (err) {
       console.error('Failed to initialize AudioContext:', err);
-      return;
+      return false;
    }
    
    const state = getState();
    const [beatsPerBar] = state.meter.split("/").map(Number);
    playbackQueue = buildPlaybackQueue(state.sections, beatsPerBar || 4);
-   if (!playbackQueue.length) return;
+   if (!playbackQueue.length) return false;
    
    // Decide how to source the piano samples:
    //  1) Already decoded in memory  → use them (no modal).

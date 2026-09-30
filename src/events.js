@@ -1,7 +1,8 @@
 // events.js — all user interaction: palette selection, drag/drop, preview binding,
 // meta editing, ribbon/theme/zoom, import/export, and global listeners.
 import {
-   keys,
+   keyNames,
+   isKnownKey,
    meters,
    durationMeta,
    nashvilleChoices,
@@ -9,8 +10,9 @@ import {
    lyricsFeatureAvailable,
    newSection,
    isNashvilleChord,
-   transposeNote,
-   transposeChord,
+   transposeKeyName,
+   transposeBeats,
+   transposeChordMap,
    normalizeSection,
    safeFileName,
    removeBar,
@@ -24,8 +26,14 @@ import {
    lyricValue,
    setLyric,
    prepareLyricsForDuration,
+   prepareChordAboveForDuration,
+   collapseChordAbove,
+   moveChordAbove,
    chordAboveValue,
    setChordAbove,
+   chordAboveShownForBar,
+   sectionShowsChordAbove,
+   setChordAboveForBar,
    barHasContent,
    syllabifyLyrics,
    MAX_SECTIONS,
@@ -53,7 +61,7 @@ import {
    renderCustomChord,
    chordLabel,
 } from "./render.js?v=__BUILD__";
-import { initPrintListeners, exportToPdf } from "./pdf.js?v=__BUILD__";
+import { initPrintListeners, exportToPdf, markMidRowBars, clearMidRowBars } from "./pdf.js?v=__BUILD__";
 import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=__BUILD__";
 import { initCloudUI } from "./cloudUI.js?v=__BUILD__";
 import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=__BUILD__";
@@ -281,11 +289,15 @@ function placePaletteItem(section, beat, item) {
             setLyric(section, `${splitSlot}.0`, lyric);
             delete section.lyricBeats[splitSlot];
          }
+         // The chord row follows its beat into the first child (same rule as the
+         // lyric above), so a split never silently drops the printed chord.
+         moveChordAbove(section, splitSlot, `${splitSlot}.0`);
          getState().activeId = section.id;
          return true;
       }
       const baseSlot = beat.dataset.baseSlot;
       prepareLyricsForDuration(section, baseSlot, item.value);
+      prepareChordAboveForDuration(section, baseSlot, item.value);
       const value = beatValue(section, baseSlot);
       if (value.chord) {
          section.beats[`${baseSlot}:0`] = { chord: value.chord, duration: null };
@@ -382,10 +394,60 @@ function openBeatEditor(beat, { selectQuery = true } = {}) {
       anchor: beat,
       initialValue,
       mode: getState().editorMode === "numbers" ? "numbers" : "chords",
+      // Chord Chart beats accept a custom chord when nothing matches; a Numbers song
+      // stays strict (a stray number would corrupt the rows).
+      allowRawCommit: getState().editorMode !== "numbers",
       onCommit: (value) => commitChordToBeat(sectionId, slot, value),
       advanceTo: (currentAnchor, dir) => neighbourBeat(currentAnchor, dir),
       reopen: (nextAnchor) => openBeatEditor(nextAnchor),
    });
+}
+// Open the suggestion popover on a chord-above cell (Chord Chart mode). It reuses
+// the beat editor's "type → pick a suggestion" flow, so the stored chord is always
+// normalized (unicode ♭/♯, canonical quality spelling). The cell itself stays a
+// plain input, so a pasted/typed value still works if the popover is bypassed.
+function openChordAboveEditor(anchor, { selectQuery = true } = {}) {
+   if (blockedForMember()) return;
+   const sectionId = anchor.dataset.section,
+      slot = anchor.dataset.slot,
+      section = findSection(sectionId);
+   if (!section) return;
+   openChordEditor({
+      anchor,
+      initialValue: selectQuery ? chordAboveValue(section, slot) : "",
+      // The chord row holds absolute chords only — never Nashville numbers.
+      mode: "chords",
+      // Opt-in: emptying the field and pressing Enter removes the chord, which is
+      // the behavior the help dialog documents for chords. Beats are unaffected.
+      allowEmptyClear: true,
+      // ...and a custom chord the bank doesn't list is kept verbatim (raw commit).
+      allowRawCommit: true,
+      onCommit: (value) => commitChordAbove(sectionId, slot, value),
+      advanceTo: (currentAnchor, dir) => neighbourChordAboveInput(currentAnchor, dir),
+      reopen: (nextAnchor) => openChordAboveEditor(nextAnchor, { selectQuery: false }),
+   });
+}
+// Resolve the neighbouring chord-above cell. Matching is by (section, slot) and
+// NOT by node identity: committing re-renders the preview, so by the time Tab is
+// handled the anchor we are asked about is the old, detached node.
+function neighbourChordAboveInput(anchor, dir) {
+   const { section, slot } = anchor?.dataset || {};
+   if (!section || !slot) return null;
+   const inputs = [...document.querySelectorAll(".chord-above-input")];
+   const index = inputs.findIndex(
+      (input) => input.dataset.section === section && input.dataset.slot === slot,
+   );
+   if (index < 0) return null;
+   return inputs[index + dir] || null;
+}
+// Write a chosen chord into the chord row above the numbers and re-render.
+function commitChordAbove(sectionId, slot, value) {
+   const section = findSection(sectionId);
+   if (!section) return;
+   setChordAbove(section, slot, value);
+   getState().activeId = sectionId;
+   renderPreview();
+   save();
 }
 
 // ---- Rhythm context menu (right-click / long-press) ----
@@ -426,6 +488,9 @@ function removeDurationAt(beat) {
    if (firstChord) section.beats[baseSlot] = { chord: firstChord, duration: null };
    else delete section.beats[baseSlot];
    setLyric(section, baseSlot, mergedLyrics);
+   // Pull the chord row back onto the beat (first cell wins) so a removed rhythm
+   // marker can't leave a chord stranded on a slot that is no longer rendered.
+   collapseChordAbove(section, baseSlot);
    getState().activeId = section.id;
    renderPreview();
    save();
@@ -493,6 +558,7 @@ function applyMemberReadOnlyAffordances() {
       ".bar-selection-copy",
       ".section-lyrics-toggle",
       ".section-chord-above-toggle",
+      ".chord-above-bar-toggle",
       ".section-title",
    ].join(",");
    document.querySelectorAll(lockedSelector).forEach((el) => {
@@ -726,6 +792,8 @@ function bindPreview() {
             if (firstChord) section.beats[splitSlot] = { chord: firstChord, duration: null };
             else delete section.beats[splitSlot];
             setLyric(section, splitSlot, mergedLyrics);
+            // Same rule for the chord row of the nested split's children.
+            collapseChordAbove(section, splitSlot);
          });
          state.activeId = section.id;
          renderPreview();
@@ -760,6 +828,8 @@ function bindPreview() {
          if (firstChord) section.beats[baseSlot] = { chord: firstChord, duration: null };
          else delete section.beats[baseSlot];
          setLyric(section, baseSlot, mergedLyrics);
+         // ...and for the chord row of the subdivisions being merged away.
+         collapseChordAbove(section, baseSlot);
          state.activeId = section.id;
          renderPreview();
          save();
@@ -838,10 +908,13 @@ function bindPreview() {
          toast(`${words.length} words distributed across beats`);
       });
    });
-   // Chord-above inputs (Chord Chart mode): a letter chord above each number.
-   // Free-text letter chord only (no Nashville) — mirrors lyric-input behaviour.
+   // Chord-above inputs (Chord Chart mode): the chord row above the numbers.
+   // Focusing a cell hands over to the "type → pick a suggestion" popover (the
+   // same one the beats use), so stored chords are always normalized; the plain
+   // input/blur handlers stay as a paste-friendly fallback.
    document.querySelectorAll(".chord-above-input").forEach((input) => {
       input.addEventListener("click", (event) => event.stopPropagation());
+      input.addEventListener("focus", () => openChordAboveEditor(input));
       input.addEventListener("input", () => {
          // Chord-above letters are part of the arrangement → read-only for members.
          if (blockedForMember()) {
@@ -861,6 +934,9 @@ function bindPreview() {
       input.addEventListener("blur", () => {
          // Silent guard — see the lyric-input blur guard above.
          if (memberReadOnly()) return;
+         // The suggestion popover just took focus. Re-rendering here would destroy
+         // the element the popover is anchored to, so wait until it closes.
+         if (isChordEditorOpen()) return;
          const section = findSection(input.dataset.section);
          if (!section) return;
          input.value = input.value.trim();
@@ -903,11 +979,33 @@ function bindPreview() {
          if (blockedForMember()) return;
          const section = findSection(button.dataset.section);
          if (!section) return;
-         section.chordAboveEnabled = section.chordAboveEnabled === false;
+         // The section's own default: ON/OFF for every bar of this section.
+         section.chordAboveEnabled = section.chordAboveEnabled !== true;
          state.activeId = section.id;
          renderPreview();
          save();
          toast(`Chords above ${section.chordAboveEnabled ? "enabled" : "hidden"} for ${section.name}`);
+      }),
+   );
+   // Chord-above per bar (Chord Chart mode): narrow the chord row down to a few
+   // bars without changing the section default. Button lives in .bar-tools.
+   document.querySelectorAll(".chord-above-bar-toggle").forEach((button) =>
+      button.addEventListener("click", (event) => {
+         event.stopPropagation();
+         // Per-bar display/edit toggles are arrangement edits.
+         if (blockedForMember()) return;
+         // Ignore clicks while the section is in multi-bar selection mode.
+         if (isSelectionActiveFor(button.dataset.section)) return;
+         const section = findSection(button.dataset.section);
+         if (!section) return;
+         const bar = Number(button.dataset.bar);
+         if (!Number.isInteger(bar)) return;
+         const shown = chordAboveShownForBar(section, bar);
+         setChordAboveForBar(section, bar, !shown);
+         state.activeId = section.id;
+         renderPreview();
+         save();
+         toast(`Chord row ${shown ? "hidden" : "shown"} for bar ${bar + 1} of ${section.name}`);
       }),
    );
    document.querySelectorAll(".add-bar").forEach((button) =>
@@ -1112,6 +1210,11 @@ function bindPreview() {
 // Minimum width for one beat slot ("leaf"). Below this the line scrolls instead
 // of shrinking further, so dots never get cramped.
 const MIN_LEAF = 60;
+// Extra room per leaf on a line that shows the chord row ABOVE the numbers: the
+// distributed default is kept as-is and this small delta is added on top, so the
+// beats never get tighter than a score without the row (the line simply scrolls
+// horizontally instead). Marked per batch by render.js (`.bar-batch.has-chord-above`).
+const CHORD_ABOVE_LEAF_EXTRA = 14;
 /*
   Stretch every beat line so its dots span the full width of the score area —
   from the far-left barline to the right edge — while keeping the gap between
@@ -1120,6 +1223,7 @@ const MIN_LEAF = 60;
   there are too many beats to fit, leaf stays at MIN_LEAF and the line scrolls.
   Lyrics mode uses the SAME dynamic --leaf so the beat pitch never changes when
   lyrics are toggled on/off (lyric columns are min-width:--leaf, width:max-content).
+  Chord-row lines get CHORD_ABOVE_LEAF_EXTRA added (never subtracted).
 */
 function distributeLeafWidth() {
    // Print-layout preview uses fixed mm geometry, not --leaf; leave it alone.
@@ -1135,8 +1239,9 @@ function distributeLeafWidth() {
             batch.style.removeProperty("--leaf");
             return;
          }
-         const leaf = Math.max(MIN_LEAF, available / leaves);
-         batch.style.setProperty("--leaf", `${leaf}px`);
+         const base = Math.max(MIN_LEAF, available / leaves);
+         const extra = batch.classList.contains("has-chord-above") ? CHORD_ABOVE_LEAF_EXTRA : 0;
+         batch.style.setProperty("--leaf", `${base + extra}px`);
       });
    });
 }
@@ -1165,6 +1270,13 @@ function setPrintLayoutPreview(enabled, { announce = true } = {}) {
    printLayoutPreview = Boolean(enabled);
    document.documentElement.classList.toggle("is-print-layout", printLayoutPreview);
    applyPreviewZoom();
+   // Keep this preview HONEST: the export tags every bar that does not start a printed row
+   // (.pdf-mid-bar, src/pdf.js) and the bar-number rules key off that tag to number only the
+   // line starts. Without it this mode would number EVERY bar while the PDF numbers the line
+   // starts — the exact "preview lies about the export" class of bug. Same call the export and
+   // the PDF-options pane make, and clearMidRowBars() restores the widths it pins.
+   if (printLayoutPreview) requestAnimationFrame(() => markMidRowBars());
+   else clearMidRowBars();
    if (announce)
       toast(printLayoutPreview ? "PDF layout preview on · export will use this geometry" : "Back to live preview");
    requestAnimationFrame(() => {
@@ -1176,6 +1288,12 @@ function setPrintLayoutPreview(enabled, { announce = true } = {}) {
 // ---- Transpose ----
 function transposeSheet(semitones) {
    const state = getState();
+   // Every transposed chord is spelled for the TARGET key (sharp keys get F♯/C♯, flat keys get
+   // G♭/D♭), so the new key is computed first and handed to the transposers as context. That way
+   // the key field and the chords can never end up on different sides of the circle — the reported
+   // "C +1 gave D♭ fine, but Em +2 in D major came out G♭m" class of bug.
+   const targetKey = transposeKeyName(state.key, semitones);
+   const ctx = { key: targetKey };
    // ChordPro mode keeps its chords inside the lyric text, so transposing rewrites
    // that text (lyrics, comments and unknown directives are left untouched). The
    // beat-grid path below is untouched for the two original modes.
@@ -1183,12 +1301,12 @@ function transposeSheet(semitones) {
       let changed = 0;
       state.sections.forEach((section) => {
          const current = section.chordPro || "";
-         const next = transposeChordProText(current, semitones);
+         const next = transposeChordProText(current, semitones, ctx);
          if (next === current) return;
          section.chordPro = next;
          changed += 1;
       });
-      state.key = transposeNote(state.key, semitones);
+      state.key = targetKey;
       $("#keySelect").value = state.key;
       renderControls();
       renderPreview();
@@ -1201,18 +1319,15 @@ function transposeSheet(semitones) {
       return;
    }
    let changed = 0;
-   state.sections.forEach((section) =>
-      Object.entries(section.beats).forEach(([slot, value]) => {
-         const current = typeof value === "string" ? value : value?.chord;
-         if (!current) return;
-         const next = transposeChord(current, semitones);
-         if (next === current) return;
-         if (typeof value === "string") section.beats[slot] = next;
-         else value.chord = next;
-         changed++;
-      }),
-   );
-   state.key = transposeNote(state.key, semitones);
+   state.sections.forEach((section) => {
+      changed += transposeBeats(section.beats, semitones, ctx);
+      // The chord row above the numbers is a chord map as well: transposing the
+      // score must move it too, or the printed chords would disagree with the
+      // key. Numbers and "N.C." are no-ops in transposeChord(), so a number-only
+      // row is left exactly as it was.
+      changed += transposeChordMap(section.chordAboveBeats, semitones, ctx);
+   });
+   state.key = targetKey;
    $("#keySelect").value = state.key;
    clearPaletteSelection();
    renderControls();
@@ -1441,7 +1556,8 @@ function projectData() {
       meter: state.meter,
       bpm: state.bpm,
       lyricsEnabled: state.lyricsEnabled,
-      chordAboveEnabled: state.chordAboveEnabled,
+      // `chordAboveEnabled` is stored per SECTION now (section.chordAboveEnabled),
+      // so the file has no song-wide chord-row flag any more.
       // Per-song PDF appearance: each song stores its own PDF options so that
       // tweaking layout for one song never bleeds into another.
       pdfOptions: getPdfOptions(),
@@ -1486,18 +1602,19 @@ function applyProject(project) {
       typeof project.lyricsEnabled === "boolean"
          ? project.lyricsEnabled
          : sections.some((section) => Object.keys(section.lyricBeats).length > 0);
-   const chordAboveEnabled =
-      typeof project.chordAboveEnabled === "boolean"
-         ? project.chordAboveEnabled
-         : sections.some((section) => Object.keys(section.chordAboveBeats || {}).length > 0);
+   // The chord row above the numbers is a PER-SECTION feature: the file's own per-section
+   // flags are restored verbatim (normalizeSection keeps `chordAboveEnabled`), so a song that
+   // was saved with the row ON opens with it ON — a cloud save must round-trip exactly.
+   // Nothing enables the row by itself: the old migration that switched it on for the
+   // legacy song-wide `CHORDS+` flag / merely because a section held chord-row data is gone,
+   // which is why a song that never had it on opens OFF.
    setState({
-      key: keys.includes(project.key) ? project.key : "C",
-      chordRoot: keys.includes(project.chordRoot) ? project.chordRoot : "C",
+      key: isKnownKey(project.key) ? project.key : "C",
+      chordRoot: isKnownKey(project.chordRoot) ? project.chordRoot : "C",
       customChord: typeof project.customChord === "string" ? project.customChord : "",
       meter,
       bpm: Number(project.bpm) || 120,
       lyricsEnabled,
-      chordAboveEnabled,
       sections,
       slashChords: Array.isArray(project.slashChords)
          ? project.slashChords.filter((chord) => typeof chord === "string")
@@ -1548,7 +1665,7 @@ function beginMetaEdit(kind) {
    const config = {
       title: { target: "#previewTitle", source: "#songTitle", type: "text" },
       artist: { target: "#previewArtist", source: "#artist", type: "text" },
-      key: { target: "#previewKey", source: "#keySelect", type: "select", options: keys },
+      key: { target: "#previewKey", source: "#keySelect", type: "select", options: keyNames },
       meter: { target: "#previewMeter", source: "#timeSignature", type: "select", options: meters },
    }[kind];
    const target = $(config.target),
@@ -1724,7 +1841,9 @@ function bindControlListeners() {
          playBtn.setAttribute("title", "Pause score");
          // startPlayback is async (may await a sample download). After it resolves,
          // sync the button to the real playback state (playing / fallback / error).
-         await startPlayback({ onBeat: highlightBeat, onEnd: updatePlayButton });
+         const started = await startPlayback({ onBeat: highlightBeat, onEnd: updatePlayButton });
+         // Never leave the user with a silent no-op: say so when nothing started.
+         if (started === false) toast("Playback didn't start");
          updatePlayButton();
       }
    });
@@ -1768,29 +1887,6 @@ function bindControlListeners() {
       const ribbonToggle = $("#lyricsEnabled");
       ribbonToggle.checked = event.target.checked;
       ribbonToggle.dispatchEvent(new Event("change"));
-   });
-   $("#chordAboveEnabledTop")?.addEventListener("change", (event) => {
-      if (blockedForMember()) {
-         event.target.checked = getState().chordAboveEnabled;
-         return;
-      }
-      const ribbonToggle = $("#chordAboveEnabled");
-      if (ribbonToggle) {
-         ribbonToggle.checked = event.target.checked;
-         ribbonToggle.dispatchEvent(new Event("change"));
-      }
-   });
-   // Chord-above (Chord Chart mode): a letter chord row above each number.
-   $("#chordAboveEnabled")?.addEventListener("change", (event) => {
-      if (blockedForMember()) {
-         event.target.checked = getState().chordAboveEnabled;
-         return;
-      }
-      getState().chordAboveEnabled = event.target.checked;
-      renderControls();
-      renderPreview();
-      save();
-      toast(getState().chordAboveEnabled ? "Chords above numbers enabled" : "Chords above hidden");
    });
    bindAutoSyllable();
    document.querySelectorAll(".ribbon-tab").forEach((tab) => {
@@ -1955,6 +2051,10 @@ function bindControlListeners() {
    pdfOptionsControl = initPdfOptions({
       setPreview: (on, opts) => setPrintLayoutPreview(on, opts),
       isPreviewOn: () => printLayoutPreview,
+      // Bar numbers only make sense on the Chord Chart beat grid: Numbers mode prints
+      // the numbers as the notation itself and ChordPro has no bars, so the option is
+      // taken out of the dialog there (the print CSS enforces the same rule).
+      barNumbersAvailable: () => normalizeEditorMode(getState().editorMode) === "chords",
       // ChordPro mode prints its own card; every other mode keeps using the original
       // #previewCard (the default), so existing behaviour is untouched.
       getCard: () =>
@@ -2199,6 +2299,8 @@ export function initEvents() {
    // imports this module — keeps the dependency graph acyclic.
    initCloudUI({
       getProject: () => projectData(),
+      // A cloud/album song is a song LOAD like any other: the per-section chord-row flags saved
+      // inside the version are restored verbatim (see applyProject), so Save to Cloud round-trips.
       applyProject: (project) => applyProject(project),
       getCloudContext: () => currentCloudContext,
       setCloudContext: (ctx) => setCloudContext(ctx),

@@ -24,7 +24,7 @@ import {
    isNashvilleChord,
    transposeChord,
    transposeChordRoot,
-   transposeNote,
+   transposeKeyName,
 } from "./notation.js?v=__BUILD__";
 
 // Import hardening limit (mirrors MAX_BARS / MAX_SECTIONS in notation.js).
@@ -277,21 +277,22 @@ export function parseChordPro(text) {
  * (the shared grammar in notation.js never transposes them), and a lowercase root
  * is canonicalised so `[am]` → `[bm]` instead of being left behind.
  */
-export function transposeChordToken(value, steps) {
+export function transposeChordToken(value, steps, ctx) {
    const raw = String(value ?? "").trim();
    if (!raw) return raw;
    if (CP_NO_CHORD.test(raw) || isNashvilleChord(raw)) return raw;
    const canonical = raw[0].toUpperCase() + raw.slice(1);
-   return transposeChord(canonical, steps);
+   return transposeChord(canonical, steps, ctx);
 }
 
 /** Transpose the `{key:}` / `{k:}` directive value, keeping the user's spacing. */
-function transposeDirective(line, directive, steps) {
+function transposeDirective(line, directive, steps, ctx) {
    if (directive.name !== "key" && directive.name !== "k") return line;
    const value = directive.value;
    const match = value.match(/^([A-G][#♯b♭]?)(.*)$/);
    if (!match || isNashvilleChord(value)) return line;
-   const next = `${transposeNote(match[1], steps)}${match[2]}`;
+   // A key directive moves like the song KEY (sharp/flat side rules), not like a chord root.
+   const next = `${ctx?.key ?? transposeKeyName(match[1], steps)}${match[2]}`;
    if (next === value) return line;
    const inner = line.slice(line.indexOf("{") + 1, line.lastIndexOf("}"));
    const colon = inner.indexOf(":");
@@ -308,7 +309,7 @@ function transposeDirective(line, directive, steps) {
  * the result back into `section.chordPro`, mirroring how the beat-grid modes
  * transpose their chords in place).
  */
-export function transposeChordProText(text, semitones) {
+export function transposeChordProText(text, semitones, ctx) {
    const steps = Number(semitones) || 0;
    const source = String(text ?? "");
    if (!steps) return source;
@@ -316,9 +317,9 @@ export function transposeChordProText(text, semitones) {
       .split("\n")
       .map((line) => {
          const directive = parseDirective(line.trim());
-         if (directive) return transposeDirective(line, directive, steps);
+         if (directive) return transposeDirective(line, directive, steps, ctx);
          return line.replace(/\[([^\]]*)\]/g, (full, inner) =>
-            isChordToken(inner) ? `[${transposeChordToken(inner, steps)}]` : full,
+            isChordToken(inner) ? `[${transposeChordToken(inner, steps, ctx)}]` : full,
          );
       })
       .join("\n");

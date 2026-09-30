@@ -259,18 +259,6 @@
                            <div class="custom-chord-preview" id="customChordPreview"></div>
                         </div>
                      </div>
-                     <div class="palette-divider"><span></span></div>
-                     <div class="palette-group chord-above-settings">
-                        <div>
-                           <span class="palette-label">Chords above numbers</span>
-                           <p class="lyrics-setting-copy">Add a letter chord above each number, like a lyric line on top.</p>
-                        </div>
-                        <label class="switch-control" for="chordAboveEnabled">
-                           <input id="chordAboveEnabled" type="checkbox" />
-                           <span class="switch-track" aria-hidden="true"><span></span></span>
-                           <b id="chordAboveEnabledLabel">Chords above off</b>
-                        </label>
-                     </div>
                   </div>
                   <div
                      class="ribbon-panel"
@@ -408,14 +396,6 @@
                                     <input id="lyricsEnabledTop" type="checkbox" />
                                     <span class="song-meta-lyrics-track" aria-hidden="true"><span class="song-meta-lyrics-thumb"></span></span>
                                     <b id="lyricsEnabledTopLabel">Off</b>
-                                 </span>
-                              </label>
-                              <label class="song-meta-chord-above-toggle" for="chordAboveEnabledTop" title="Show a letter chord above each beat">
-                                 <span class="song-meta-lyrics-caption">CHORDS+</span>
-                                 <span class="song-meta-lyrics-switch">
-                                    <input id="chordAboveEnabledTop" type="checkbox" />
-                                    <span class="song-meta-lyrics-track" aria-hidden="true"><span class="song-meta-lyrics-thumb"></span></span>
-                                    <b id="chordAboveEnabledTopLabel">Off</b>
                                  </span>
                               </label>
                               <span>KEY <b id="previewKey" class="preview-editable" title="Click to edit key">C</b></span
@@ -688,6 +668,24 @@
                            </button>
                         </div>
                      </section>
+
+                     <div class="pdf-field-divider" id="pdfBarsDivider"><span>Bars</span></div>
+
+                     <section class="pdf-field" id="pdfBarNumField">
+                        <div class="pdf-field-label">
+                           <span>Bar numbers</span>
+                           <small>Number each line, or every bar</small>
+                        </div>
+                        <div class="pdf-choice-group" id="pdfBarNumGroup" role="group" aria-label="Bar numbers">
+                           <button class="pdf-choice" type="button" data-barnum="off" aria-pressed="false">Off</button>
+                           <button class="pdf-choice" type="button" data-barnum="line" aria-pressed="false">
+                              Line starts
+                           </button>
+                           <button class="pdf-choice" type="button" data-barnum="every" aria-pressed="false">
+                              Every bar
+                           </button>
+                        </div>
+                     </section>
                   </div>
 
                   <footer class="pdf-options-foot">
@@ -823,12 +821,16 @@
                   <span class="howto-item-text"><strong>Three writing modes</strong> — <em>+ New Song</em> asks for the first arrangement's name, then shows three cards (each with a small live preview): <strong>🎸 Chords</strong> (<code>C</code>, <code>Am7</code>, <code>G/B</code> with live suggestions), <strong>🔢 Numbers</strong> (Nashville <code>1</code>–<code>7</code> with high/low octaves, and a lyrics field under every beat) or <strong>♬ ChordPro</strong> (just lyrics with chords in <code>[brackets]</code> — the easiest one, no rhythm notation). The mode badge sits next to the title; in Chord Chart mode you can also show letter chords above the numbers.</span>
                </li>
                <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">🔢</span>
+                  <span class="howto-item-text"><strong>Chords above the numbers</strong> — in <strong>Chord Chart</strong> mode every section has its own <strong>Chords On/Off</strong> switch in its heading. Turn it on and a chord row opens above every beat of <em>that section</em>: write the Nashville number on the beat (type <code>1</code>, <code>5</code>, <code>6m</code>, <code>1̇</code>) and its chord above it (<code>C</code>, <code>G</code>, <code>Am</code>) — you read the <em>melody</em> and the <em>harmony</em> on the same line, and <em>▶ Play</em> sounds both together. It is per section on purpose, so turn it on only where it is needed; use the <strong>♪</strong> button in a bar (hover or focus a bar — it appears next to ⧉ ⎘) to switch a single bar on or off. The row transposes with the key, follows rhythm subdivisions and prints with the score, while bars where it is switched off keep their height so the barlines stay lined up.</span>
+               </li>
+               <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">♬</span>
                   <span class="howto-item-text"><strong>ChordPro, step by step</strong> — choose <strong>♬ ChordPro</strong> in the New Song dialog and the editor opens with two ready sections: <em>Intro</em> (<code>[C] [Am7] [Dm7] [G7] [Cmaj7]</code>) and <em>Verse</em> (<code>[C]Type your lyric here…</code>). Type chords inside <code>[brackets]</code> straight in the lyrics — <code>[C]Ama[G]zing grace</code> — and the preview on the right updates as you type. Use <code>{sov}</code>/<code>{eoc}</code> (or <code>{soc}</code>) for a section header, <code>{c: play softly}</code> for a comment, and a bracket-only line like <code>[Chorus]</code> becomes a section label. There is no chord palette and no rhythm notation here — typing brackets is the whole point — and everything else still works: rename or reorder sections (↑ ↓), add more with <em>+ Add section</em>, transpose the whole song (chords and key), and <em>Export .pdf</em> prints exactly what the preview shows.</span>
                </li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">＋</span>
-                  <span class="howto-item-text"><strong>Add or change a chord</strong> — click an empty beat and type it (pick a suggestion or press <code>Enter</code>); click a placed chord to retype it, or clear the field and confirm to remove it. Typing a slash sets the bass in one go, like <code>D/F#</code>.</span>
+                  <span class="howto-item-text"><strong>Add or change a chord</strong> — click an empty beat and type it (pick a suggestion or press <code>Enter</code>); click a placed chord to retype it, or clear the field and confirm to remove it. Typing a slash sets the bass in one go, like <code>D/F#</code>. A chord the palette doesn't list is fine too: type it your way (<code>Bm7♭5</code>, <code>Bmaj9</code>, <code>B6/9</code>) and pick your own spelling at the top of the list — when nothing matches at all, <em>Use custom chord</em> (or <code>Enter</code>) keeps exactly what you typed. Custom chords transpose with the key and print like any other chord.</span>
                </li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">🖱️</span>
@@ -853,7 +855,7 @@
                <li class="howto-group">📄 Paper &amp; sound</li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">📄</span>
-                  <span class="howto-item-text"><strong>Export .pdf</strong> — the dialog previews the printed page live; chord size, lyric size, beat spacing, paper and margins are remembered <em>per song</em>, so adjusting one sheet never changes another.</span>
+                  <span class="howto-item-text"><strong>Export .pdf</strong> — the dialog previews the printed page live; chord size, lyric size, beat spacing, paper, margins and the <em>Bars → Bar numbers</em> stamp above the barline (Off / Line starts / Every bar, <em>on by default</em>, <em>Chord Chart scores only</em>) are remembered <em>per song</em>, so adjusting one sheet never changes another.</span>
                </li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">▶</span>
@@ -924,11 +926,11 @@
                         </span>
                         <h3 class="mode-card-title">Chord Chart</h3>
                      </div>
-                     <p class="mode-card-sub">Write chords like <code>C</code>, <code>Am7</code>, <code>G/B</code>.</p>
+                     <p class="mode-card-sub">Write chords like <code>C</code>, <code>Am7</code>, <code>G/B</code> — or Nashville numbers <code>1</code>–<code>7</code>.</p>
                      <ul class="mode-card-points">
                         <li class="is-pro"><span aria-hidden="true">✓</span> Live chord suggestions</li>
-                        <li class="is-pro"><span aria-hidden="true">✓</span> Transpose any key</li>
-                        <li class="is-con"><span aria-hidden="true">✗</span> No lyrics, no numbers</li>
+                        <li class="is-pro"><span aria-hidden="true">✓</span> Numbers with chords above</li>
+                        <li class="is-con"><span aria-hidden="true">✗</span> No lyric line</li>
                      </ul>
                   </div>
                </button>

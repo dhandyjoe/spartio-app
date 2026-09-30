@@ -15,10 +15,29 @@ Chord & Number Score Builder — arrange chords and number (Nashville) notation,
 - 🎹 **Instrumental playback** — chords & Nashville numbers are resolved to real piano audio
   (multi-sample **Salamander Grand Piano** V3 — Yamaha C5, recorded by Alexander Holm). Letter
   chords play as a chord, Nashville numbers as a single note; empty beats can click as a metronome.
+  When a beat has a number **and** a chord above it, both sound together — the number as the
+  melodic line one octave up, the chord as the harmony underneath.
+- 🔢 **Chord row above the numbers (Chord Chart mode)** — write the Nashville number on the beat
+  and its chord above it, so a musician reads (and hears) the melody and the harmony at once.
+  It is **per section**: every section has its own *Chords On/Off* button, and the **♪** button in a
+  bar, via the **♪** button in the bar tools, narrows it further. The row
+  transposes with the key, follows rhythm splits, and prints with the score — bars with the row
+  switched off keep the same height, so the barlines always line up.
 - 🥁 Rhythm subdivisions ½ / ⅓ / ¼ per beat (nested up to two levels)
+- ✍️ **Custom chords** — type a chord the palette doesn't list (`Bmaj9`, `B6/9`, `Bm7♭5`): a valid
+  spelling is offered back as the first suggestion (your notation first, the canonical `Bø7` right
+  below), and when nothing matches the popover offers **Use custom chord** (or just Enter). Custom
+  chords transpose with the key, print like any other chord, and playback voices the quality it
+  recognises (an unknown suffix falls back to a major triad instead of silence).
 - 📝 Per-beat lyrics — paste a sentence to auto-distribute words across bars
 - ♻️ Transpose all chords by semitone (chords + key) — works in every mode, including ChordPro
-- 🌗 Light/dark theme, zoom, and a dedicated PDF-layout preview
+- 🌗 Light/dark theme, zoom, and a dedicated PDF-layout preview (opening *Export PDF* switches it
+  on behind the dialog; app chrome that paper never contains — like the site footer — is dropped
+  there so nothing slides into view behind the modal)
+- 🔢 **Bar numbers in the exported PDF** (*PDF options → Bars*: Off / Line starts / Every bar,
+  **on by default**: the first bar of every printed line carries a bold 3 mm number above its
+  barline, **Chord Chart scores only**) — remembered *per song*. The dialog's live preview mirrors
+  the choice exactly (Off shows no numbers there either).
 - 📄 Export to PDF (print) and save/load projects as `.chordsheet.json`
 - 📁 **Albums (Fase 3/4)** — shared albums (e.g. a church praise team) where an
   owner curates arrangements and every member can read them. Joining is
@@ -36,6 +55,14 @@ The app is built from native ES modules, so it must be served over HTTP (opening
 python3 -m http.server 4173
 # then open http://127.0.0.1:4173/
 ```
+
+> 🔁 **Local editing gotcha (service worker).** The app registers `sw.js`, which serves
+> every `?v=__BUILD__` asset **cache-first**. `__BUILD__` is only replaced with a real
+> build id by the deploy workflow, so on a local server that version never changes and
+> the **first** load after you edit a stylesheet/module still runs the PREVIOUS copy —
+> which looks exactly like "my change did nothing" (e.g. an export that ignores the new
+> print CSS). Open **`http://127.0.0.1:4173/?reset=1`** once: it purges the caches,
+> unregisters the worker and reloads, so your edits are live from then on.
 
 > ⚠️ The score lives in memory for the session only — use **Export .file** to save your work.
 
@@ -152,6 +179,178 @@ feature is self-contained: `cloudUI` talks to Firebase only through `cloud.js`, 
 to the editor only through injected callbacks — so it never imports `events.js`.
 `chordProEditor.js` follows the same rule (`initChordProEditor(...)`), so the
 ChordPro workspace never imports `events.js` either.
+
+### Chord row above the numbers (Chord Chart mode)
+
+The Chord Chart beat grid can show a **second row of letter chords above the numbers**, which
+turns one sheet into a "melody + harmony" chart: the number on the beat is what the player sings,
+the chord above it is what the band plays.
+
+```
+CHORD   |  C        G        F        Am   |   ← baris atas (.chord-above-beats)
+NUMBER  |  1        5        4        6m   |   ← beat grid (Chord Chart)
+```
+
+The row is a **per-section** feature — there is deliberately **no song-wide switch** — and it stays
+OFF until you turn it on for the section that needs it:
+
+| Level | Control | Notes |
+| --- | --- | --- |
+| Section | *Chords On/Off* button in the section head | ON/OFF default for every bar of that section. Only rendered in Chord Chart mode, hidden for read-only members and never printed |
+| Bar | **♪** button in the bar tools | Explicit per-bar override; JSON key `chordAboveBars` (`{"3": false}`). A single bar can be switched on even while its section default is off |
+
+Rules worth knowing:
+
+- An **absent** per-bar key means *inherit from the section*, so old files never change.
+- A section with the row switched **off** renders exactly like a score without the feature: **no
+  reserved strip above the beats** (the beat pitch is untouched).
+- A single bar switched off *inside* an active section keeps the row's height (blank) so the
+  notation lane and the barlines stay aligned with its neighbours.
+- The gap under the row is wide enough to clear the **½ / ⅓ / ¼ rhythm beams** (and their click
+  area), so the beams never overlap the chord fields.
+- Every chord cell shares **one width** (`--chord-above-w`, 68px) so the row reads as a tidy grid
+  instead of ragged, content-sized boxes.
+- The beat pitch under an active row is the normal distributed pitch **plus a small delta**
+  (`CHORD_ABOVE_LEAF_EXTRA` in `src/events.js`): the beats never get tighter than a score without
+  the row, and a line that no longer fits simply **scrolls horizontally**.
+- **Print / PDF**: the row adds **no height**. It is a zero-height grid track whose cell is drawn
+  *above* the notation lane (a relative offset, so the cell still feeds the column width), which keeps
+  the printed lane, rhythm beams, notes and line pitch **exactly** as a score without the row — only
+  the chord tokens sit higher, at **90%** of the chord size (`--print-chord-above-size`, so it follows
+  the *Chord size* slider). Every chord-row line gets extra headroom above it
+  (`--print-chord-above-line-gap`, **6mm** by default, +0.4mm for a section's first line) so the floating
+  row of one line can never touch the chords of the line above. The rule is scoped to
+  `.bar.has-chord-above`: sections with the row switched **off** keep their default spacing untouched.
+- **One distance, every beat type**: the plain chord cell and each ½ / ⅓ / ¼ sub-cell share the same
+  height *and* the same single upward offset (screen `--chord-above-h`, print `--print-chord-above-row`;
+  `align-self: start` inside the zero-height print track stops the offset being applied twice), so the
+  gap from the chord row down to the number is identical whether or not the beat carries a rhythm marker.
+- **Subdivided beats print as ONE grid**: when a ½ / ⅓ / ¼ beat carries a chord row, the number slots
+  below spread over the same width as the chord cells above them and share the same slot centres
+  (`max-content` tracks + `justify-content: space-around`, so a long chord still never wraps). A wide
+  chord therefore widens its own beat and every number stays centred under its chord — the printed beat
+  pitch follows the chord content instead of staying at the default pitch.
+- **The row is saved and restored exactly as you left it.** Save to Cloud / Export `.file` stores the
+  per-section `chordAboveEnabled` flag together with the chords, so a song you last had the row **ON**
+  reopens with it **ON** (a cloud save round-trips — it used to reopen switched off). Conversely
+  nothing ever turns the row on **by itself**: the old migration that enabled it for the legacy
+  song-wide `CHORDS+` flag, or merely because a section held chord-row data, is gone — a song you
+  never switched on opens OFF. Undo/redo replays a snapshot of the open document, so it restores the
+  row exactly as that snapshot had it.
+- When at least one bar shows the row, the whole section **reserves the row height**, so bars with
+  the row switched off keep their empty track and the notation lane + barlines stay aligned (on
+  screen and on paper).
+- The row is a **chord** row: it is entered through the same "type → pick a suggestion" popover as a
+  beat (Tab walks to the next cell, emptiness + Enter removes the chord), it **transposes with the
+  key**, it follows rhythm subdivisions (½ / ⅓ / ¼, merged back on removal), it rides along with
+  bar copy/paste, and it prints using the *Chord size* slider from the PDF options.
+- Numbers and `N.C.` are never transposed, so a row that only holds numbers stays put.
+- **Custom chords** work in the row exactly like on a beat: type anything the palette doesn't list
+  (`Bmaj9`, `B6/9`, `Bm7♭5`) — the popover echoes a valid spelling as the *first* suggestion and, when
+  nothing matches at all, offers **Use custom chord** (Enter does the same). Nothing is lost: custom
+  chords transpose with the key, ride along with bar copy/paste, and print with the score.
+
+### Chord spelling, quality & playback
+
+The palette stores **canonical symbols** (`G+`, `B°`, `Bø7`) and accepts the spellings a player
+actually types as aliases:
+
+| Typed | Canonical | Plays as |
+| --- | --- | --- |
+| `aug`, `augmented` | `+` | augmented triad |
+| `dim`, `diminished`, `o` | `°` | diminished triad |
+| `m7♭5`, `m7b5`, `min7b5`, `ø`, `o7`, `halfdim` | `ø7` | half-diminished (B–D–F–A) |
+| `min7`, `mi7` | `m7` | minor 7th |
+| `ma7`, `Δ7` | `maj7` | major 7th |
+| `omit3` | `no3` | no third |
+
+`normalizeQuality()` (`src/chordBank.js`) is the **single source of truth** for that mapping: the audio
+engine asks it before it looks up a voicing, so a chord can never mean one thing to the suggestion list
+and another to the speakers — the reported `Bm7♭5` bug, where the popover offered `Bø7` but the speaker
+played a plain B major triad, is impossible now. The quality table (`QUALITY_INTERVALS` in
+`src/playback.js`) covers the whole palette plus the common custom spellings: `maj9`, `m11`, `11`, `13`,
+`6/9`, `m6/9`, `add11`, `madd9`, `7sus4`, `9sus4`, `dim7`, `aug7`, `7♯5`, `7♯9`, `7♭5`, `mmaj7` and the
+`5` power chord. A suffix it doesn't recognise still sounds (a major triad) — never silence.
+
+**Transpose** always moves the root, even for a spelling the grammar doesn't know: `Cxyz` +1 → `D♭xyz`
+(the suffix is preserved verbatim, so a chord you invented keeps its own name while the chart stays in
+key). Nashville degrees and `N.C.` are never touched, and text that isn't a chord token is passed
+through unchanged.
+
+### Sharp vs flat: the transposition spelling standard
+
+Transposing moves **intervals**, and a player reads the result — so the spelling is never "always
+sharps" or "always flats"; it follows the **target key**. `src/notation.js` implements three rules:
+
+1. **The target key decides the side.** Keys are named with the smallest signature (`C` +1 → **D♭**,
+   because D♭ has 5 flats against C♯'s 7 sharps), and that side then drives every chord: from C +2 the
+   chart lands in **D** and the chords come out `D`, `Em`, **`F♯m`**, `G`, `A`, **`Bm`** — never `G♭m`.
+   The one exact tie is pitch class 6 (F♯ 6♯ vs G♭ 6♭): the chart keeps **its own** side, so a flat
+   score stays flat (`D♭` +5 → `G♭`, `F` +1 → `G♭`) while a sharp/neutral one gets the familiar `F♯`.
+2. **Outside the key, the readable defaults apply** — `C♯`, `E♭`, `F♯`, `A♭`, `B♭` in a sharp/neutral
+   key, and the flat names in a flat key (borrowed chords are ♭-altered in practice: ♭III/♭VI/♭VII).
+   A player never expects to read `D♯`, `G♯`, `A♯`, `C♭`, `F♭`, `E♯` or a double accidental.
+3. **A slash bass that is a chord tone follows the chord's own degree**, which is what keeps the
+   spellings players actually use: `D/F♯` → `E/G♯`, `A/C♯` → `B/D♯`, `G/B` → `A♭/C`, `C/E` → `D/F♯`.
+
+The key itself moves with the same delta and the same rules (`transposeKeyName()`), so the key field
+and the chords can never end up on opposite sides of the circle — that was the reported bug where
+`C` +1 looked right but `Em` inside a D-major chart came out `G♭m` instead of `F♯m`. Playback is
+unaffected: the audio engine resolves notes by pitch class, so `F♯`/`G♭` sound identical.
+
+### Bar numbers on paper (PDF option)
+
+*Export PDF → Bars → Bar numbers* controls the measure numbers. It is **ON by default** in the
+***Line starts*** density: the FIRST bar of every printed line carries a bold (3 mm, weight 800)
+number directly above its barline — exactly the spot a player scans when rehearsal says "from bar 9".
+The alternatives are ***Every bar*** (the dense variant: a small 2.6 mm number above every barline) and
+***Off***. The choice is **stored per song**, like paper size and the size sliders.
+
+Why line starts as the default: within a section the printed rows are stacked with **no vertical
+gap** (`row-gap: 0`), so a number above *every* bar sits squeezed between two rows of music and reads
+as clutter/part of the row above. One big number per line has room to breathe and is legible at a
+glance; `src/pdf.js` already tags every bar that does not start a row with `.pdf-mid-bar`
+(`markMidRowBars()`), and the rules simply skip those, so the density costs no extra JS.
+
+The number sits above the barline because the geometry reserves a band at the top of every bar in a
+counted row (`--print-bar-num-row` → `--print-bar-num-extra-top`, added to the bar's top padding).
+It is reserved on *all* bars of the row, not only the one that draws the digit: the bars share one
+flex row (`align-items: stretch`), so a band on the first bar alone would stretch its neighbours and
+shift their notation. The band makes those rows slightly taller, so the barline rules stay locked to
+the notation with
+`top: calc(50% + (var(--print-bar-num-extra-top) - var(--print-bar-num-extra-bottom)) / 2)` — with
+the numbers off both extras are `0mm` and the base geometry is untouched.
+
+Turning them off is remembered: clicking *Off* writes a deliberate-choice marker
+(`barNumbersChoice`) next to `barNumbers: "off"`. Without that marker a stored `"off"` is treated as
+the **legacy default** and migrated back to the current default — which is exactly what gives songs
+saved before this option existed their numbers instead of staying number-less (the old dialog
+persisted the whole settings snapshot on any tweak, so `"off"` used to mean nothing at all). The
+values briefly stored a horizontal side (`"left"`/`"right"`); that axis is gone, so `sanitize()` maps
+them to `"line"`, the look they described.
+
+Nudging the stamp: `--print-bar-num-top` moves it DOWN from the bar's top edge (3.5 mm), while
+`--print-bar-num-inset` moves it RIGHT from the barline (1.3 mm) and `--print-bar-num-size` sets the
+digit height (3 mm). The reserved band and the fixed 0.5 mm clearance between the digit's box and
+the first line of music follow automatically, so the digit can never collide with the notation — the
+digit and the barline always end up the same 0.2 mm apart, whatever `--print-bar-num-top` is set to.
+
+Three scopes paint that stamp and they are kept identical: `@media print` (the real job),
+`html.is-print-layout` (the on-screen PDF-layout preview) and the live pane inside the *PDF options*
+dialog. That pane hosts the **real** `#previewCard` node, so its own rule only HIDES the editor's
+faint 10px/0.34 numbers — the stamp itself comes from the shared `html.is-print-layout` rules, which
+are active there too because opening the dialog switches the layout preview on. One definition,
+so paper and pane cannot drift apart. `setPrintLayoutPreview()` (src/events.js) and the dialog call
+`markMidRowBars()` for the same reason: without it the preview would number every bar while the PDF
+numbers the line starts.
+
+
+It is a **Chord Chart feature only**. Nashville Numbers mode already prints the numbers *as* the
+notation (a corner stamp would just duplicate them) and ChordPro has no bars at all, so in those modes
+the whole *Bars* group is taken out of the dialog (`pdfOptions.syncBarNumAvailability()` hides
+`#pdfBarsDivider` + `#pdfBarNumField`) and every stamp selector additionally requires
+`body[data-editor-mode="chords"]`. A per-song value saved while the song was a Chord Chart therefore
+stays harmless if it is later opened/imported in another mode — the paper stays clean either way.
 
 ### ChordPro mode
 

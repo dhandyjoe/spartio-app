@@ -653,10 +653,20 @@ html.is-print-layout body {
 }
 html.is-print-layout .topbar,
 html.is-print-layout .intro,
-html.is-print-layout .editor-card,
-html.is-print-layout .site-footer {
+html.is-print-layout .editor-card {
    /* Keep chrome available, but de-emphasize while inspecting score paper. */
    opacity: 0.92;
+}
+
+/* The SITE footer is deliberately NOT in that list: paper never contains it (@media print
+   drops it on purpose) and it is a full-width band, so the moment the layout preview
+   compacts the editor it slides up into view behind the PDF options dialog — reported as a
+   giant footer suddenly covering the page. Screen-only on purpose: a real print job sets
+   this very class too, and there the @media print rules above must keep winning. */
+@media screen {
+   html.is-print-layout .site-footer {
+      display: none;
+   }
 }
 html.is-print-layout .preview-stage {
    border-color: #c9d5cc;
@@ -1188,6 +1198,49 @@ html.is-print-layout .preview-section.is-selecting .bar.is-selected::after {
 .paste-bar:disabled {
    opacity: 0.4;
    cursor: default;
+}
+/* Per-bar chord-row toggle (Chord Chart mode) — a third button in .bar-tools,
+   so the bar-selection and print rules that hide the tools hide this one too. */
+.chord-above-bar-toggle {
+   width: 22px;
+   height: 22px;
+   display: grid;
+   place-items: center;
+   border: 1px solid #cfe0d3;
+   border-radius: 6px;
+   padding: 0;
+   background: rgba(255, 255, 255, 0.94);
+   color: #7d9c88;
+   font:
+      800 12px/1 Inter,
+      ui-sans-serif,
+      sans-serif;
+   cursor: pointer;
+   -webkit-user-select: none;
+   user-select: none;
+   -webkit-touch-callout: none;
+   touch-action: manipulation;
+}
+.chord-above-bar-toggle:hover {
+   background: #e5f4e8;
+   border-color: #8eb99a;
+   color: var(--dark-green, #1f704a);
+}
+.chord-above-bar-toggle.active {
+   background: #e5f4e8;
+   border-color: #7fb08f;
+   color: var(--dark-green, #1f704a);
+}
+html[data-theme="dark"] .chord-above-bar-toggle {
+   border-color: var(--line);
+   background: #151715;
+   color: var(--muted);
+}
+html[data-theme="dark"] .chord-above-bar-toggle:hover,
+html[data-theme="dark"] .chord-above-bar-toggle.active {
+   border-color: #327a52;
+   background: #1b3022;
+   color: #6dcc98;
 }
 /* Multi-bar selection mode highlights */
 .bar.is-selectable {
@@ -3019,6 +3072,16 @@ html[data-theme="dark"] .site-footer {
 .pdf-preview-page > #previewCard .pdf-signature {
    display: none !important;
 }
+/* ...whereas BAR NUMBERS are SCORE content (PDF options → Bars → Off / Line starts /
+   Every bar), so the pane must show exactly what paper gets. The node in here is the LIVE
+   #previewCard, i.e. the editor's own faint 0.34-opacity numbers would otherwise leak in and
+   disagree with the export. This rule is only the BASELINE (hide the editor's numbers): the
+   stamp itself comes from the `html.is-print-layout[data-pdf-bar-numbers=…]` rules in
+   preview.css, which are active here too because opening the dialog switches the layout
+   preview on — one single definition for paper AND pane, so they cannot drift apart. */
+.pdf-preview-page > #previewCard .bar-num {
+   display: none !important;
+}
 .pdf-options-panel {
    display: flex;
    flex-direction: column;
@@ -3029,6 +3092,14 @@ html[data-theme="dark"] .site-footer {
    display: flex;
    flex-direction: column;
    gap: 8px;
+}
+/* Bar numbers are a CHORD CHART-only option, so pdfOptions.js hides the divider +
+   field (id=pdfBarsDivider / pdfBarNumField) with the `hidden` attribute in the
+   other modes. This rule is what makes `hidden` win over the flex layouts below
+   (there is no global [hidden] reset, and `display: flex` would otherwise beat the
+   element's own `[hidden]` styling). */
+.pdf-options-panel [hidden] {
+   display: none !important;
 }
 .pdf-field-inline {
    flex-direction: row;
@@ -5229,6 +5300,52 @@ html[data-theme="dark"] .song-card-action.is-delete:hover {
 .chord-popover-msg[hidden] {
    display: none;
 }
+/* Raw-commit action — “Use custom chord  Bmaj9”. Only rendered when nothing matched
+   and the cell opted into custom chords (Chord Chart beats + the chord row). */
+.chord-popover-custom {
+   width: 100%;
+   margin: 6px 0 0;
+   padding: 7px 9px;
+   display: flex;
+   align-items: baseline;
+   justify-content: center;
+   gap: 6px;
+   border: 1px dashed #b7d3be;
+   border-radius: var(--radius-sm);
+   background: rgba(31, 112, 74, 0.06);
+   color: var(--dark-green);
+   font:
+      600 12.5px/1.3 Inter,
+      ui-sans-serif,
+      sans-serif;
+   text-align: center;
+   cursor: pointer;
+   transition:
+      background 0.15s ease,
+      border-color 0.15s ease;
+}
+.chord-popover-custom:hover {
+   background: rgba(31, 112, 74, 0.12);
+   border-color: #8eb99a;
+}
+.chord-popover-custom[hidden] {
+   display: none;
+}
+.chord-popover-custom-value {
+   font-weight: 800;
+   color: var(--dark-green);
+}
+html[data-theme="dark"] .chord-popover-custom {
+   border-color: #3f6a52;
+   background: rgba(120, 220, 160, 0.08);
+   color: #a6e3c0;
+}
+html[data-theme="dark"] .chord-popover-custom:hover {
+   background: rgba(120, 220, 160, 0.16);
+}
+html[data-theme="dark"] .chord-popover-custom .chord-popover-custom-value {
+   color: #d9f5e3;
+}
 /* Anchor beat highlight while its editor is open. Uses the SAME inset box as the
    hover affordance (preview.css) so the hover preview and the active/clicked
    target are pixel-identical — a solid ring drawn a few px inside the cell. */
@@ -5678,23 +5795,9 @@ html[data-theme="dark"] .mca-num {
 body[data-editor-mode="numbers"] .song-meta-lyrics-toggle {
    display: inline-flex;
 }
-/* Chord-above toggle — disabled for now (feature not ready in Chord Chart mode).
-   .song-meta-chord-above-toggle {
-   display: none;
-   align-items: center;
-   gap: 8px;
-   cursor: pointer;
-   user-select: none;
-   padding-right: 14px;
-   margin-right: 2px;
-   border-right: 1px solid var(--line, rgba(0, 0, 0, 0.12));
-}
-body[data-editor-mode="chords"] .song-meta-chord-above-toggle {
-   display: inline-flex;
-} */
-.song-meta-chord-above-toggle {
-   display: none !important;
-}
+/* NOTE: the chord row above the numbers is a PER-SECTION feature, so there is no
+   header switch for it any more (see .section-chord-above-toggle in
+   styles/preview.css and the per-bar .chord-above-bar-toggle below). */
 .song-meta-lyrics-caption {
    font-size: 11px;
    font-weight: 700;
@@ -6662,7 +6765,6 @@ body[data-member-readonly="1"] .ribbon-tabs,
 body[data-member-readonly="1"] .ribbon-panel,
 body[data-member-readonly="1"] .section-menu,
 body[data-member-readonly="1"] .song-meta-lyrics-toggle,
-body[data-member-readonly="1"] .song-meta-chord-above-toggle,
 body[data-member-readonly="1"] #resetSheetBtn,
 body[data-member-readonly="1"] #addSectionBtn,
 body[data-member-readonly="1"] .add-bar,

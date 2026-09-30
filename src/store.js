@@ -11,7 +11,8 @@ function defaultState() {
       meter: "4/4",
       bpm: 120,
       lyricsEnabled: false,
-      chordAboveEnabled: false, // Chord Chart mode: letter chords above numbers; OFF by default
+      // The chord row above the numbers is a PER-SECTION feature now (see
+      // section.chordAboveEnabled), so there is no song-wide flag any more.
       sections: [first],
       slashChords: [],
       nashvilleNumber: "1",

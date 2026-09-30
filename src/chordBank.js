@@ -91,6 +91,43 @@ export function foldNashvilleKey(value) {
       .replace(/\s+/g, "");
 }
 
+// ---- Quality normalization (one source of truth for audio) ----------------
+// The bank stores chords with canonical symbols (+, °, ø7). Every alternative spelling
+// of the same quality — `aug`/`dim`/`m7b5`/`m7♭5`/`ø`/`o7`, `min7`, `ma7`, `Δ7`, `omit3`
+// — is folded back onto that canonical spelling here, so a chord can never mean one
+// thing to the suggestion list and another to the audio engine (the `Bm7♭5` vs `Bø7`
+// mismatch that used to sound like a plain major chord).
+const QUALITY_CANONICAL = new Map(
+   Object.entries(QUALITY_ALIASES).flatMap(([symbol, aliases]) =>
+      aliases.map((alias) => [alias, symbol]),
+   ),
+);
+// Generic spelling rules applied before the alias lookup (order matters: `min7b5`
+// must become `m7b5` so the alias table can resolve it to `ø7`).
+const QUALITY_REWRITES = [
+   [/^min/, "m"],
+   [/^mi(?=\d|$)/, "m"],
+   [/^omit/, "no"],
+   [/^[Δδ]/, "maj"],
+   [/^ma(?=\d|$)/, "maj"],
+];
+
+/**
+ * Fold a typed quality suffix onto the key the audio engine voices (pure).
+ * Returns the canonical symbol when the spelling is a known alias (`m7♭5` → `ø7`),
+ * otherwise the folded ascii spelling (`7♭9` → `7b9`, `maj9` → `maj9`), so an unknown
+ * custom suffix (`xyz`) still comes back as-is and simply falls back to the default
+ * voicing instead of breaking.
+ */
+export function normalizeQuality(quality) {
+   const raw = String(quality ?? "").trim();
+   if (!raw) return "";
+   let folded = foldChordKey(raw);
+   for (const [pattern, replacement] of QUALITY_REWRITES)
+      folded = folded.replace(pattern, replacement);
+   return QUALITY_CANONICAL.get(folded) ?? folded;
+}
+
 // ---- Mode detection -----------------------------------------------------
 
 // A query is Nashville when, after an optional leading ♭/# (or b/#), the first

@@ -1,5 +1,5 @@
 // pdfOptions.js — user-adjustable PDF/print appearance (font sizes, beat
-// spacing, paper size, margins).
+// spacing, paper size, margins, bar numbers).
 //
 // Design notes:
 //  • All print geometry in this app flows through `--print-*` CSS custom
@@ -12,6 +12,12 @@
 //    output is byte-identical to before (keeps the regression suite intact).
 //  • Paper size + margins can't be set inline (they live in `@page`), so we inject
 //    a tiny <style id="pdfPageStyle"> only when the user picks a non-default page.
+//  • Bar numbers ARE part of the default chart: defaultPdfOptions() ships
+//    "left", so a zero-configuration export numbers every bar (the attribute is
+//    applied at init — see the `applyPdfOptions(settings)` call at the bottom).
+//    They are a Chord Chart feature only (events.js passes `barNumbersAvailable`),
+//    and a stored `"off"` counts as a real choice only when it carries
+//    BAR_NUMBERS_CHOICE — see the migration note next to that constant.
 //
 // This module is UI-agnostic at its core: apply/read/reset are pure state, and
 // initPdfOptions() wires the modal. Import order: leaf-ish (only dom.js).
@@ -85,13 +91,35 @@ export function defaultPdfOptions() {
       slot: PDF_TOKENS.slot.default,
       paper: "a4",
       margin: "narrow",
+      // Bar numbers are ON by default, numbering the FIRST bar of every printed line: the
+      // exported chart should tell the player where a line starts, without a number above
+      // every bar (rows are laid out with no vertical gap, so per-bar digits read as clutter).
+      // "every" keeps the dense variant, "off" removes them completely.
+      barNumbers: "line",
    };
 }
+
+// Where the bar-number stamp sits / how dense it is (see preview.css).
+export const PDF_BAR_NUMBERS = ["off", "line", "every"];
+
+/*
+ * Migration notes for the bar-number choice.
+ *
+ * • OFF used to be the DEFAULT and the dialog persists the WHOLE settings object on any tweak,
+ *   so a stored `barNumbers: "off"` without a deliberate-choice marker is the old default and
+ *   is migrated back to the current default. Anything older therefore gets its numbers instead
+ *   of staying label-less.
+ * • The option briefly stored a horizontal side ("left"/"right"). That axis is gone — the stamp
+ *   now numbers line starts (or every bar) — so those legacy values map to "line", which was the
+ *   look they described.
+ */
+const BAR_NUMBERS_CHOICE = "barNumbersChoice";
+const LEGACY_BAR_NUMBERS = { left: "line", right: "line" };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 /** Normalise + clamp any partial/legacy stored object into a valid settings shape. */
-function sanitize(raw) {
+export function sanitize(raw) {
    const base = defaultPdfOptions();
    if (!raw || typeof raw !== "object") return base;
    for (const key of ["chord", "lyric", "slot"]) {
@@ -100,6 +128,12 @@ function sanitize(raw) {
       if (Number.isFinite(value)) base[key] = clamp(Math.round(value * 10) / 10, meta.min, meta.max);
    }
    if (raw.paper && PDF_PAPER[raw.paper]) base.paper = raw.paper;
+   const stored = LEGACY_BAR_NUMBERS[raw.barNumbers] || raw.barNumbers;
+   if (PDF_BAR_NUMBERS.includes(stored)) {
+      const deliberate = raw[BAR_NUMBERS_CHOICE] === 1;
+      base.barNumbers = stored === "off" && !deliberate ? base.barNumbers : stored;
+      if (deliberate) base[BAR_NUMBERS_CHOICE] = 1;
+   }
    // Margins are locked to the "narrow" preset — ignore anything stored.
    return base;
 }
@@ -140,6 +174,13 @@ export function applyPdfOptions(settings = readPdfOptions()) {
          root.style.setProperty(PDF_TOKENS[key].prop, `${settings[key]}mm`);
       }
    }
+   // Bar numbers (print only). The attribute is the single switch the print-scoped
+   // CSS keys off; when it's "off" we remove it so nothing changes on paper.
+   if (settings.barNumbers && settings.barNumbers !== "off") {
+      root.dataset.pdfBarNumbers = settings.barNumbers;
+   } else {
+      delete root.dataset.pdfBarNumbers;
+   }
    // Paper size via injected @page (only when non-default); margins are locked
    // to the "narrow" preset.
    const existing = document.getElementById("pdfPageStyle");
@@ -173,8 +214,10 @@ function matchingPreset(settings) {
  * @param {(on:boolean, opts?:object)=>void} deps.setPreview  toggles the live "PDF layout" preview
  * @param {()=>boolean} deps.isPreviewOn                       current preview state
  * @param {()=>void} deps.onExport                             triggers the existing Export-PDF flow
+ * @param {()=>boolean} [deps.barNumbersAvailable]             whether this score can show bar
+ *        numbers at all (Chord Chart only). Defaults to true.
  */
-export function initPdfOptions({ setPreview, isPreviewOn, onExport, getCard } = {}) {
+export function initPdfOptions({ setPreview, isPreviewOn, onExport, getCard, barNumbersAvailable } = {}) {
    // Which score card the live preview adopts. Defaults to the beat-grid card, so
    // the two original modes behave exactly as before; ChordPro mode injects its own
    // card so the dialog previews (and prints) that mode's own layout.
@@ -192,6 +235,12 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport, getCard } = 
    const exportBtn = $("#pdfOptionsExport");
    const presetWrap = $("#pdfPresetGroup");
    const paperWrap = $("#pdfPaperGroup");
+   // Numbered bars on paper (Off / Line starts / Every bar).
+   const barNumWrap = $("#pdfBarNumGroup");
+   // The divider + field around that group, so the whole "Bars" section disappears in
+   // the modes that don't support it (see syncBarNumAvailability).
+   const barNumField = $("#pdfBarNumField");
+   const barsDivider = $("#pdfBarsDivider");
 
    let settings = readPdfOptions();
    let previewWasOn = false;
@@ -315,6 +364,26 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport, getCard } = 
          btn.classList.toggle("is-active", on);
          btn.setAttribute("aria-pressed", String(on));
       });
+      barNumWrap?.querySelectorAll("[data-barnum]").forEach((btn) => {
+         const on = btn.dataset.barnum === settings.barNumbers;
+         btn.classList.toggle("is-active", on);
+         btn.setAttribute("aria-pressed", String(on));
+      });
+   }
+
+   /**
+    * Bar numbers are a CHORD CHART feature. Nashville Numbers mode already IS numbers —
+    * a corner stamp would only duplicate the notation that is already on the paper — and
+    * ChordPro has no bars at all. In those modes the whole Bars group (divider + field)
+    * is taken out of the dialog, and the print CSS refuses to stamp them
+    * (`body[data-editor-mode="chords"]`), so a per-song value saved earlier stays
+    * harmless instead of leaking onto their pages.
+    */
+   function syncBarNumAvailability() {
+      const offered = typeof barNumbersAvailable === "function" ? Boolean(barNumbersAvailable()) : true;
+      if (barNumField) barNumField.hidden = !offered;
+      if (barsDivider) barsDivider.hidden = !offered;
+      return offered;
    }
 
    function commit({ persistNow = true } = {}) {
@@ -340,6 +409,7 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport, getCard } = 
       previewWasOn = typeof isPreviewOn === "function" ? Boolean(isPreviewOn()) : false;
       if (!previewWasOn && typeof setPreview === "function") setPreview(true, { announce: false });
       applyPdfOptions(settings);
+      syncBarNumAvailability();
       syncControls();
       modal.hidden = false;
       // Force a style flush so the `is-open` transition always runs from the
@@ -362,6 +432,9 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport, getCard } = 
       // Restore the preview state we found on open (don't disturb a user who had
       // the PDF layout preview on already).
       if (!previewWasOn && typeof setPreview === "function") setPreview(false, { announce: false });
+      // releasePreview() dropped the mid-row tags the pane needed. When the user's OWN PDF-layout
+      // preview is still on behind us, that mode needs them back (it numbers only the line starts).
+      if (previewWasOn && typeof isPreviewOn === "function" && isPreviewOn()) markMidRowBars();
       const done = () => {
          modal.hidden = true;
          modal.removeEventListener("transitionend", done);
@@ -409,6 +482,16 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport, getCard } = 
       const btn = event.target.closest("[data-paper]");
       if (!btn || !PDF_PAPER[btn.dataset.paper]) return;
       settings.paper = btn.dataset.paper;
+      commit();
+   });
+
+   barNumWrap?.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-barnum]");
+      if (!btn || !PDF_BAR_NUMBERS.includes(btn.dataset.barnum)) return;
+      settings.barNumbers = btn.dataset.barnum;
+      // Remember this as a DELIBERATE choice: without the marker, a stored "off" is treated
+      // as a legacy default and migrated back to the default stamp (BAR_NUMBERS_CHOICE).
+      settings[BAR_NUMBERS_CHOICE] = 1;
       commit();
    });
 

@@ -1,6 +1,45 @@
 // notation.js — pure music/notation + section-data logic. No DOM access; safe to unit test in Node.
 
-export const keys = ["C", "D♭", "D", "E♭", "E", "F", "G♭", "G", "A♭", "A", "B♭", "B"];
+// ---- Naming: the sharp-vs-flat spelling standard ---------------------------
+//
+// Chord charts are READ by players, so a transposed chord must be spelled the way a musician
+// expects to see it. Three rules (implemented by transposeKeyName / spellPitch /
+// degreeSpelling below):
+//   1. the KEY decides the side — a sharp key writes F♯/C♯/G♯, a flat key writes G♭/D♭/A♭.
+//      Transposition moves INTERVALS, so the result has to fit the target key signature:
+//      in D major the third of D is F♯, never G♭.
+//   2. pitch classes OUTSIDE that key use READABLE_CHROMATIC (C♯/E♭/F♯/A♭/B♭ — a player never
+//      expects to read D♯, G♯ or A♯ unless the key itself asks for them).
+//   3. a slash bass that is a chord tone follows the chord's DEGREE (D/F♯, A/C♯, B/D♯, C/E).
+// Unreadable names (C♭/F♭/E♯/B♯ and double accidentals) always fall back to rule 2.
+export const KEY_NAMES_SHARP = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+export const KEY_NAMES_FLAT = ["C", "D♭", "D", "E♭", "E", "F", "G♭", "G", "A♭", "A", "B♭", "B"];
+export const READABLE_CHROMATIC = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
+// Accidentals in each key signature — used to pick the name that needs the fewest.
+const KEY_ACCIDENTALS_SHARP = [0, 7, 2, 9, 4, 1, 6, 1, 8, 3, 10, 5];
+const KEY_ACCIDENTALS_FLAT = [0, 5, 2, 3, 4, 1, 6, 1, 4, 3, 2, 5];
+// Every key name the app offers/stores — both enharmonics, so a chart may live in F♯ or G♭.
+export const keyNames = [
+   "C",
+   "C♯",
+   "D♭",
+   "D",
+   "D♯",
+   "E♭",
+   "E",
+   "F",
+   "F♯",
+   "G♭",
+   "G",
+   "G♯",
+   "A♭",
+   "A",
+   "A♯",
+   "B♭",
+   "B",
+];
+// Kept for the older callers/tests; the pickers and the key select use `keyNames` above.
+export const keys = KEY_NAMES_FLAT;
 export const notePitches = {
    C: 0,
    "B#": 0,
@@ -105,16 +144,90 @@ export const newSection = (name = "Intro") => ({
    name,
    lyricsEnabled: true,
    lyricBeats: {},
-   chordAboveEnabled: true,
+   // The chord row above the numbers is OFF for a new section: it is a per-section
+   // feature, so the user turns it on where it is needed (Chords On/Off button).
+   chordAboveEnabled: false,
    chordAboveBeats: {},
+   // Sparse per-bar overrides for the chord row ("2": true / "3": false).
+   // An absent key means "inherit from the section" — see chordAboveShownForBar().
+   chordAboveBars: {},
    bars: 4,
    beats: {},
 });
 
 // ---- Transpose ----
-export function transposeNote(note, semitones) {
-   const pitch = notePitches[note];
-   return pitch === undefined ? note : keys[(pitch + semitones + 12) % 12];
+// Internal spelling helpers for the standard documented at the top of this file.
+const foldAccidentals = (value) =>
+   String(value ?? "")
+      .trim()
+      .replaceAll("♯", "#")
+      .replaceAll("♭", "b");
+const KEY_NAME_SET = new Set(keyNames.map(foldAccidentals));
+/** True when a stored/imported key name is one the app can handle (F♯, D♭, C, …). */
+export const isKnownKey = (value) => KEY_NAME_SET.has(foldAccidentals(value));
+/** A key is on the flat side when it carries a ♭ — plus F, whose signature has one flat. */
+function prefersFlats(keyName) {
+   const folded = foldAccidentals(keyName);
+   if (folded.includes("b")) return true;
+   if (folded.includes("#")) return false;
+   return folded === "F";
+}
+const LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
+// Semitone offset of each natural letter above the tonic of a major scale.
+const LETTER_STEPS = [0, 2, 4, 5, 7, 9, 11];
+const scaleCache = new Map();
+/**
+ * The major scale of a key as pitch class → spelled note, built from the tonic's LETTER so the
+ * degrees keep their names (D major → F♯, C♯; a flat key → G♭, D♭). A degree that would need a
+ * double accidental is left out on purpose, so callers fall back to the readable table.
+ */
+function keyScale(keyName) {
+   const folded = foldAccidentals(keyName);
+   const cached = scaleCache.get(folded);
+   if (cached) return cached;
+   const scale = new Map();
+   const tonicPitch = notePitches[folded];
+   if (tonicPitch !== undefined) {
+      const start = LETTERS.indexOf(folded[0].toUpperCase());
+      for (let step = 0; step < 7; step += 1) {
+         const letter = LETTERS[(start + step) % 7];
+         const pitch = (tonicPitch + LETTER_STEPS[step]) % 12;
+         const diff = (pitch - notePitches[letter] + 12) % 12;
+         const accidental = diff === 0 ? "" : diff === 1 ? "♯" : diff === 11 ? "♭" : null;
+         if (accidental !== null && !scale.has(pitch)) scale.set(pitch, `${letter}${accidental}`);
+      }
+   }
+   scaleCache.set(folded, scale);
+   return scale;
+}
+const UNREADABLE = /^(?:C♭|F♭|E♯|B♯)/;
+/** Spell one pitch class for a chart in `keyName` (rules 1, 2 and 4). */
+export function spellPitch(pitch, keyName) {
+   const pc = ((pitch % 12) + 12) % 12;
+   if (keyName) {
+      const degree = keyScale(keyName).get(pc);
+      if (degree && !UNREADABLE.test(degree)) return degree;
+      // Chromatic (borrowed) notes follow the key's side as well: borrowed chords are ♭-altered
+      // in practice (♭VI/♭VII/♭III), so a flat chart reads G♭/D♭ where a sharp chart reads F♯/C♯.
+      if (prefersFlats(keyName)) return KEY_NAMES_FLAT[pc];
+   }
+   return READABLE_CHROMATIC[pc];
+}
+/** The name the song KEY takes after moving `semitones` (rule 1 + the F♯/G♭ tie-break). */
+export function transposeKeyName(keyName, semitones) {
+   const pitch = notePitches[foldAccidentals(keyName)] ?? 0;
+   const pc = (((pitch + semitones) % 12) + 12) % 12;
+   const sharps = KEY_ACCIDENTALS_SHARP[pc];
+   const flats = KEY_ACCIDENTALS_FLAT[pc];
+   if (sharps < flats) return KEY_NAMES_SHARP[pc];
+   if (flats < sharps) return KEY_NAMES_FLAT[pc];
+   // Equal-sized signatures happen only at pitch class 6 (F♯ 6♯ vs G♭ 6♭): keep the chart's own
+   // side, so a flat score stays flat while a sharp/neutral one gets the familiar F♯.
+   return prefersFlats(keyName) ? KEY_NAMES_FLAT[pc] : KEY_NAMES_SHARP[pc];
+}
+export function transposeNote(note, semitones, ctx) {
+   const pitch = notePitches[foldAccidentals(note)];
+   return pitch === undefined ? note : spellPitch(pitch + semitones, ctx?.key);
 }
 export function isNashvilleChord(value) {
    return /^[♭#]?[0-7][̣̇]?/u.test(String(value));
@@ -122,19 +235,107 @@ export function isNashvilleChord(value) {
 export function validChordSuffix(suffix) {
    return /^(?:(?:maj|min|sus|add|dim|aug|omit|no)|[mM0-9#♯b♭/()+\-°ø])*$/i.test(suffix);
 }
-export function transposeChordRoot(value, semitones) {
+// Distance (semitones) from the chord root → the scale degree it clearly is (1 = root, 3 = third,
+// 5 = fifth, …). A tritone (6) may be ♯11 or ♭5 and a minor 6th (8) may be ♭6 or ♯5, so those are
+// deliberately absent: they fall through to the readable table (F♯, A♭) where players expect them.
+const CHORD_DEGREE_STEPS = { 0: 1, 1: 2, 2: 2, 3: 3, 4: 3, 5: 4, 7: 5, 9: 6, 10: 7, 11: 7 };
+/** Spell `distance` semitones above a root as a degree of that chord (null when unreadable). */
+function degreeSpelling(rootPitch, rootLetter, distance) {
+   const step = CHORD_DEGREE_STEPS[distance];
+   if (!step) return null;
+   const letter = LETTERS[(LETTERS.indexOf(rootLetter) + step - 1) % 7];
+   const pitch = (rootPitch + distance) % 12;
+   const diff = (pitch - notePitches[letter] + 12) % 12;
+   const accidental = diff === 0 ? "" : diff === 1 ? "♯" : diff === 11 ? "♭" : null;
+   if (accidental === null) return null;
+   const spelled = `${letter}${accidental}`;
+   // E♯/B♯/C♭/F♭ are theoretically right but never printed on a chord chart: let the caller fall
+   // back to the readable table (`C♯/E♯` → `C♯/F`, which is how the bass is read in practice).
+   return UNREADABLE.test(spelled) ? null : spelled;
+}
+export function transposeChordRoot(value, semitones, ctx) {
    const match = String(value).match(/^([A-G])([#♯b♭]?)(.*)$/);
    if (!match || !validChordSuffix(match[3])) return null;
-   return `${transposeNote(`${match[1]}${match[2]}`, semitones)}${match[3]}`;
+   const pitch = notePitches[foldAccidentals(`${match[1]}${match[2]}`)];
+   if (pitch === undefined) return null;
+   return `${spellPitch(pitch + semitones, ctx?.key)}${match[3]}`;
 }
-export function transposeChord(value, semitones) {
+/**
+ * Lenient companion used by transposeChord() for chords the user typed by hand whose
+ * suffix our grammar doesn't know (`Cxyz`). We still move the ROOT — a transpose that
+ * silently skipped custom chords would knock the whole chart out of key — and keep the
+ * suffix exactly as written. Requiring a non-empty, whitespace-free suffix keeps plain
+ * text (`Amazing grace`) from being rewritten.
+ */
+function transposeCustomChordRoot(value, semitones, ctx) {
+   const match = String(value).match(/^([A-G])([#♯b♭]?)(\S*)$/);
+   if (!match || !match[3]) return null;
+   const pitch = notePitches[foldAccidentals(`${match[1]}${match[2]}`)];
+   if (pitch === undefined) return null;
+   return `${spellPitch(pitch + semitones, ctx?.key)}${match[3]}`;
+}
+/**
+ * The bass of a slash chord. When it is a chord TONE (rule 3) it follows the chord's own degree —
+ * `D/F♯` stays `F♯` and `G/B` becomes `A♭/C` — so a bass never turns into an enharmonic stranger.
+ */
+function transposeBass(transposedMain, sourceMain, bass, semitones, ctx) {
+   const movedRootMatch = String(transposedMain).match(/^([A-G][♯♭]?)/);
+   const sourceRootMatch = String(sourceMain).match(/^([A-G][♯♭]?)/);
+   const sourceRootPitch = notePitches[foldAccidentals(sourceRootMatch?.[1])];
+   const bassPitch = notePitches[foldAccidentals(bass)];
+   if (!movedRootMatch || sourceRootPitch === undefined || bassPitch === undefined)
+      return transposeNote(bass, semitones, ctx);
+   const movedRoot = notePitches[foldAccidentals(movedRootMatch[1])];
+   const distance = (bassPitch - sourceRootPitch + 24) % 12;
+   const movedBass = (bassPitch + semitones + 24) % 12;
+   return degreeSpelling(movedRoot, movedRootMatch[1][0], distance) ?? spellPitch(movedBass, ctx?.key);
+}
+export function transposeChord(value, semitones, ctx) {
    const chord = String(value);
    if (isNashvilleChord(chord)) return chord;
    const slash = chord.match(/^(.*)\/([A-G](?:[#♯b♭])?)$/),
-      main = slash ? slash[1] : chord,
-      transposedMain = transposeChordRoot(main, semitones);
+      main = slash ? slash[1] : chord;
+   const transposedMain =
+      transposeChordRoot(main, semitones, ctx) ?? transposeCustomChordRoot(main, semitones, ctx);
    if (!transposedMain) return chord;
-   return slash ? `${transposedMain}/${transposeNote(slash[2], semitones)}` : transposedMain;
+   if (!slash) return transposedMain;
+   return `${transposedMain}/${transposeBass(transposedMain, main, slash[2], semitones, ctx)}`;
+}
+/**
+ * Transpose section.beats in place. A slot value is either a plain string
+ * (legacy shape) or `{ chord, duration }`; both are supported. Returns how many
+ * chords actually changed, which feeds the "N chords transposed" toast.
+ */
+export function transposeBeats(beats, semitones, ctx) {
+   let changed = 0;
+   Object.entries(beats || {}).forEach(([slot, value]) => {
+      const current = typeof value === "string" ? value : value?.chord;
+      if (!current) return;
+      const next = transposeChord(current, semitones, ctx);
+      if (next === current) return;
+      if (typeof value === "string") beats[slot] = next;
+      else value.chord = next;
+      changed += 1;
+   });
+   return changed;
+}
+/**
+ * Transpose a slot→chord STRING map in place — used for the chord row that sits
+ * above the numbers (`section.chordAboveBeats`). Nashville degrees and "N.C."
+ * come back unchanged from transposeChord(), so a number-only row is a no-op:
+ * numbers stay where they are while the letter chords move with the key.
+ * Returns how many entries actually changed.
+ */
+export function transposeChordMap(map, semitones, ctx) {
+   let changed = 0;
+   Object.entries(map || {}).forEach(([slot, value]) => {
+      if (typeof value !== "string" || !value) return;
+      const next = transposeChord(value, semitones, ctx);
+      if (next === value) return;
+      map[slot] = next;
+      changed += 1;
+   });
+   return changed;
 }
 
 // ---- Slot helpers ----
@@ -299,6 +500,67 @@ export function setChordAbove(section, slot, chord) {
    if (String(chord).trim()) section.chordAboveBeats[slot] = String(chord).trim();
    else delete section.chordAboveBeats[slot];
 }
+
+// ---- Chord-above visibility (per section → per bar) ------------------------
+// The chord row is a PER-SECTION feature (there is no song-wide switch): a section
+// holds its own default, and `section.chordAboveBars` narrows it further with
+// explicit per-bar overrides. An absent per-bar key means "inherit from the
+// section". Sparse keys (instead of a fixed-length array) keep the shift/copy
+// semantics of removeBar/insertBars/overwriteBars trivial and can never drift out
+// of sync with `section.bars`.
+/** Does ONE bar show the chord row? */
+export function chordAboveShownForBar(section, bar) {
+   const override = section.chordAboveBars?.[String(bar)];
+   if (typeof override === "boolean") return override;
+   return section.chordAboveEnabled === true;
+}
+/** Does ANY bar of the section show the chord row? Drives the reserved row height. */
+export function sectionShowsChordAbove(section) {
+   const bars = Math.max(1, Number(section?.bars) || 1);
+   for (let bar = 0; bar < bars; bar += 1) {
+      if (chordAboveShownForBar(section, bar)) return true;
+   }
+   return false;
+}
+/** Explicit per-bar override; pass `undefined` to clear it back to "inherit". */
+export function setChordAboveForBar(section, bar, shown) {
+   section.chordAboveBars ??= {};
+   const key = String(bar);
+   if (typeof shown === "boolean") section.chordAboveBars[key] = shown;
+   else delete section.chordAboveBars[key];
+}
+// Shift/drop the per-bar overrides exactly like the slot-keyed maps below:
+// every bar >= fromBar moves by `delta`, and `removedBar` is dropped instead.
+function shiftChordAboveBars(source, { fromBar, delta, removedBar = null }) {
+   return Object.fromEntries(
+      Object.entries(source || {}).flatMap(([key, value]) => {
+         const index = Number(key);
+         if (!Number.isInteger(index) || index < 0 || typeof value !== "boolean") return [];
+         if (removedBar !== null && index === removedBar) return [];
+         const shifted = index >= fromBar ? index + delta : index;
+         return shifted < 0 ? [] : [[String(shifted), value]];
+      }),
+   );
+}
+// Copy the overrides inside [lo..hi], rebased so that `lo` becomes bar 0.
+function pickChordAboveBars(section, lo, hi) {
+   return Object.fromEntries(
+      Object.entries(section.chordAboveBars || {}).flatMap(([key, value]) => {
+         const index = Number(key);
+         if (!Number.isInteger(index) || index < lo || index > hi) return [];
+         if (typeof value !== "boolean") return [];
+         return [[String(index - lo), value]];
+      }),
+   );
+}
+// Rebase a payload's (bar-0-based) overrides onto `targetBar`. Mutates `target`.
+function rebaseChordAboveBars(source, target, targetBar) {
+   Object.entries(source || {}).forEach(([key, value]) => {
+      const index = Number(key);
+      if (!Number.isInteger(index) || index < 0 || typeof value !== "boolean") return;
+      target[String(index + targetBar)] = value;
+   });
+}
 export function prepareLyricsForDuration(section, baseSlot, nextDuration) {
    section.lyricBeats ??= {};
    const currentDuration = beatValue(section, baseSlot).duration,
@@ -316,6 +578,57 @@ export function prepareLyricsForDuration(section, baseSlot, nextDuration) {
       delete section.lyricBeats[`${baseSlot}:2`];
       delete section.lyricBeats[`${baseSlot}:3`];
    }
+}
+// ---- Chord row above the numbers: rhythm + move helpers --------------------
+/**
+ * Keep the chord row aligned when a beat gains or changes a rhythm marker — the
+ * mirror of prepareLyricsForDuration():
+ *  • a plain beat's single cell moves to the FIRST subdivision (":0");
+ *  • "quarter" → "half" collapses the trailing cells into the 2nd half (":1").
+ * A chord cell holds ONE chord, so unlike lyrics there is nothing to join: the
+ * first non-empty chord wins and the rest are dropped. Mutates section.
+ */
+export function prepareChordAboveForDuration(section, baseSlot, nextDuration) {
+   section.chordAboveBeats ??= {};
+   const currentDuration = beatValue(section, baseSlot).duration,
+      baseChord = chordAboveValue(section, baseSlot);
+   if (!currentDuration && baseChord) {
+      setChordAbove(section, `${baseSlot}:0`, baseChord);
+      delete section.chordAboveBeats[baseSlot];
+   }
+   if (currentDuration === "quarter" && nextDuration === "half") {
+      const first =
+         chordAboveValue(section, `${baseSlot}:1`) || chordAboveValue(section, `${baseSlot}:2`);
+      setChordAbove(section, `${baseSlot}:1`, first);
+      delete section.chordAboveBeats[`${baseSlot}:2`];
+      delete section.chordAboveBeats[`${baseSlot}:3`];
+   }
+}
+/**
+ * Collapse the chord row of every descendant slot of `baseSlot` back onto the
+ * base slot (used when a rhythm marker is removed). Returns true when a chord
+ * was kept, mirroring how merged lyrics report back.
+ */
+export function collapseChordAbove(section, baseSlot) {
+   const slots = Object.keys(section.chordAboveBeats || {})
+      .filter(
+         (slot) =>
+            slot === baseSlot || slot.startsWith(`${baseSlot}:`) || slot.startsWith(`${baseSlot}.`),
+      )
+      .sort();
+   if (!slots.length) return false;
+   const first = slots.map((slot) => chordAboveValue(section, slot)).find(Boolean) || "";
+   slots.forEach((slot) => delete section.chordAboveBeats[slot]);
+   if (first) setChordAbove(section, baseSlot, first);
+   return !!first;
+}
+/** Move one chord-row cell to another slot (used by the nested half-beat split). */
+export function moveChordAbove(section, fromSlot, toSlot) {
+   const chord = chordAboveValue(section, fromSlot);
+   if (!chord) return false;
+   setChordAbove(section, toSlot, chord);
+   setChordAbove(section, fromSlot, "");
+   return true;
 }
 export function barHasContent(section, bar) {
    return (
@@ -342,6 +655,14 @@ export function removeBar(section, bar) {
    section.beats = shiftSlots(section.beats);
    section.lyricBeats = shiftSlots(section.lyricBeats);
    section.chordAboveBeats = shiftSlots(section.chordAboveBeats);
+   // Per-bar chord-row overrides follow their bar: the deleted bar is dropped
+   // and everything after it moves up one, so a hidden row can never "jump" to
+   // a different bar after a delete.
+   section.chordAboveBars = shiftChordAboveBars(section.chordAboveBars, {
+      fromBar: bar,
+      delta: -1,
+      removedBar: bar,
+   });
    section.bars = Math.max(1, section.bars - 1);
 }
 
@@ -364,6 +685,7 @@ export function extractBar(section, bar) {
       beats: pick(section.beats),
       lyricBeats: pick(section.lyricBeats),
       chordAboveBeats: pick(section.chordAboveBeats),
+      chordAboveBars: pickChordAboveBars(section, bar, bar),
    };
 }
 
@@ -384,12 +706,20 @@ export function replaceBarContent(section, bar, payload) {
    const beats = clearBar(section.beats);
    const lyricBeats = clearBar(section.lyricBeats);
    const chordAboveBeats = clearBar(section.chordAboveBeats);
+   // Chord-row visibility travels with the bar too: the pasted bar's own flag
+   // wins, and a source bar without an explicit flag leaves the target on
+   // "inherit from the section" (same clearing rule as the maps above).
+   const chordAboveBars = Object.fromEntries(
+      Object.entries(section.chordAboveBars || {}).filter(([key]) => Number(key) !== bar),
+   );
    rebase(payload?.beats, beats);
    rebase(payload?.lyricBeats, lyricBeats);
    rebase(payload?.chordAboveBeats, chordAboveBeats);
+   rebaseChordAboveBars(payload?.chordAboveBars, chordAboveBars, bar);
    section.beats = beats;
    section.lyricBeats = lyricBeats;
    section.chordAboveBeats = chordAboveBeats;
+   section.chordAboveBars = chordAboveBars;
 }
 
 // Deep-clone a section and assign a fresh id (for copy/paste + duplicate).
@@ -423,6 +753,7 @@ export function extractBars(section, startBar, endBar) {
       beats: pick(section.beats),
       lyricBeats: pick(section.lyricBeats),
       chordAboveBeats: pick(section.chordAboveBeats),
+      chordAboveBars: pickChordAboveBars(section, lo, hi),
    };
 }
 
@@ -448,6 +779,12 @@ export function insertBars(section, targetBar, payload) {
    const beats = shiftSlots(section.beats);
    const lyricBeats = shiftSlots(section.lyricBeats);
    const chordAboveBeats = shiftSlots(section.chordAboveBeats);
+   // Per-bar chord-row overrides shift right with their bar (bar-0 keys need a
+   // dedicated shift — the slot maps above are keyed "bar-beat", these are not).
+   const chordAboveBars = shiftChordAboveBars(section.chordAboveBars, {
+      fromBar: targetBar,
+      delta: count,
+   });
    // Write the payload (bar-0-based) at the target index.
    const rebase = (source, target) => {
       Object.entries(source || {}).forEach(([slot, value]) => {
@@ -460,9 +797,11 @@ export function insertBars(section, targetBar, payload) {
    rebase(payload.beats, beats);
    rebase(payload.lyricBeats, lyricBeats);
    rebase(payload.chordAboveBeats, chordAboveBeats);
+   rebaseChordAboveBars(payload.chordAboveBars, chordAboveBars, targetBar);
    section.beats = beats;
    section.lyricBeats = lyricBeats;
    section.chordAboveBeats = chordAboveBeats;
+   section.chordAboveBars = chordAboveBars;
    section.bars = section.bars + count;
    return true;
 }
@@ -489,6 +828,14 @@ export function overwriteBars(section, targetBar, payload) {
    const beats = clearRange(section.beats);
    const lyricBeats = clearRange(section.lyricBeats);
    const chordAboveBeats = clearRange(section.chordAboveBeats);
+   // Chord-row overrides are keyed by a bare bar index (not "bar-beat"), so they
+   // get their own range clear before the payload is rebased onto the target.
+   const chordAboveBars = Object.fromEntries(
+      Object.entries(section.chordAboveBars || {}).filter(([key]) => {
+         const index = Number(key);
+         return !Number.isInteger(index) || index < targetBar || index > endBar;
+      }),
+   );
    // Write the payload (bar-0-based) at the target index.
    const rebase = (source, target) => {
       Object.entries(source || {}).forEach(([slot, value]) => {
@@ -501,9 +848,11 @@ export function overwriteBars(section, targetBar, payload) {
    rebase(payload.beats, beats);
    rebase(payload.lyricBeats, lyricBeats);
    rebase(payload.chordAboveBeats, chordAboveBeats);
+   rebaseChordAboveBars(payload.chordAboveBars, chordAboveBars, targetBar);
    section.beats = beats;
    section.lyricBeats = lyricBeats;
    section.chordAboveBeats = chordAboveBeats;
+   section.chordAboveBars = chordAboveBars;
    // Grow the bar count only when the paste extends beyond the current end.
    section.bars = Math.max(section.bars, endBar + 1);
    return true;
@@ -540,13 +889,27 @@ export function normalizeSection(section, meter = "4/4") {
       Object.entries(section.chordAboveBeats).forEach(([slot, chord]) => {
          if (typeof chord === "string" && chord.trim()) chordAboveBeats[slot] = chord.trim();
       });
+   // Per-bar chord-row overrides: only explicit booleans for bars that actually
+   // exist survive, so an untrusted file can never flag a bar outside the score.
+   const chordAboveBars = {};
+   if (section.chordAboveBars && typeof section.chordAboveBars === "object")
+      Object.entries(section.chordAboveBars).forEach(([key, value]) => {
+         const index = Number(key);
+         if (!Number.isInteger(index) || index < 0 || index >= bars) return;
+         if (typeof value === "boolean") chordAboveBars[String(index)] = value;
+      });
    return {
       id: section.id || crypto.randomUUID(),
       name: String(section.name || "Section"),
       lyricsEnabled: section.lyricsEnabled !== false,
       lyricBeats,
-      chordAboveEnabled: section.chordAboveEnabled !== false,
+      // Per-section chord row. The file's own flag is restored verbatim, so a song saved with
+      // the row ON reopens with it ON. Nothing turns it on by itself: a song that never had it
+      // enabled stays OFF even when it holds chord-row data (the old song-wide `CHORDS+`
+      // migration that used to force it ON is gone — see the README).
+      chordAboveEnabled: section.chordAboveEnabled === true,
       chordAboveBeats,
+      chordAboveBars,
       bars,
       beats,
    };
