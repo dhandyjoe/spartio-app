@@ -60,7 +60,7 @@ import {
 
 // Injected editor bridge (set in init).
 import { buildShareLink, decodeShare, extractPayloadFromLink, IMPORT_ROUTE } from "./share.js?v=__BUILD__";
-import { parseYoutubeUrl, canonicalUrl, thumbnailUrl } from "./youtube.js?v=__BUILD__";
+import { parseYoutubeUrl, canonicalUrl, thumbnailUrl, formatStartTime } from "./youtube.js?v=__BUILD__";
 
 let bridge = {
    getProject: () => ({}),
@@ -1179,6 +1179,9 @@ const YT_NEW_VERSION_IDS = {
    thumb: "#newVersionThumb",
    hint: "#newVersionYoutubeHint",
 };
+// Thumbnail tooltip: clicking the thumbnail opens YouTube. When the link carries a start time the
+// tooltip names it (see syncYoutubePreview) instead of silently jumping to the middle of a video.
+const DEFAULT_YT_THUMB_TITLE = "Play this video on YouTube";
 
 function closeVersionNameDialog(label) {
    const resolve = versionNameDialogResolve;
@@ -1296,12 +1299,17 @@ function syncYoutubePreview(value, { preview: previewSel, thumb: thumbSel, hint:
          // Never let a stale thumbnail (from a previously opened version) linger.
          thumb.removeAttribute("src");
          delete thumb.dataset.ytUrl;
+         thumb.title = DEFAULT_YT_THUMB_TITLE;
       }
       return parsed;
    }
    if (thumb) {
       thumb.dataset.ytUrl = parsed.url;
       thumb.src = thumbnailUrl(parsed.videoId, "mqdefault");
+      // A link pasted from a full-set video carries a start time: clicking the thumbnail opens
+      // YouTube at that second, so say so (this title is the only hint the thumbnail has).
+      const at = formatStartTime(parsed.start);
+      thumb.title = at ? `${DEFAULT_YT_THUMB_TITLE} — starts at ${at}` : DEFAULT_YT_THUMB_TITLE;
    }
    const show = () => {
       if (gen === youtubePreviewGeneration && preview) preview.hidden = false;

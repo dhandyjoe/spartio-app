@@ -45,7 +45,7 @@ import {
    versionCopyPayload,
 } from "../src/cloud.js";
 import { friendlyName } from "../src/identity.js";
-import { parseYoutubeUrl, canonicalUrl, thumbnailUrl, youtubeFields } from "../src/youtube.js";
+import { parseYoutubeUrl, canonicalUrl, thumbnailUrl, youtubeFields, parseStartTime, formatStartTime } from "../src/youtube.js";
 import { beatHTML, chordProSectionHTML } from "../src/render.js";
 import { isValidChordSpelling, withTypedSpelling } from "../src/chordEditor.js";
 import {
@@ -1263,6 +1263,74 @@ test("parseYoutubeUrl rejects invalid or non-YouTube input", () => {
    for (const value of bad) {
       assert.equal(parseYoutubeUrl(value), null, `expected null for ${JSON.stringify(value)}`);
    }
+});
+
+// A chart is often taken from a full-set video, so the "start at" marker must survive: it is
+// parsed into seconds and re-emitted on the canonical URL (which is what gets stored per version).
+test("a youtu.be start time is kept and normalized to &t=<seconds>", () => {
+   const id = "fT68qylOwWg";
+   const withStart = [
+      [`https://youtu.be/${id}?t=3214`, 3214],
+      [`https://www.youtube.com/watch?v=${id}&t=3214s`, 3214],
+      [`https://www.youtube.com/watch?v=${id}&start=3214`, 3214],
+      [`https://www.youtube.com/watch?v=${id}#t=53m34s`, 3214],
+      [`https://www.youtube.com/watch?v=${id}&t=53m34s`, 3214],
+      [`https://youtu.be/${id}?si=AbCdEf12345&t=1h2m3s&list=PL123`, 3723],
+   ];
+   for (const [form, seconds] of withStart) {
+      const out = parseYoutubeUrl(form);
+      assert.equal(out?.videoId, id, `id for ${form}`);
+      assert.equal(out?.start, seconds, `seconds for ${form}`);
+      assert.equal(out?.url, `https://www.youtube.com/watch?v=${id}&t=${seconds}`, `url for ${form}`);
+   }
+   // No marker (or a useless one) → plain canonical URL, exactly as before this change.
+   for (const form of [
+      `https://youtu.be/${id}`,
+      `https://www.youtube.com/watch?v=${id}&t=0`,
+      `https://www.youtube.com/watch?v=${id}&t=junk`,
+      `https://youtu.be/${id}?list=PL123`,
+      id,
+   ]) {
+      const out = parseYoutubeUrl(form);
+      assert.equal(out?.start, null, `no start for ${form}`);
+      assert.equal(out?.url, `https://www.youtube.com/watch?v=${id}`, `plain url for ${form}`);
+   }
+   // Formatting + parsing helpers.
+   assert.equal(parseStartTime("3214"), 3214);
+   assert.equal(parseStartTime("90s"), 90);
+   assert.equal(parseStartTime("2m"), 120);
+   assert.equal(parseStartTime("1h2m3s"), 3723);
+   assert.equal(parseStartTime("0"), null);
+   assert.equal(parseStartTime("-5"), null);
+   assert.equal(parseStartTime("abc"), null);
+   assert.equal(parseStartTime(null), null);
+   assert.equal(formatStartTime(3214), "53:34");
+   assert.equal(formatStartTime(3723), "1:02:03");
+   assert.equal(formatStartTime(0), "");
+});
+
+test("a version keeps its YouTube start time through every save", () => {
+   const id = "fT68qylOwWg";
+   const pasted = `https://youtu.be/${id}?t=3214`;
+   const canonical = `https://www.youtube.com/watch?v=${id}&t=3214`;
+   // 1) What the dialog saves (parsed.url) already carries the marker.
+   assert.equal(parseYoutubeUrl(pasted).url, canonical);
+   // 2) …and the editor document round-trips it (id ↔ URL normalization keeps the time).
+   assert.deepEqual(youtubeFields({ youtubeUrl: pasted }), { youtubeUrl: canonical, youtubeId: id });
+   assert.deepEqual(youtubeFields({ youtubeUrl: canonical, youtubeId: id }), {
+      youtubeUrl: canonical,
+      youtubeId: id,
+   });
+   assert.deepEqual(youtubeFields({ youtubeId: id }), {
+      youtubeUrl: `https://www.youtube.com/watch?v=${id}`,
+      youtubeId: id,
+   });
+   // 3) composeSong (loading a version) keeps the stored URL verbatim — marker included.
+   const project = composeSong({ title: "T" }, { label: "A", youtubeUrl: canonical, youtubeId: id, sections: [] });
+   assert.equal(project.youtubeUrl, canonical);
+   // 4) The dialog's thumbnail opens YouTube at that second and says so.
+   const cloudUI = readProjectFile("src/cloudUI.js");
+   assert.match(cloudUI, /thumb\.title = at \? `\$\{DEFAULT_YT_THUMB_TITLE\} — starts at \$\{at\}`/);
 });
 
 test("canonicalUrl and thumbnailUrl helpers", () => {

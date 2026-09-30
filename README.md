@@ -35,7 +35,10 @@ Chord & Number Score Builder — arrange chords and number (Nashville) notation,
   (*+ New version*); switch between them from the pill next to the title and give **each version
   its own video** (`✎` → *YouTube link*, with a live thumbnail preview). The link is stored on that
   version's document and written the moment you confirm the dialog — switching versions, reloading
-  or *Save to Cloud* never drops it. Title, artist, key and time signature stay shared by the song.
+  or *Save to Cloud* never drops it. A **start time** survives too: paste `https://youtu.be/<id>?t=3214`
+  (or `&t=53m34s`) and the stored link keeps `&t=3214`, so the thumbnail opens YouTube right at that
+  moment; tracking params (`si=`, `list=`) are dropped. Title, artist, key and time signature stay
+  shared by the song.
 - 🌗 Light/dark theme, zoom, and a dedicated PDF-layout preview (opening *Export PDF* switches it
   on behind the dialog; app chrome that paper never contains — like the site footer — is dropped
   there so nothing slides into view behind the modal)
