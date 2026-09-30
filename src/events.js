@@ -1860,6 +1860,11 @@ function bindYoutubeChip() {
       event.preventDefault();
       openYoutubeLinkEditor();
    });
+   // The empty-state pill IS the action (no separate + button): it opens the same link dialog.
+   $("#youtubeChipNone")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      openYoutubeLinkEditor();
+   });
    const dialog = $("#youtubeLinkDialog");
    if (dialog) {
       dialog.addEventListener("click", (event) => {

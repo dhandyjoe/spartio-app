@@ -1364,7 +1364,8 @@ test("the editor shows the arrangement's YouTube link as a topbar chip", () => {
    assert.match(html, /id="youtubeChip" data-state="none"/);
    assert.match(html, /id="youtubeChipOpen"/);
    assert.match(html, /id="youtubeChipEdit"/);
-   assert.match(html, /id="youtubeChipNone" role="status" aria-live="polite"/);
+   assert.match(html, /id="youtubeChipNone"/);
+   assert.match(html, /🎬<\/span> No video/);
    assert.ok(!/youtubeChipAdd/.test(html), "the separate + YouTube button is gone");
    assert.match(html, /id="youtubeLinkDialog"/);
    assert.match(html, /id="youtubeLinkInput"/);
@@ -1376,6 +1377,10 @@ test("the editor shows the arrangement's YouTube link as a topbar chip", () => {
    const css = readProjectFile("styles/ui.css");
    assert.match(css, /\.youtube-chip\[data-state="none"\] \.youtube-chip-open \{\s*display: none;/);
    assert.match(css, /\.youtube-chip\[data-state="link"\] \.youtube-chip-none \{\s*display: none;/);
+   // Empty state: one quiet dashed pill that is itself the action (the ✎ is hidden there), so
+   // the "no video" case is a single, simple control instead of a pill plus a second button.
+   assert.match(css, /\.youtube-chip\[data-state="none"\] \.youtube-chip-edit \{\s*display: none;/);
+   assert.match(css, /\.youtube-chip-none \{\s*display: inline-flex;[\s\S]{0,220}?border: 1px dashed/);
    assert.ok(!/youtube-chip-add/.test(css), "no leftover styles for the removed button");
    // 3) Wiring: render paints BOTH states (and clears the stale still), events owns the clicks.
    const render = readProjectFile("src/render.js");
@@ -1389,6 +1394,7 @@ test("the editor shows the arrangement's YouTube link as a topbar chip", () => {
    assert.match(events, /cloudControl\.openVersionDetailsForCurrent\(\)/);
    assert.match(events, /setVersionYoutube\(\{ youtubeUrl: result\.url, youtubeId: result\.id \}\)/);
    assert.match(events, /isMemberReadOnly: \(\) => memberReadOnly\(\)/);
+   assert.match(events, /\$\("#youtubeChipNone"\)\?\.addEventListener\("click"/, "the empty pill is the action");
    assert.ok(!/youtubeChipAdd/.test(events), "no leftover binding for the removed button");
    assert.match(readProjectFile("src/cloudUI.js"), /openVersionDetailsForCurrent: \(\) => \{/);
    // Read-only members keep the chip but lose the ✎.

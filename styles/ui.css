@@ -5882,14 +5882,12 @@ body[data-editor-mode="numbers"] .song-meta-lyrics-toggle {
    line-height: 1;
 }
 /* ---- YouTube chip (topbar) -------------------------------------------------
-   The OPEN arrangement's own video, visible in every writing mode. Same pill
-   language as the mode badge, with a soft red accent so it reads as "video"
-   rather than "mode". Two states drive visibility — NEVER the `hidden`
-   attribute, which loses against `display` and used to leave the previous
-   version's thumbnail on screen:
+   The OPEN arrangement's own video, visible in every writing mode.
      data-state="link" → thumbnail + start time (+ ✎)
-     data-state="none" → "No YouTube link" (+ ✎)
-   Lives in the topbar, which @media print hides anyway. */
+     data-state="none" → a quiet "🎬 No video" pill that is itself the action
+   Visibility is driven by these states — NEVER the `hidden` attribute, which
+   loses against `display` and used to leave the previous version's thumbnail on
+   screen. Sits in the topbar, which @media print hides anyway. */
 .youtube-chip {
    display: inline-flex;
    align-items: center;
@@ -5906,14 +5904,49 @@ body[data-editor-mode="numbers"] .song-meta-lyrics-toggle {
 .youtube-chip[data-state="link"] .youtube-chip-none {
    display: none;
 }
+/* Empty state: the container gets out of the way (no fill, no padding) and a single dashed
+   pill carries both the message and the action — clicking it opens the link dialog. */
+.youtube-chip[data-state="none"] {
+   padding: 0;
+   border-color: transparent;
+   background: transparent;
+}
+.youtube-chip[data-state="none"] .youtube-chip-edit {
+   display: none;
+}
 .youtube-chip-none {
    display: inline-flex;
    align-items: center;
-   gap: 5px;
-   padding: 0 6px 0 3px;
-   color: color-mix(in srgb, #be123c 70%, #6b7280);
-   font: 700 12px inherit;
+   gap: 6px;
+   padding: 5px 11px;
+   border: 1px dashed color-mix(in srgb, var(--dark-green, #2f7d4f) 30%, transparent);
+   border-radius: 999px;
+   background: transparent;
+   color: color-mix(in srgb, #6b7280 88%, #111);
+   font-size: 12px;
+   font-weight: 700;
+   font-family: inherit;
    letter-spacing: 0.01em;
+   cursor: pointer;
+   transition:
+      background 0.18s ease,
+      border-color 0.18s ease,
+      color 0.18s ease;
+}
+.youtube-chip-none > span[aria-hidden="true"] {
+   font-size: 13px;
+   line-height: 1;
+   filter: grayscale(1);
+   opacity: 0.75;
+}
+.youtube-chip-none:hover {
+   border-color: color-mix(in srgb, var(--dark-green, #2f7d4f) 55%, transparent);
+   background: color-mix(in srgb, var(--green, #10b981) 8%, #fff);
+   color: var(--dark-green, #2f7d4f);
+}
+.youtube-chip-none:focus-visible {
+   outline: 2px solid color-mix(in srgb, var(--green, #10b981) 55%, transparent);
+   outline-offset: 2px;
 }
 .youtube-chip-open {
    display: inline-flex;
@@ -5923,7 +5956,9 @@ body[data-editor-mode="numbers"] .song-meta-lyrics-toggle {
    border: 0;
    background: transparent;
    color: #be123c;
-   font: 750 12px inherit;
+   font-size: 12px;
+   font-weight: 750;
+   font-family: inherit;
    cursor: pointer;
 }
 .youtube-chip-thumb {
@@ -5958,9 +5993,18 @@ html[data-theme="dark"] .youtube-chip {
    background: color-mix(in srgb, #fb7185 14%, #111);
 }
 html[data-theme="dark"] .youtube-chip-open,
-html[data-theme="dark"] .youtube-chip-edit,
-html[data-theme="dark"] .youtube-chip-none {
+html[data-theme="dark"] .youtube-chip-edit {
    color: #fda4af;
+}
+/* Empty state, dark: a softly mint outline instead of the red accent (nothing to warn about). */
+html[data-theme="dark"] .youtube-chip-none {
+   border-color: color-mix(in srgb, #6ee7b7 26%, transparent);
+   color: color-mix(in srgb, #d1d5db 88%, #fff);
+}
+html[data-theme="dark"] .youtube-chip-none:hover {
+   border-color: color-mix(in srgb, #6ee7b7 52%, transparent);
+   background: color-mix(in srgb, #10b981 16%, #111);
+   color: #a7f3d0;
 }
 html[data-theme="dark"] .youtube-chip-edit:hover,
 html[data-theme="dark"] .youtube-chip-open:hover .youtube-chip-label {
