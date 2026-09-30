@@ -1860,10 +1860,6 @@ function bindYoutubeChip() {
       event.preventDefault();
       openYoutubeLinkEditor();
    });
-   $("#youtubeChipAdd")?.addEventListener("click", (event) => {
-      event.preventDefault();
-      openYoutubeLinkEditor();
-   });
    const dialog = $("#youtubeLinkDialog");
    if (dialog) {
       dialog.addEventListener("click", (event) => {

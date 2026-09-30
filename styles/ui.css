@@ -5884,7 +5884,12 @@ body[data-editor-mode="numbers"] .song-meta-lyrics-toggle {
 /* ---- YouTube chip (topbar) -------------------------------------------------
    The OPEN arrangement's own video, visible in every writing mode. Same pill
    language as the mode badge, with a soft red accent so it reads as "video"
-   rather than "mode". Lives in the topbar, which @media print hides anyway. */
+   rather than "mode". Two states drive visibility — NEVER the `hidden`
+   attribute, which loses against `display` and used to leave the previous
+   version's thumbnail on screen:
+     data-state="link" → thumbnail + start time (+ ✎)
+     data-state="none" → "No YouTube link" (+ ✎)
+   Lives in the topbar, which @media print hides anyway. */
 .youtube-chip {
    display: inline-flex;
    align-items: center;
@@ -5894,6 +5899,21 @@ body[data-editor-mode="numbers"] .song-meta-lyrics-toggle {
    border: 1px solid color-mix(in srgb, #e11d48 22%, transparent);
    background: color-mix(in srgb, #e11d48 8%, #fff);
    white-space: nowrap;
+}
+.youtube-chip[data-state="none"] .youtube-chip-open {
+   display: none;
+}
+.youtube-chip[data-state="link"] .youtube-chip-none {
+   display: none;
+}
+.youtube-chip-none {
+   display: inline-flex;
+   align-items: center;
+   gap: 5px;
+   padding: 0 6px 0 3px;
+   color: color-mix(in srgb, #be123c 70%, #6b7280);
+   font: 700 12px inherit;
+   letter-spacing: 0.01em;
 }
 .youtube-chip-open {
    display: inline-flex;
@@ -5933,44 +5953,21 @@ body[data-editor-mode="numbers"] .song-meta-lyrics-toggle {
 .youtube-chip-open:hover .youtube-chip-label {
    background: color-mix(in srgb, #e11d48 14%, #fff);
 }
-.youtube-chip-add {
-   display: inline-flex;
-   align-items: center;
-   gap: 5px;
-   padding: 6px 12px;
-   border-radius: 999px;
-   border: 1px dashed color-mix(in srgb, #e11d48 34%, transparent);
-   background: transparent;
-   color: #be123c;
-   font: 750 12px inherit;
-   cursor: pointer;
-   white-space: nowrap;
-}
-.youtube-chip-add:hover {
-   background: color-mix(in srgb, #e11d48 8%, #fff);
-}
-html[data-theme="dark"] .youtube-chip,
-html[data-theme="dark"] .youtube-chip-add {
-   border-color: color-mix(in srgb, #fb7185 30%, transparent);
-}
 html[data-theme="dark"] .youtube-chip {
+   border-color: color-mix(in srgb, #fb7185 30%, transparent);
    background: color-mix(in srgb, #fb7185 14%, #111);
 }
 html[data-theme="dark"] .youtube-chip-open,
 html[data-theme="dark"] .youtube-chip-edit,
-html[data-theme="dark"] .youtube-chip-add {
+html[data-theme="dark"] .youtube-chip-none {
    color: #fda4af;
 }
 html[data-theme="dark"] .youtube-chip-edit:hover,
 html[data-theme="dark"] .youtube-chip-open:hover .youtube-chip-label {
    background: color-mix(in srgb, #fb7185 22%, #111);
 }
-html[data-theme="dark"] .youtube-chip-add:hover {
-   background: color-mix(in srgb, #fb7185 14%, #111);
-}
 /* Read-only album member: watching is fine, editing the arrangement is not. */
-.youtube-chip[data-readonly="true"] .youtube-chip-edit,
-.youtube-chip-add[data-readonly="true"] {
+.youtube-chip[data-readonly="true"] .youtube-chip-edit {
    display: none;
 }
 /* Small screens: keep the affordance, drop the words (same idea as the topbar

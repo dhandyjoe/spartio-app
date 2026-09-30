@@ -119,11 +119,13 @@
                   <button class="account-popover-item" id="versionNewBtn" type="button" role="menuitem"><span aria-hidden="true">＋</span> New version</button>
                </div>
             </div>
-            <!-- YouTube chip: the link of the arrangement being edited, visible in EVERY mode
-                 (the link itself is already part of the document). Click the thumbnail to watch
-                 it — a saved `&t=` start time is honoured — and ✎ to change it. Sits in the
-                 topbar, so it never appears on paper. -->
-            <div class="youtube-chip" id="youtubeChip" hidden>
+            <!-- YouTube chip: the link of the arrangement being edited, visible in EVERY mode.
+                 One container, two STATES (data-state="link" | "none") — swapping the state is
+                 what hides the thumbnail, so a stale link from a previously open version can
+                 never be shown (`hidden` alone would lose against the CSS `display`). Click the
+                 thumbnail to watch it (a saved `&t=` start time is honoured) and ✎ to change the
+                 link. Sits in the topbar, so it never appears on paper. -->
+            <div class="youtube-chip" id="youtubeChip" data-state="none">
                <button
                   class="youtube-chip-open"
                   id="youtubeChipOpen"
@@ -134,11 +136,11 @@
                   <img class="youtube-chip-thumb" id="youtubeChipThumb" alt="" width="44" height="24" />
                   <span class="youtube-chip-label" id="youtubeChipLabel">▶</span>
                </button>
-               <button class="youtube-chip-edit" id="youtubeChipEdit" type="button" title="Change the YouTube link" aria-label="Change the YouTube link">✎</button>
+               <span class="youtube-chip-none" id="youtubeChipNone" role="status" aria-live="polite">
+                  <span aria-hidden="true">🎬</span> No YouTube link
+               </span>
+               <button class="youtube-chip-edit" id="youtubeChipEdit" type="button" title="Set the YouTube link for this version" aria-label="Set the YouTube link for this version">✎</button>
             </div>
-            <button class="youtube-chip-add" id="youtubeChipAdd" type="button" title="Add a YouTube link for this arrangement" hidden>
-               <span aria-hidden="true">＋</span> YouTube
-            </button>
          </div>
          <div class="topbar-actions">
             <span class="editor-mode-badge" id="editorModeBadge" title="Editing mode for this song">
@@ -812,7 +814,7 @@
                </li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">⧉</span>
-                  <span class="howto-item-text"><strong>Versions of a song</strong> — the pill next to the title lists every arrangement of that song: switch between them, add <em>+ New version</em>, rename one, or give one its own YouTube link (✎). The link of the arrangement you are editing also appears as a <strong>▶ chip in the topbar</strong> (click to watch — a saved start time like <code>?t=3214</code> is kept — and ✎ to change it), so the video is one click away while you write. Title, artist, key and time signature are shared by all versions of the song.</span>
+                  <span class="howto-item-text"><strong>Versions of a song</strong> — the pill next to the title lists every arrangement of that song: switch between them, add <em>+ New version</em>, rename one, or give one its own YouTube link (✎). The link of the arrangement you are editing also appears as a <strong>▶ chip in the topbar</strong> (click to watch — a saved start time like <code>?t=3214</code> is kept — and ✎ to change it), and an arrangement without a video shows <strong>No YouTube link</strong> there, so you always know which version has one. Title, artist, key and time signature are shared by all versions of the song.</span>
                </li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">🔗</span>

@@ -215,32 +215,38 @@ export function renderControls() {
    if (chordproMode) warnIfChordProCssMissing();
    const modeBadgeText = $("#editorModeBadge .editor-mode-badge-text");
    if (modeBadgeText) modeBadgeText.textContent = editorModeMeta[mode].badge;
-   // YouTube chip (topbar): the link of the arrangement being edited, visible in EVERY mode.
-   // Two states only — a clickable thumbnail (+ its start time) or the "＋ YouTube" affordance —
-   // so the chip can never disagree with the score it belongs to.
+   // YouTube chip (topbar): the link of the arrangement being edited, visible in EVERY mode, in
+   // one of TWO states — "link" (thumbnail + start time) or "none" ("No YouTube link" + ✎).
+   // The state attribute drives visibility in CSS, and every value is written on BOTH
+   // transitions: a `hidden` attribute alone would lose against the chip's `display`, which is
+   // exactly how a stale thumbnail from the previous version used to stay on screen.
    const chipMeta = youtubeChipMeta(state);
    const chipWrap = $("#youtubeChip");
-   const chipAdd = $("#youtubeChipAdd");
-   if (chipWrap && chipAdd) {
-      chipWrap.hidden = !chipMeta.hasLink;
-      chipAdd.hidden = chipMeta.hasLink;
+   if (chipWrap) {
+      chipWrap.dataset.state = chipMeta.hasLink ? "link" : "none";
       // A read-only member can still watch the video but must not change the arrangement's link,
-      // so the ✎ / ＋ affordances are hidden by CSS (the click handlers guard too).
-      const chipReadOnly = hooks.isMemberReadOnly() ? "true" : "false";
-      chipWrap.dataset.readonly = chipReadOnly;
-      chipAdd.dataset.readonly = chipReadOnly;
-      if (chipMeta.hasLink) {
-         const thumb = $("#youtubeChipThumb");
-         const label = $("#youtubeChipLabel");
-         const openBtn = $("#youtubeChipOpen");
-         if (thumb && thumb.getAttribute("src") !== chipMeta.thumb) thumb.src = chipMeta.thumb;
-         if (label) label.textContent = chipMeta.label;
-         if (openBtn) {
+      // so the ✎ is hidden by CSS (the click handler guards too).
+      chipWrap.dataset.readonly = hooks.isMemberReadOnly() ? "true" : "false";
+      const thumb = $("#youtubeChipThumb");
+      const label = $("#youtubeChipLabel");
+      const openBtn = $("#youtubeChipOpen");
+      if (thumb) {
+         if (chipMeta.hasLink) {
+            if (thumb.getAttribute("src") !== chipMeta.thumb) thumb.src = chipMeta.thumb;
+         } else thumb.removeAttribute("src"); // never keep the previous version's still
+      }
+      if (label) label.textContent = chipMeta.hasLink ? chipMeta.label : "";
+      if (openBtn) {
+         // The click target lives on the element (events.js opens it in a new tab), so the
+         // renderer stays the only place that decides WHAT the chip points at.
+         if (chipMeta.hasLink) {
             openBtn.title = chipMeta.title;
             openBtn.setAttribute("aria-label", chipMeta.title);
-            // The click target lives on the element (events.js opens it in a new tab), so the
-            // renderer stays the only place that decides WHAT the chip points at.
             openBtn.dataset.href = chipMeta.href;
+         } else {
+            openBtn.title = "Open on YouTube";
+            openBtn.removeAttribute("aria-label");
+            delete openBtn.dataset.href;
          }
       }
    }

@@ -1357,30 +1357,42 @@ test("the editor shows the arrangement's YouTube link as a topbar chip", () => {
    for (const empty of [{}, null, { youtubeUrl: "" }, { youtubeId: "  " }]) {
       assert.equal(youtubeChipMeta(empty).hasLink, false, `no chip for ${JSON.stringify(empty)}`);
    }
-   // 2) Markup: chip + link dialog exist, and the chip lives in the topbar (print-hidden).
+   // 2) Markup: ONE chip container with two states (no separate "add" button), plus the
+   // link dialog. The chip lives in the topbar (print-hidden) and says so when a version has
+   // no video yet instead of leaving the previous version's thumbnail on screen.
    const html = readProjectFile("index.html");
-   assert.match(html, /id="youtubeChip"/);
+   assert.match(html, /id="youtubeChip" data-state="none"/);
    assert.match(html, /id="youtubeChipOpen"/);
    assert.match(html, /id="youtubeChipEdit"/);
-   assert.match(html, /id="youtubeChipAdd"/);
+   assert.match(html, /id="youtubeChipNone" role="status" aria-live="polite"/);
+   assert.ok(!/youtubeChipAdd/.test(html), "the separate + YouTube button is gone");
    assert.match(html, /id="youtubeLinkDialog"/);
    assert.match(html, /id="youtubeLinkInput"/);
    const topbar = html.match(/<header class="topbar">[\s\S]*?<\/header>/);
    assert.ok(topbar && /id="youtubeChip"/.test(topbar[0]), "the chip belongs to the topbar");
    assert.match(readProjectFile("styles/ui.css"), /html\.is-print-layout \.topbar,/);
-   // 3) Wiring: render paints it, events owns the clicks (open + edit), cloudUI lends its dialog.
+   // State-driven visibility: a `hidden` attribute would lose against the chip's own `display`
+   // (that is exactly how a stale link stayed visible after a version switch).
+   const css = readProjectFile("styles/ui.css");
+   assert.match(css, /\.youtube-chip\[data-state="none"\] \.youtube-chip-open \{\s*display: none;/);
+   assert.match(css, /\.youtube-chip\[data-state="link"\] \.youtube-chip-none \{\s*display: none;/);
+   assert.ok(!/youtube-chip-add/.test(css), "no leftover styles for the removed button");
+   // 3) Wiring: render paints BOTH states (and clears the stale still), events owns the clicks.
    const render = readProjectFile("src/render.js");
    assert.match(render, /const chipMeta = youtubeChipMeta\(state\);/);
+   assert.match(render, /chipWrap\.dataset\.state = chipMeta\.hasLink \? "link" : "none";/);
    assert.match(render, /openBtn\.dataset\.href = chipMeta\.href;/);
+   assert.match(render, /else thumb\.removeAttribute\("src"\);/);
    const events = readProjectFile("src/events.js");
    assert.match(events, /function bindYoutubeChip\(\)/);
    assert.match(events, /window\.open\(href, "_blank", "noopener"\)/);
    assert.match(events, /cloudControl\.openVersionDetailsForCurrent\(\)/);
    assert.match(events, /setVersionYoutube\(\{ youtubeUrl: result\.url, youtubeId: result\.id \}\)/);
    assert.match(events, /isMemberReadOnly: \(\) => memberReadOnly\(\)/);
+   assert.ok(!/youtubeChipAdd/.test(events), "no leftover binding for the removed button");
    assert.match(readProjectFile("src/cloudUI.js"), /openVersionDetailsForCurrent: \(\) => \{/);
-   // Read-only members keep the chip but lose the ✎ / ＋.
-   assert.match(readProjectFile("styles/ui.css"), /\.youtube-chip\[data-readonly="true"\] \.youtube-chip-edit/);
+   // Read-only members keep the chip but lose the ✎.
+   assert.match(css, /\.youtube-chip\[data-readonly="true"\] \.youtube-chip-edit/);
 });
 
 test("canonicalUrl and thumbnailUrl helpers", () => {
