@@ -1468,11 +1468,26 @@ test("versionCopyPayload is safe with missing input", () => {
 // topbar pill and the library cards look identical for existing songs.
 // ============================================================================
 
-test("editorModeMeta keeps the original Chord Chart / Nashville labels and glyphs", () => {
+test("editorModeMeta keeps the mode labels and glyphs in one place", () => {
    assert.deepEqual(editorModeMeta.chords, { id: "chords", badge: "Chord Chart", cardMark: "♪" });
-   assert.deepEqual(editorModeMeta.numbers, { id: "numbers", badge: "Nashville Numbers", cardMark: "#" });
+   // The number grid + lyrics row is named for what you write — the ID stays `numbers`, so files,
+   // cloud documents and the `data-editor-mode="numbers"` styling hooks never depend on the label.
+   assert.deepEqual(editorModeMeta.numbers, {
+      id: "numbers",
+      badge: "Numeric Notation + Lyrics",
+      cardMark: "#",
+   });
    assert.equal(editorModeMeta.chordpro.id, "chordpro");
    assert.equal(editorModeMeta.chordpro.badge, "ChordPro");
+   // The New Song card, the help dialog and the README all use the same wording, and the card's
+   // mode hook is untouched (`data-mode="numbers"` = stored id).
+   const html = readProjectFile("index.html");
+   assert.match(html, /<h3 class="mode-card-title">Numeric Notation \+ Lyrics<\/h3>/);
+   assert.match(html, /id="modeCardNumbers" type="button" data-mode="numbers"/);
+   assert.match(html, /Lyrics row — optional \(Lyrics toggle\)/);
+   assert.match(html, /Numeric Notation \+ Lyrics<\/strong>/);
+   assert.ok(!/Nashville Numbers/.test(html), "the old mode label must be gone");
+   assert.match(readProjectFile("README.md"), /\*\*Numeric Notation \+ Lyrics\*\*/);
 });
 
 test("normalizeEditorMode accepts the three modes and falls back to chords", () => {

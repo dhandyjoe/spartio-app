@@ -8,10 +8,10 @@ Chord & Number Score Builder — arrange chords and number (Nashville) notation,
 
 - 🎸 Chord palette, slash-chord builder, and full Nashville Number System (with upper/lower octave dots)
 - 📝 **Three writing modes** — chosen in the **New Song** dialog, where each mode gets its
-  own animated preview card: **Chord Chart** (beat grid + chords), **Nashville Numbers**
-  (degrees 1–7, optional lyrics under each beat) and **ChordPro** (lyrics with chords in
-  `[brackets]` — the simplest one, no rhythm notation at all). A new ChordPro song opens
-  with two ready-to-type sections, **Intro** and **Verse**.
+  own animated preview card: **Chord Chart** (beat grid + chords), **Numeric Notation + Lyrics**
+  (degrees 1–7 with high/low octaves, plus an optional lyrics row under each beat) and **ChordPro**
+  (lyrics with chords in `[brackets]` — the simplest one, no rhythm notation at all). A new ChordPro
+  song opens with two ready-to-type sections, **Intro** and **Verse**.
 - 🎹 **Instrumental playback** — chords & Nashville numbers are resolved to real piano audio
   (multi-sample **Salamander Grand Piano** V3 — Yamaha C5, recorded by Alexander Holm). Letter
   chords play as a chord, Nashville numbers as a single note; empty beats can click as a metronome.
@@ -353,7 +353,7 @@ so paper and pane cannot drift apart. `setPrintLayoutPreview()` (src/events.js) 
 numbers the line starts.
 
 
-It is a **Chord Chart feature only**. Nashville Numbers mode already prints the numbers *as* the
+It is a **Chord Chart feature only**. Numeric Notation mode already prints the numbers *as* the
 notation (a corner stamp would just duplicate them) and ChordPro has no bars at all, so in those modes
 the whole *Bars* group is taken out of the dialog (`pdfOptions.syncBarNumAvailability()` hides
 `#pdfBarsDivider` + `#pdfBarNumField`) and every stamp selector additionally requires

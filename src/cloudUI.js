@@ -816,7 +816,7 @@ function cardMarkup(song) {
       ? (updated ? `updated ${escapeHtml(updated)}` : "")
       : `${sectionCount} section${sectionCount === 1 ? "" : "s"}${updated ? ` · updated ${escapeHtml(updated)}` : ""}`;
    // Glyph + label come from notation.js so the library card can never drift from
-   // the editor's mode badge (♪ Chord Chart, # Nashville Numbers, ♬ ChordPro).
+   // the editor's mode badge (♪ Chord Chart, # Numeric Notation + Lyrics, ♬ ChordPro).
    const mode = normalizeEditorMode(song.latestEditorMode || song.editorMode);
    const modeGlyph = editorModeMeta[mode].cardMark;
    const modeTitle = editorModeMeta[mode].badge;

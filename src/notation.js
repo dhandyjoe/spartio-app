@@ -120,7 +120,10 @@ export const MAX_SECTIONS = 40;
 // cloudUI.js can never drift apart.
 export const editorModeMeta = {
    chords: { id: "chords", badge: "Chord Chart", cardMark: "♪" },
-   numbers: { id: "numbers", badge: "Nashville Numbers", cardMark: "#" },
+   // The number grid + its lyrics row. Named for what you actually write (not angka + lyrics)
+   // rather than for one region's nickname — the id stays `numbers`, so files, cloud documents
+   // and the `data-editor-mode="numbers"` styling hooks are untouched by the label.
+   numbers: { id: "numbers", badge: "Numeric Notation + Lyrics", cardMark: "#" },
    chordpro: { id: "chordpro", badge: "ChordPro", cardMark: "♬" },
 };
 

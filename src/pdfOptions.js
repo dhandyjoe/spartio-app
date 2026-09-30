@@ -372,7 +372,7 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport, getCard, bar
    }
 
    /**
-    * Bar numbers are a CHORD CHART feature. Nashville Numbers mode already IS numbers —
+    * Bar numbers are a CHORD CHART feature. Numeric Notation mode already IS numbers —
     * a corner stamp would only duplicate the notation that is already on the paper — and
     * ChordPro has no bars at all. In those modes the whole Bars group (divider + field)
     * is taken out of the dialog, and the print CSS refuses to stamp them

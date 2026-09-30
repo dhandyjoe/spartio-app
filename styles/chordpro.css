@@ -4,7 +4,7 @@
    SELF-CONTAINED BY DESIGN. Nothing in this file targets a class or id that the
    two original modes use, and every rule is either `cp-`-prefixed or gated behind
    body[data-editor-mode="chordpro"]. That is what guarantees Chord Chart and
-   Nashville Numbers keep their exact editor + PDF behaviour:
+   Numeric Notation keep their exact editor + PDF behaviour:
      • ui.css / preview.css / styles.css are NOT modified at all.
      • The grid workspace is hidden (never removed) so #previewCard and
        #previewViewport stay in the DOM for pdf.js / pdfOptions.js.
