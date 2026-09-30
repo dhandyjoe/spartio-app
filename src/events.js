@@ -63,7 +63,7 @@ import {
 } from "./render.js?v=__BUILD__";
 import { initPrintListeners, exportToPdf, markMidRowBars, clearMidRowBars } from "./pdf.js?v=__BUILD__";
 import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=__BUILD__";
-import { initCloudUI } from "./cloudUI.js?v=__BUILD__";
+import { initCloudUI, syncYoutubePreview } from "./cloudUI.js?v=__BUILD__";
 import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=__BUILD__";
 import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=__BUILD__";
 import { initChordProEditor, syncChordProWorkspace } from "./chordProEditor.js?v=__BUILD__";
@@ -104,9 +104,11 @@ function setCloudContext(next) {
 // there is no staged state any more — a link can no longer be lost by navigating away before a
 // "Save to Cloud". When the edit belongs to the arrangement that is OPEN, the editor document is
 // updated too: otherwise the next save would write the previous link back over the new one.
-// Silent on purpose — the cloud already holds this value, so it is not an unsaved edit.
+// Silent on purpose — the cloud already holds this value, so it is not an unsaved edit — but the
+// topbar YouTube chip is repainted so it shows the new video immediately.
 function setVersionYoutube(fields) {
    setState({ ...getState(), ...youtubeFields(fields) });
+   renderControls();
 }
 // Tracks whether the document has been edited since it was last loaded from — or
 // saved to — the cloud. Powers the "unsaved changes" guard on Back to My Songs.
@@ -134,6 +136,9 @@ let printLayoutPreview = false;
 // Handle returned by initPdfOptions(), so features outside the editor (the
 // My Songs cards) can open the PDF options dialog for a freshly-loaded song.
 let pdfOptionsControl = null;
+// Control surface returned by initCloudUI(): lets the editor's YouTube chip open the SAME
+// version-details dialog for the arrangement that is open (cloudUI owns that modal).
+let cloudControl = null;
 
 // Project content intentionally lives in memory only. Use Export .file for persistence.
 // save() is the single chokepoint fired after every edit, so it's also where we
@@ -1767,6 +1772,131 @@ function applyTheme(theme, { persist = true, announce = false } = {}) {
 }
 
 // ---- Wire up all listeners (called once at bootstrap) ----
+// ---- YouTube chip + link dialog -------------------------------------------
+// The link of the arrangement being edited is part of the DOCUMENT (see youtubeFields in
+// youtube.js), so the editor can show it without asking the cloud: render.js paints the topbar
+// chip from `state`, and this module owns the two ways to change it —
+//   • a cloud arrangement is open → cloudUI's version-details dialog (it writes that version's
+//     document immediately, scope-aware);
+//   • a local draft / file-opened song → the small link-only dialog below, which edits the open
+//     document (so Export/.file and the next Save to Cloud carry it).
+const YT_LINK_IDS = {
+   preview: "#youtubeLinkPreview",
+   thumb: "#youtubeLinkThumb",
+   hint: "#youtubeLinkHint",
+};
+let youtubeLinkResolve = null;
+
+function closeYoutubeLinkDialog(result) {
+   const resolve = youtubeLinkResolve;
+   youtubeLinkResolve = null;
+   const dialog = $("#youtubeLinkDialog");
+   if (dialog) {
+      dialog.classList.remove("is-open");
+      setTimeout(() => {
+         dialog.hidden = true;
+      }, 160);
+   }
+   if (resolve) resolve(result);
+}
+
+/** Open the link-only dialog, pre-filled with the OPEN arrangement's link. */
+function openYoutubeLinkDialog() {
+   const dialog = $("#youtubeLinkDialog");
+   if (!dialog) return Promise.resolve(null);
+   if (youtubeLinkResolve) {
+      const prev = youtubeLinkResolve;
+      youtubeLinkResolve = null;
+      prev(null);
+   }
+   const input = $("#youtubeLinkInput");
+   const current = getState().youtubeUrl || "";
+   if (input) input.value = current;
+   syncYoutubePreview(current, YT_LINK_IDS);
+   const hint = $("#youtubeLinkHint");
+   if (hint) hint.hidden = true;
+   return new Promise((resolve) => {
+      youtubeLinkResolve = resolve;
+      dialog.hidden = false;
+      void dialog.offsetHeight;
+      setTimeout(() => dialog.classList.add("is-open"), 20);
+      setTimeout(() => input?.focus(), 60);
+   });
+}
+
+/** Ask for a link and store it on the open document (an edit: history + unsaved badge). */
+async function editYoutubeLink() {
+   const result = await openYoutubeLinkDialog();
+   if (!result) return;
+   // setVersionYoutube repaints the chip; save() records it as a real edit (history + unsaved badge)
+   // so Export .file and the next Save to Cloud carry the link.
+   setVersionYoutube({ youtubeUrl: result.url, youtubeId: result.id });
+   save();
+   toast(result.url ? "YouTube link saved for this arrangement" : "YouTube link removed");
+}
+
+/**
+ * One entry point for "change the link": the cloud dialog when a version document exists,
+ * the local dialog otherwise. Read-only members never reach here (the affordances are hidden).
+ */
+function openYoutubeLinkEditor() {
+   if (blockedForMember()) return;
+   if (currentCloudContext?.versionId && cloudControl?.openVersionDetailsForCurrent) {
+      void cloudControl.openVersionDetailsForCurrent();
+      return;
+   }
+   void editYoutubeLink();
+}
+
+function bindYoutubeChip() {
+   const openBtn = $("#youtubeChipOpen");
+   openBtn?.addEventListener("click", (event) => {
+      event.preventDefault();
+      // The href is decided by render.js (it owns the normalized link + its start time).
+      const href = openBtn.dataset.href;
+      if (href) window.open(href, "_blank", "noopener");
+   });
+   $("#youtubeChipEdit")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      openYoutubeLinkEditor();
+   });
+   $("#youtubeChipAdd")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      openYoutubeLinkEditor();
+   });
+   const dialog = $("#youtubeLinkDialog");
+   if (dialog) {
+      dialog.addEventListener("click", (event) => {
+         if (event.target.closest("[data-youtubelink-dismiss]")) closeYoutubeLinkDialog(null);
+      });
+      $("#youtubeLinkInput")?.addEventListener("input", (event) => {
+         const value = event.target.value.trim();
+         const parsed = syncYoutubePreview(event.target.value, YT_LINK_IDS);
+         const hint = $("#youtubeLinkHint");
+         if (hint) hint.hidden = !(value && !parsed);
+      });
+      $("#youtubeLinkThumb")?.addEventListener("click", () => {
+         const url = $("#youtubeLinkThumb")?.dataset.ytUrl;
+         if (url) window.open(url, "_blank", "noopener");
+      });
+      $("#youtubeLinkRemove")?.addEventListener("click", () => {
+         const input = $("#youtubeLinkInput");
+         if (input) input.value = "";
+         syncYoutubePreview("", YT_LINK_IDS);
+      });
+      $("#youtubeLinkSave")?.addEventListener("click", () => {
+         const value = ($("#youtubeLinkInput")?.value || "").trim();
+         const parsed = value ? syncYoutubePreview(value, YT_LINK_IDS) : null;
+         if (value && !parsed) return; // invalid link → the hint is shown, dialog stays open
+         closeYoutubeLinkDialog(parsed ? { url: parsed.url, id: parsed.videoId } : { url: null, id: null });
+      });
+      $("#youtubeLinkCancel")?.addEventListener("click", () => closeYoutubeLinkDialog(null));
+      document.addEventListener("keydown", (event) => {
+         if (event.key === "Escape" && youtubeLinkResolve) closeYoutubeLinkDialog(null);
+      });
+   }
+}
+
 function bindControlListeners() {
    const state = getState();
    $("#keySelect").addEventListener("change", (event) => {
@@ -2266,8 +2396,11 @@ export function initEvents() {
       // ChordPro mode: the renderer owns the preview, this module owns the editor
       // panel. The hook runs after every ChordPro preview render.
       bindChordPro: () => syncChordProWorkspace(),
+      // Album members are read-only: the YouTube chip hides its edit affordances.
+      isMemberReadOnly: () => memberReadOnly(),
    });
    bindControlListeners();
+   bindYoutubeChip();
    localStorage.removeItem("chordSheetPreview");
    applyTheme(activeTheme, { persist: false });
    syncEditor();
@@ -2304,7 +2437,7 @@ export function initEvents() {
    });
    // Cloud sync (login + My Songs). Bridged via callbacks so cloudUI never
    // imports this module — keeps the dependency graph acyclic.
-   initCloudUI({
+   cloudControl = initCloudUI({
       getProject: () => projectData(),
       // A cloud/album song is a song LOAD like any other: the per-section chord-row flags saved
       // inside the version are restored verbatim (see applyProject), so Save to Cloud round-trips.

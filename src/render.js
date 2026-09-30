@@ -22,6 +22,7 @@ import {
    normalizeEditorMode,
 } from "./notation.js?v=__BUILD__";
 import { parseChordPro } from "./chordPro.js?v=__BUILD__";
+import { youtubeChipMeta } from "./youtube.js?v=__BUILD__";
 import { $, prefersTap, toast } from "./dom.js?v=__BUILD__";
 import { getState } from "./store.js?v=__BUILD__";
 
@@ -38,6 +39,11 @@ const hooks = {
    // { active, sectionId, anchor, focus } or a falsy value when not selecting.
    getBarSelection() {
       return null;
+   },
+   // True while an album MEMBER (read-only role) has the song open: such a user may watch a
+   // link but not change the arrangement, so the edit affordances are not offered.
+   isMemberReadOnly() {
+      return false;
    },
 };
 export function initRender(overrides = {}) {
@@ -209,6 +215,35 @@ export function renderControls() {
    if (chordproMode) warnIfChordProCssMissing();
    const modeBadgeText = $("#editorModeBadge .editor-mode-badge-text");
    if (modeBadgeText) modeBadgeText.textContent = editorModeMeta[mode].badge;
+   // YouTube chip (topbar): the link of the arrangement being edited, visible in EVERY mode.
+   // Two states only — a clickable thumbnail (+ its start time) or the "＋ YouTube" affordance —
+   // so the chip can never disagree with the score it belongs to.
+   const chipMeta = youtubeChipMeta(state);
+   const chipWrap = $("#youtubeChip");
+   const chipAdd = $("#youtubeChipAdd");
+   if (chipWrap && chipAdd) {
+      chipWrap.hidden = !chipMeta.hasLink;
+      chipAdd.hidden = chipMeta.hasLink;
+      // A read-only member can still watch the video but must not change the arrangement's link,
+      // so the ✎ / ＋ affordances are hidden by CSS (the click handlers guard too).
+      const chipReadOnly = hooks.isMemberReadOnly() ? "true" : "false";
+      chipWrap.dataset.readonly = chipReadOnly;
+      chipAdd.dataset.readonly = chipReadOnly;
+      if (chipMeta.hasLink) {
+         const thumb = $("#youtubeChipThumb");
+         const label = $("#youtubeChipLabel");
+         const openBtn = $("#youtubeChipOpen");
+         if (thumb && thumb.getAttribute("src") !== chipMeta.thumb) thumb.src = chipMeta.thumb;
+         if (label) label.textContent = chipMeta.label;
+         if (openBtn) {
+            openBtn.title = chipMeta.title;
+            openBtn.setAttribute("aria-label", chipMeta.title);
+            // The click target lives on the element (events.js opens it in a new tab), so the
+            // renderer stays the only place that decides WHAT the chip points at.
+            openBtn.dataset.href = chipMeta.href;
+         }
+      }
+   }
    // Tempo lives per-song, so mirror the state back into the BPM input whenever
    // controls re-render (e.g. on load/import) — keeps it from sticking at 120.
    const bpmInput = $("#bpmInput");

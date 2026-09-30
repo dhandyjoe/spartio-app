@@ -45,7 +45,7 @@ import {
    versionCopyPayload,
 } from "../src/cloud.js";
 import { friendlyName } from "../src/identity.js";
-import { parseYoutubeUrl, canonicalUrl, thumbnailUrl, youtubeFields, parseStartTime, formatStartTime } from "../src/youtube.js";
+import { parseYoutubeUrl, canonicalUrl, thumbnailUrl, youtubeFields, parseStartTime, formatStartTime, youtubeChipMeta } from "../src/youtube.js";
 import { beatHTML, chordProSectionHTML } from "../src/render.js";
 import { isValidChordSpelling, withTypedSpelling } from "../src/chordEditor.js";
 import {
@@ -1331,6 +1331,56 @@ test("a version keeps its YouTube start time through every save", () => {
    // 4) The dialog's thumbnail opens YouTube at that second and says so.
    const cloudUI = readProjectFile("src/cloudUI.js");
    assert.match(cloudUI, /thumb\.title = at \? `\$\{DEFAULT_YT_THUMB_TITLE\} — starts at \$\{at\}`/);
+});
+
+// The editor shows the link of the arrangement being edited as a topbar chip, in EVERY writing
+// mode. It is painted from the document (render.js), so it can never disagree with the score, and
+// it never reaches paper (the whole topbar is hidden while printing).
+test("the editor shows the arrangement's YouTube link as a topbar chip", () => {
+   const id = "fT68qylOwWg";
+   const canonical = `https://www.youtube.com/watch?v=${id}&t=3214`;
+   // 1) View-model: with a link (+ start), with a link, and with nothing to show.
+   assert.deepEqual(youtubeChipMeta({ youtubeUrl: `https://youtu.be/${id}?t=3214` }), {
+      hasLink: true,
+      href: canonical,
+      thumb: thumbnailUrl(id, "mqdefault"),
+      label: "▶ 53:34",
+      title: "Open on YouTube — starts at 53:34",
+   });
+   assert.deepEqual(youtubeChipMeta({ youtubeId: id }), {
+      hasLink: true,
+      href: `https://www.youtube.com/watch?v=${id}`,
+      thumb: thumbnailUrl(id, "mqdefault"),
+      label: "▶",
+      title: "Open on YouTube",
+   });
+   for (const empty of [{}, null, { youtubeUrl: "" }, { youtubeId: "  " }]) {
+      assert.equal(youtubeChipMeta(empty).hasLink, false, `no chip for ${JSON.stringify(empty)}`);
+   }
+   // 2) Markup: chip + link dialog exist, and the chip lives in the topbar (print-hidden).
+   const html = readProjectFile("index.html");
+   assert.match(html, /id="youtubeChip"/);
+   assert.match(html, /id="youtubeChipOpen"/);
+   assert.match(html, /id="youtubeChipEdit"/);
+   assert.match(html, /id="youtubeChipAdd"/);
+   assert.match(html, /id="youtubeLinkDialog"/);
+   assert.match(html, /id="youtubeLinkInput"/);
+   const topbar = html.match(/<header class="topbar">[\s\S]*?<\/header>/);
+   assert.ok(topbar && /id="youtubeChip"/.test(topbar[0]), "the chip belongs to the topbar");
+   assert.match(readProjectFile("styles/ui.css"), /html\.is-print-layout \.topbar,/);
+   // 3) Wiring: render paints it, events owns the clicks (open + edit), cloudUI lends its dialog.
+   const render = readProjectFile("src/render.js");
+   assert.match(render, /const chipMeta = youtubeChipMeta\(state\);/);
+   assert.match(render, /openBtn\.dataset\.href = chipMeta\.href;/);
+   const events = readProjectFile("src/events.js");
+   assert.match(events, /function bindYoutubeChip\(\)/);
+   assert.match(events, /window\.open\(href, "_blank", "noopener"\)/);
+   assert.match(events, /cloudControl\.openVersionDetailsForCurrent\(\)/);
+   assert.match(events, /setVersionYoutube\(\{ youtubeUrl: result\.url, youtubeId: result\.id \}\)/);
+   assert.match(events, /isMemberReadOnly: \(\) => memberReadOnly\(\)/);
+   assert.match(readProjectFile("src/cloudUI.js"), /openVersionDetailsForCurrent: \(\) => \{/);
+   // Read-only members keep the chip but lose the ✎ / ＋.
+   assert.match(readProjectFile("styles/ui.css"), /\.youtube-chip\[data-readonly="true"\] \.youtube-chip-edit/);
 });
 
 test("canonicalUrl and thumbnailUrl helpers", () => {

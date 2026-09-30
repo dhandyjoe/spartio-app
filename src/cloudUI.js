@@ -1287,7 +1287,7 @@ function openVersionDetailsDialog({ songId, versionId, label = "", youtubeUrl = 
  * video on YouTube in a new tab. Shared by the "Create new version" dialog and
  * the "Version details" dialog (pass `ids` for the latter).
  */
-function syncYoutubePreview(value, { preview: previewSel, thumb: thumbSel, hint: hintSel } = YT_DETAILS_IDS) {
+export function syncYoutubePreview(value, { preview: previewSel, thumb: thumbSel, hint: hintSel } = YT_DETAILS_IDS) {
    const preview = $(previewSel);
    const thumb = $(thumbSel);
    const hint = $(hintSel);
@@ -3735,4 +3735,19 @@ export function initCloudUI(editorBridge) {
    onAuth(reflectAuth);
    // Decide the initial screen (login page vs My Songs) from the restored session.
    routeOnLoad();
+   // Control surface for the editor (the dependency graph stays one-way: cloudUI never imports
+   // events.js; the editor uses these through the object it gets back from this init).
+   return {
+      /**
+       * Open the version-details dialog for the arrangement that is open (rename / link / delete,
+       * written straight to the cloud, scope-aware). Returns null when there is nothing to manage
+       * — a local draft or a file-opened song has no version document, and the editor then uses
+       * its own YouTube link dialog instead.
+       */
+      openVersionDetailsForCurrent: () => {
+         const ctx = bridge.getCloudContext?.() || null;
+         if (!ctx?.versionId) return Promise.resolve(null);
+         return editVersionDetails(ctx.versionId);
+      },
+   };
 }

@@ -33,7 +33,9 @@ Chord & Number Score Builder — arrange chords and number (Nashville) notation,
 - ♻️ Transpose all chords by semitone (chords + key) — works in every mode, including ChordPro
 - 🎬 **Song versions, each with its own YouTube link** — one song can hold several arrangements
   (*+ New version*); switch between them from the pill next to the title and give **each version
-  its own video** (`✎` → *YouTube link*, with a live thumbnail preview). The link is stored on that
+  its own video** (`✎` → *YouTube link*, with a live thumbnail preview). The link is shown as a
+  **chip in the editor's topbar** whenever you open a song — click it to watch (a saved start time
+  is honoured), `✎` to change it — so the video is visible without opening any dialog. It is stored on that
   version's document and written the moment you confirm the dialog — switching versions, reloading
   or *Save to Cloud* never drops it. A **start time** survives too: paste `https://youtu.be/<id>?t=3214`
   (or `&t=53m34s`) and the stored link keeps `&t=3214`, so the thumbnail opens YouTube right at that

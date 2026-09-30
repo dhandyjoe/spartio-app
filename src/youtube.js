@@ -130,3 +130,23 @@ export function youtubeFields(source) {
    // save/reload (see the header note about `&t=`).
    return { youtubeUrl: canonicalUrl(videoId, parsed?.start), youtubeId: videoId };
 }
+
+/**
+ * View-model for the editor's YouTube chip (topbar). Derived from the OPEN document, so the chip
+ * and the score always describe the same arrangement:
+ *   { hasLink, href, thumb, label, title }
+ * `hasLink: false` means "offer ＋ YouTube" instead of a thumbnail (nothing stored, or a value we
+ * could not recognize — the link dialog is where such a value gets fixed).
+ */
+export function youtubeChipMeta(source) {
+   const { youtubeUrl, youtubeId } = youtubeFields(source);
+   if (!youtubeId) return { hasLink: false, href: "", thumb: "", label: "", title: "" };
+   const at = formatStartTime(parseYoutubeUrl(youtubeUrl)?.start);
+   return {
+      hasLink: true,
+      href: youtubeUrl,
+      thumb: thumbnailUrl(youtubeId, "mqdefault"),
+      label: at ? `▶ ${at}` : "▶",
+      title: at ? `Open on YouTube — starts at ${at}` : "Open on YouTube",
+   };
+}
