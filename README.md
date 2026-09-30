@@ -31,6 +31,11 @@ Chord & Number Score Builder — arrange chords and number (Nashville) notation,
   recognises (an unknown suffix falls back to a major triad instead of silence).
 - 📝 Per-beat lyrics — paste a sentence to auto-distribute words across bars
 - ♻️ Transpose all chords by semitone (chords + key) — works in every mode, including ChordPro
+- 🎬 **Song versions, each with its own YouTube link** — one song can hold several arrangements
+  (*+ New version*); switch between them from the pill next to the title and give **each version
+  its own video** (`✎` → *YouTube link*, with a live thumbnail preview). The link is stored on that
+  version's document and written the moment you confirm the dialog — switching versions, reloading
+  or *Save to Cloud* never drops it. Title, artist, key and time signature stay shared by the song.
 - 🌗 Light/dark theme, zoom, and a dedicated PDF-layout preview (opening *Export PDF* switches it
   on behind the dialog; app chrome that paper never contains — like the site footer — is dropped
   there so nothing slides into view behind the modal)

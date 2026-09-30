@@ -11,6 +11,11 @@ function defaultState() {
       meter: "4/4",
       bpm: 120,
       lyricsEnabled: false,
+      // The YouTube link of the arrangement being edited. It belongs to the VERSION document
+      // (each version has its own link), so the editor document carries it and every save writes
+      // it back — see youtubeFields() in youtube.js.
+      youtubeUrl: "",
+      youtubeId: "",
       // The chord row above the numbers is a PER-SECTION feature now (see
       // section.chordAboveEnabled), so there is no song-wide flag any more.
       sections: [first],

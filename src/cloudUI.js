@@ -67,8 +67,7 @@ let bridge = {
    applyProject: () => {},
    getCloudContext: () => null,
    setCloudContext: () => {},
-   getPendingVersionDetails: () => null,
-   setPendingVersionDetails: () => {},
+   setVersionYoutube: () => {},
    markDirty: () => {},
    openPdfOptions: () => {},
    hasUnsavedChanges: () => false,
@@ -375,10 +374,9 @@ async function guardUnsavedThen(proceed) {
       if (!saved) return false;
    }
    // "discard" (or a successful save) → proceed. Clear the flag either way so we
-   // don't re-prompt if nothing else changes. A staged version-details edit is
-   // also dropped (it is only persisted via Save to Cloud).
+   // don't re-prompt if nothing else changes. (Version details are written to the
+   // cloud the moment the dialog is confirmed, so there is nothing staged to drop.)
    bridge.markSaved();
-   bridge.setPendingVersionDetails(null);
    proceed();
    return true;
 }
@@ -1487,11 +1485,7 @@ function syncVersionPill() {
    if (wrap.hidden) return;
    const labelEl = $("#versionSwitcherLabel");
    if (labelEl) {
-      const pending = bridge.getPendingVersionDetails?.() || null;
-      labelEl.textContent =
-         pending && pending.versionId === ctx.versionId && pending.label
-            ? pending.label
-            : ctx.versionLabel || "Version 1";
+      labelEl.textContent = ctx.versionLabel || "Version 1";
    }
 }
 
@@ -1519,11 +1513,8 @@ async function renderVersionList() {
    listEl.innerHTML = versions
       .map((v) => {
          const current = v.versionId === ctx.versionId;
-         const pending = bridge.getPendingVersionDetails?.() || null;
-         const isPending = pending && pending.versionId === v.versionId;
-         const name = escapeHtml((isPending && pending.label) || v.label || "Untitled");
-         const ytIcon = (isPending ? pending.youtubeId : v.youtubeId) ? `<span class="version-item-yt" title="Has YouTube link">▶</span>` : "";
-         const pendingDot = isPending ? `<span class="version-item-pending" title="Pending — save to cloud">●</span>` : "";
+         const name = escapeHtml(v.label || "Untitled");
+         const ytIcon = v.youtubeId ? `<span class="version-item-yt" title="Has YouTube link">▶</span>` : "";
          const currentMark = current ? `<span class="version-item-current">Current</span>` : "";
          const editBtn = canEditDetails
             ? `<button class="version-item-edit" type="button" data-version-id="${escapeHtml(v.versionId)}" aria-label="Edit details" title="Edit details">✎</button>`
@@ -1532,7 +1523,6 @@ async function renderVersionList() {
             <div class="version-list-item${current ? " is-current" : ""}">
                <button class="version-item-switch" type="button" data-version-id="${escapeHtml(v.versionId)}" title="Open this version">
                   <span class="version-item-label">${name}${ytIcon}</span>
-                  ${pendingDot}
                   ${currentMark}
                </button>
                ${editBtn}
@@ -1666,32 +1656,43 @@ async function editVersionDetails(versionId) {
       }
       try {
          await deleteVersionFor(ctx, versionId);
-         // A pending edit of this version is gone with it.
-         const pending = bridge.getPendingVersionDetails?.() || null;
-         if (pending?.versionId === versionId) bridge.setPendingVersionDetails(null);
          toast("Version deleted");
       } catch (error) {
          toast(isFirestorePermissionsError(error) ? "Delete blocked — check Firestore security rules" : "Could not delete version");
       }
       return;
    }
-   // Stage the rename + YouTube edit as PENDING. It is only written to the cloud
-   // together with the next "Save" — until then a yellow badge on that button
-   // reminds the user the version details were edited.
-   bridge.setPendingVersionDetails({
-      versionId,
-      label: result.label,
-      youtubeUrl: result.youtubeUrl,
-      youtubeId: result.youtubeId,
-   });
-   bridge.markDirty();
-   // Reflect the edit locally (without touching Firestore yet).
+   // Persist IMMEDIATELY (no staging): the link/name belongs to THIS version document, and a
+   // pending edit used to be lost when the user navigated away before a "Save to Cloud".
+   // The song's denormalized "latest" summary is refreshed only when this IS the latest version,
+   // so editing an older arrangement never rewrites what the song list shows.
+   try {
+      await saveVersionFor(ctx, versionId, {
+         youtubeUrl: result.youtubeUrl,
+         youtubeId: result.youtubeId,
+      }, { label: result.label });
+      const versions = await listVersionsFor(ctx);
+      if (versions[0]?.versionId === versionId) {
+         const patch = {
+            latestVersionLabel: result.label,
+            latestYoutubeId: result.youtubeId || null,
+         };
+         if (isAlbumCtx(ctx)) await updateAlbumSongMeta(ctx.albumId, ctx.songId, patch);
+         else await updateSongMeta(ctx.songId, patch);
+      }
+   } catch (error) {
+      toast(isFirestorePermissionsError(error) ? "Save blocked — check Firestore security rules" : "Could not save version details");
+      return;
+   }
+   // Editing the arrangement that is OPEN also updates the editor document, otherwise the next
+   // "Save to Cloud" would write the previous link back over this one.
    if (ctx.versionId === versionId) {
+      bridge.setVersionYoutube({ youtubeUrl: result.youtubeUrl, youtubeId: result.youtubeId });
       bridge.setCloudContext(nextCtx(ctx, { versionId, versionLabel: result.label }));
    }
    syncVersionPill();
    renderVersionList();
-   toast("Version details pending — save to persist");
+   toast(`Version "${result.label}" updated`);
 }
 
 // Delete version… — removes that arrangement. The song itself survives (Opsi A).
@@ -2149,34 +2150,6 @@ async function importFromPayload(payload) {
 // users/{uid}/songs/{id}/versions. Shared by BOTH branches of saveToCloud so a
 // rename can never land in the wrong library, and the denormalized latest-*
 // fields on the parent doc follow along.
-async function persistPendingVersionDetails(ctx) {
-   const pending = bridge.getPendingVersionDetails?.() || null;
-   if (!pending?.versionId || !ctx?.songId) return null;
-   const payload = { youtubeUrl: pending.youtubeUrl, youtubeId: pending.youtubeId };
-   if (isAlbumCtx(ctx)) {
-      await saveAlbumVersion(ctx.albumId, ctx.songId, pending.versionId, payload, { label: pending.label });
-      const versions = await listAlbumVersions(ctx.albumId, ctx.songId);
-      if (versions[0]?.versionId === pending.versionId) {
-         await updateAlbumSongMeta(ctx.albumId, ctx.songId, {
-            latestVersionLabel: pending.label,
-            latestYoutubeId: pending.youtubeId || null,
-         });
-      }
-   } else {
-      await saveVersion(ctx.songId, pending.versionId, payload, { label: pending.label });
-      const versions = await listVersions(ctx.songId);
-      if (versions[0]?.versionId === pending.versionId) {
-         await updateSongMeta(ctx.songId, {
-            latestVersionLabel: pending.label,
-            latestYoutubeId: pending.youtubeId || null,
-         });
-      }
-   }
-   if (ctx.versionId === pending.versionId) ctx.versionLabel = pending.label;
-   bridge.setPendingVersionDetails(null);
-   return pending;
-}
-
 async function saveToCloud() {
    if (!isConfigured()) {
       toast("Cloud is not configured yet");
@@ -2222,9 +2195,8 @@ async function saveToCloud() {
          if (role === "owner") {
             const next = await saveToAlbum(activeAlbumId, project, { songId: ctx.songId, versionId: ctx.versionId, versionLabel: ctx.versionLabel });
             const albumContext = { ...next, scope: "album", albumId: activeAlbumId, albumName, role: "owner" };
-            // A staged version-details edit (rename / YouTube link) is persisted in
-            // ALBUM scope here — never through the My Songs helpers.
-            await persistPendingVersionDetails(albumContext);
+            // Version details (rename / YouTube link) are written by the dialog itself, in
+            // ALBUM scope — never through the My Songs helpers.
             bridge.setCloudContext(albumContext);
             setActiveAlbumCtx(albumContext);
             syncVersionPill();
@@ -2275,7 +2247,7 @@ async function saveToCloud() {
             // Song exists but currently has no versions (add-state): this save
             // becomes its (new) first version.
             const created = await saveVersion(songId, null, project, { label: ctx.versionLabel || "Version 1" });
-            await updateLatestVersion(songId, created.versionId, created.label, 1, project.editorMode, undefined, project.key, project.meter);
+            await updateLatestVersion(songId, created.versionId, created.label, 1, project.editorMode, project.youtubeId || undefined, project.key, project.meter);
             nextContext = { songId, versionId: created.versionId, versionLabel: created.label };
          }
          await updateSongMeta(songId, {
@@ -2295,12 +2267,10 @@ async function saveToCloud() {
          }
          const createdSong = await createSong({ title, artist });
          const created = await saveVersion(createdSong.songId, null, project, { label: ctx.versionLabel || "Version 1" });
-         await updateLatestVersion(createdSong.songId, created.versionId, created.label, 1, project.editorMode, undefined, project.key, project.meter);
+         await updateLatestVersion(createdSong.songId, created.versionId, created.label, 1, project.editorMode, project.youtubeId || undefined, project.key, project.meter);
          nextContext = { songId: createdSong.songId, versionId: created.versionId, versionLabel: created.label };
       }
-      // Persist any staged version-details edit (name / YouTube link) together
-      // with this "Save to Cloud" — scope-aware (My Songs here, album earlier).
-      await persistPendingVersionDetails(nextContext);
+      // Version details (rename / YouTube link) are written by the dialog itself.
       bridge.setCloudContext(nextContext);
       // This document is a My Songs song from now on: drop any album memo so a
       // later save can never be redirected into an album by stale state.

@@ -61,7 +61,7 @@ send album actions to the My Songs path (empty version list, stray songs).
 | **Save a copy** (member) | private copy under `users/{uid}/songs`, then the editor switches to that copy (context + URL), so later saves stay in My Songs |
 | **Save to Cloud** (My Songs song) | `users/{uid}/songs/{songId}/versions` |
 | Version list / switch / rename / delete | follows the same scope (`listAlbumVersions` vs `listVersions`) |
-| Rename + YouTube link of an album version | persisted in ALBUM scope on the next Save (`persistPendingVersionDetails`) |
+| Rename + YouTube link of an album version | written IMMEDIATELY in ALBUM scope by the details dialog (`✎`), together with the song's `latest*` summary when that version is the latest |
 
 Save direction is resolved in layers — cloud context → in-memory album memo
 (`activeAlbumCtx`) → current URL — so a lost context or a rewritten hash can

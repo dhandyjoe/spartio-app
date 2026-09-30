@@ -48,3 +48,23 @@ export function thumbnailUrl(videoId, size = "mqdefault") {
    const preset = THUMB_SIZES.includes(size) ? size : "mqdefault";
    return `https://i.ytimg.com/vi/${videoId}/${preset}.jpg`;
 }
+
+/**
+ * The YouTube fields of a project/version document, normalized so a version's link always
+ * round-trips: `projectData() → version doc → composeSong() → applyProject() → projectData()`.
+ *
+ *   - the URL wins over the id when both are present (the URL is what the user last pasted),
+ *     and it is rewritten to the canonical watch URL;
+ *   - an id without a URL gets one back (and vice versa), so neither half can go missing;
+ *   - an unrecognizable URL is preserved verbatim instead of being dropped (older data),
+ *     it simply has no id to offer.
+ * Always returns strings — `""` means "this version has no link".
+ */
+export function youtubeFields(source) {
+   const url = typeof source?.youtubeUrl === "string" ? source.youtubeUrl.trim() : "";
+   const id = typeof source?.youtubeId === "string" ? source.youtubeId.trim() : "";
+   const parsed = parseYoutubeUrl(url);
+   const videoId = parsed?.videoId || id;
+   if (!videoId) return { youtubeUrl: parsed ? parsed.url : url, youtubeId: "" };
+   return { youtubeUrl: canonicalUrl(videoId), youtubeId: videoId };
+}

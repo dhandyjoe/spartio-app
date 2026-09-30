@@ -68,6 +68,7 @@ import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEdi
 import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=__BUILD__";
 import { initChordProEditor, syncChordProWorkspace } from "./chordProEditor.js?v=__BUILD__";
 import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback.js?v=__BUILD__";
+import { youtubeFields } from "./youtube.js?v=__BUILD__";
 
 // ---- UI-only state (not part of the serializable document) ----
 // Which cloud document is currently open in the editor:
@@ -99,20 +100,13 @@ function setCloudContext(next) {
          : { scope: next.scope || null, albumId: null, albumName: "", role: next.role || null }),
    };
 }
-// Staged "version details" edit (version name / YouTube link) that the user has
-// changed in the details dialog but not yet persisted. It is written to
-// Firestore together with the next "Save to Cloud" — until then it only powers
-// the yellow unsaved badge + the local UI (pill / version list).
-let pendingVersionDetails = null;
-function setPendingVersionDetails(next) {
-   pendingVersionDetails = next
-      ? {
-           versionId: next.versionId,
-           label: next.label || "",
-           youtubeUrl: next.youtubeUrl || null,
-           youtubeId: next.youtubeId || null,
-        }
-      : null;
+// The version-details dialog (rename / YouTube link) writes STRAIGHT to the version document, so
+// there is no staged state any more — a link can no longer be lost by navigating away before a
+// "Save to Cloud". When the edit belongs to the arrangement that is OPEN, the editor document is
+// updated too: otherwise the next save would write the previous link back over the new one.
+// Silent on purpose — the cloud already holds this value, so it is not an unsaved edit.
+function setVersionYoutube(fields) {
+   setState({ ...getState(), ...youtubeFields(fields) });
 }
 // Tracks whether the document has been edited since it was last loaded from — or
 // saved to — the cloud. Powers the "unsaved changes" guard on Back to My Songs.
@@ -1545,6 +1539,8 @@ function updatePasteButtons() {
 }
 function projectData() {
    const state = getState();
+   // The arrangement's own YouTube link, normalized (id ↔ URL) before it is written out.
+   const youtube = youtubeFields(state);
    return {
       format: "chord-sheet",
       version: 2,
@@ -1566,6 +1562,11 @@ function projectData() {
       nashvilleNumber: state.nashvilleNumber,
       nashvilleAccidental: state.nashvilleAccidental,
       editorMode: state.editorMode,
+      // Per-VERSION YouTube link (see youtubeFields): exported/imported and written to the cloud
+      // together with the score, so each arrangement keeps its own video. `null` means "no link",
+      // which the cloud layer turns into a field DELETE instead of storing an empty string.
+      youtubeUrl: youtube.youtubeUrl || null,
+      youtubeId: youtube.youtubeId || null,
    };
 }
 function downloadProject() {
@@ -1626,6 +1627,12 @@ function applyProject(project) {
       activeId: sections[0].id,
       editingId: null,
       editorMode,
+      // The arrangement's own YouTube link (each VERSION has one) travels with the document, so
+      // a later "Save to Cloud" writes the same link back instead of clearing it. Undo/redo
+      // replays a snapshot of the SCORE only: the link is cloud metadata owned by the version
+      // details dialog, so a replay keeps the live value (an undo could otherwise revert the link
+      // and the next save would push the old one back).
+      ...(isRestoring ? youtubeFields(getState()) : youtubeFields(project)),
    });
    // Restore this song's own PDF options (font sizes, spacing, paper, margins),
    // so opening it again keeps the exact export appearance chosen for it.
@@ -2304,8 +2311,9 @@ export function initEvents() {
       applyProject: (project) => applyProject(project),
       getCloudContext: () => currentCloudContext,
       setCloudContext: (ctx) => setCloudContext(ctx),
-      getPendingVersionDetails: () => pendingVersionDetails,
-      setPendingVersionDetails: (ctx) => setPendingVersionDetails(ctx),
+      // The version-details dialog persists its edit immediately; this keeps the OPEN document
+      // (the current arrangement) in sync with the link it just wrote.
+      setVersionYoutube: (fields) => setVersionYoutube(fields),
       // Notify the badge that the document has unsaved (cloud-pending) state.
       markDirty: () => setDirty(true),
       // Unsaved-changes guard: cloudUI asks whether the open document has edits

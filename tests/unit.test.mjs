@@ -45,7 +45,7 @@ import {
    versionCopyPayload,
 } from "../src/cloud.js";
 import { friendlyName } from "../src/identity.js";
-import { parseYoutubeUrl, canonicalUrl, thumbnailUrl } from "../src/youtube.js";
+import { parseYoutubeUrl, canonicalUrl, thumbnailUrl, youtubeFields } from "../src/youtube.js";
 import { beatHTML, chordProSectionHTML } from "../src/render.js";
 import { isValidChordSpelling, withTypedSpelling } from "../src/chordEditor.js";
 import {
@@ -1130,6 +1130,69 @@ test("composeSong fills generic placeholders when nothing provides a title", () 
    const out = composeSong(null, { format: "chord-sheet", sections: [] });
    assert.equal(out.title, "Song Title");
    assert.equal(out.artist, "Artist / Composer");
+});
+
+// ---- Per-version YouTube links ---------------------------------------------
+// Every arrangement of a song owns its OWN link (`youtubeUrl` + `youtubeId` on the version
+// document). The editor document carries it, so a save writes the same link back instead of
+// erasing it — that was the reported "the YouTube link I attached doesn't stick" bug.
+test("each version keeps its own YouTube link through the whole round-trip", () => {
+   const version = {
+      versionId: "v2",
+      label: "Acoustic",
+      number: 2,
+      youtubeUrl: "https://youtu.be/aBcD_eFgH1-",
+      youtubeId: "aBcD_eFgH1-",
+      format: "chord-sheet",
+      sections: [{ name: "Intro", bars: [] }],
+   };
+   // 1) Loading a version into the editor keeps the link (composeSong used to delete it).
+   const project = composeSong({ title: "Song", artist: "Band" }, version);
+   assert.equal(project.youtubeId, "aBcD_eFgH1-");
+   assert.equal(project.youtubeUrl, "https://youtu.be/aBcD_eFgH1-");
+   assert.ok(!("label" in project) && !("number" in project), "version meta is still stripped");
+   // 2) The album copy carries it too.
+   const copy = versionCopyPayload(version);
+   assert.equal(copy.youtubeId, "aBcD_eFgH1-");
+   assert.equal(copy.youtubeUrl, "https://youtu.be/aBcD_eFgH1-");
+   // 3) The editor document normalizes both halves, so neither can go missing.
+   const canonical = { youtubeUrl: canonicalUrl("aBcD_eFgH1-"), youtubeId: "aBcD_eFgH1-" };
+   assert.deepEqual(youtubeFields({ youtubeUrl: "https://youtu.be/aBcD_eFgH1-", youtubeId: "" }), canonical);
+   assert.deepEqual(youtubeFields({ youtubeId: "aBcD_eFgH1-" }), canonical);
+   assert.deepEqual(youtubeFields({ youtubeUrl: "aBcD_eFgH1-" }), canonical, "a bare id counts");
+   // Removing the link (dialog → ✕) clears both halves…
+   assert.deepEqual(youtubeFields({ youtubeUrl: null, youtubeId: null }), { youtubeUrl: "", youtubeId: "" });
+   assert.deepEqual(youtubeFields(null), { youtubeUrl: "", youtubeId: "" });
+   // …and an unrecognizable URL is preserved verbatim instead of being dropped.
+   assert.deepEqual(youtubeFields({ youtubeUrl: "https://example.com/v/1" }), {
+      youtubeUrl: "https://example.com/v/1",
+      youtubeId: "",
+   });
+   // 4) Wiring: the editor document carries the link, the version dialog writes IMMEDIATELY
+   //    (no staging that a navigation could drop), and the song's "latest" summary keeps the id.
+   const events = readProjectFile("src/events.js");
+   assert.match(events, /youtubeUrl: youtube\.youtubeUrl \|\| null/, "projectData must export the link");
+   assert.match(events, /youtubeId: youtube\.youtubeId \|\| null/);
+   assert.match(events, /youtubeFields\(project\)/, "applyProject must restore the link");
+   assert.match(
+      events,
+      /isRestoring \? youtubeFields\(getState\(\)\) : youtubeFields\(project\)/,
+      "undo/redo must keep the live link (a replay is score-only)",
+   );
+   const cloud = readProjectFile("src/cloud.js");
+   assert.ok(!/delete project\.youtubeUrl/.test(cloud), "composeSong must keep the version link");
+   const cloudUI = readProjectFile("src/cloudUI.js");
+   assert.ok(
+      !/setPendingVersionDetails|persistPendingVersionDetails/.test(cloudUI),
+      "the version-details dialog writes immediately instead of staging",
+   );
+   assert.match(cloudUI, /saveVersionFor\(ctx, versionId, \{/, "✎ writes that version's document");
+   assert.match(cloudUI, /bridge\.setVersionYoutube\(\{/, "the open document follows the edit");
+   assert.equal(
+      (cloudUI.match(/project\.youtubeId \|\| undefined/g) || []).length,
+      2,
+      "both first-version saves must pass the real id (they used to wipe latestYoutubeId)",
+   );
 });
 
 test("isLegacySongDoc flags flat documents that still hold sections inline", () => {

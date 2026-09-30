@@ -201,8 +201,10 @@ export function composeSong(songMeta, version) {
    delete project.updatedAt;
    delete project.cloudId;
    delete project.songId;
-   delete project.youtubeUrl;
-   delete project.youtubeId;
+   // NOTE: the YouTube link is NOT dropped here any more. Each arrangement owns its own link
+   // (`youtubeUrl`/`youtubeId` live on the version document), so the editor document must carry
+   // it: that is what makes a later "Save to Cloud" write the SAME link back instead of erasing
+   // the version's link. See youtubeFields() in youtube.js.
    project.title = songMeta?.title || project.title || "Song Title";
    project.artist = songMeta?.artist !== undefined ? songMeta.artist : project.artist ?? "Artist / Composer";
    return project;
@@ -294,6 +296,10 @@ export async function saveVersion(songId, versionId, data = {}, { label, number 
    delete payload.cloudId;
    delete payload.songId;
    delete payload.versionId;
+   // "No link" is the ABSENCE of the fields, never a stored null (same rule as the update path),
+   // so `youtubeId` in a version document always means "this arrangement has a video".
+   if (payload.youtubeUrl === null) delete payload.youtubeUrl;
+   if (payload.youtubeId === null) delete payload.youtubeId;
    const ref = await dbFns.addDoc(versionsCollection(songId), payload);
    return { versionId: ref.id, label: resolvedLabel, number: nextNumber };
 }
@@ -777,6 +783,9 @@ export async function saveAlbumVersion(albumId, songId, versionId, data = {}, { 
    delete payload.cloudId;
    delete payload.songId;
    delete payload.versionId;
+   // Same rule as saveVersion(): "no link" means the fields are absent, not stored nulls.
+   if (payload.youtubeUrl === null) delete payload.youtubeUrl;
+   if (payload.youtubeId === null) delete payload.youtubeId;
    const ref = await dbFns.addDoc(albumVersionsCollection(albumId, songId), payload);
    return { versionId: ref.id, label: resolvedLabel, number: nextNumber };
 }
