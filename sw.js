@@ -21,6 +21,10 @@
 //     online (the old behaviour) is what let a previous deploy's CSS/JS be
 //     served for one extra load — e.g. old print rules still drawing a green
 //     selection ring around the chords in the exported PDF.
+//     ⚠️ While the URL still carries the PLACEHOLDER version (a local dev server,
+//     where the ?v= never changes) the cache is bypassed entirely — see
+//     isUnbuiltAsset() — so an edited module shows up on the next plain reload
+//     instead of being frozen behind a cache hit from the first load.
 //   • Cross-origin (Firebase gstatic CDN, Google auth) → NOT intercepted; they
 //     fall through to the network. Cloud features simply require connectivity.
 //
@@ -42,6 +46,14 @@ const CACHE_PREFIX = "wns-shell-";
 // exactly what index.html / the ES modules request, or those fetches would miss
 // the precache and hit the network.
 const ASSET_VERSION = "__BUILD__";
+
+// True while the repo's PLACEHOLDER version is still in the URL — i.e. the app is being served by
+// a local dev server (the deploy workflow replaces `__BUILD__` with a real build id, so this is
+// dead code in production). A placeholder version never changes, which makes cache-first fatal for
+// development: the FIRST copy of every module/stylesheet would be frozen forever, so a code edit
+// would look exactly like "my change did nothing" (and like a saved feature that never appears).
+// Those requests therefore always go to the network; the cache remains only an offline fallback.
+const isUnbuiltAsset = (url) => url.searchParams.get("v") === ASSET_VERSION;
 
 // Shell entry points that are requested WITHOUT a "?v=" cache-buster (index.html
 // itself, the base stylesheet and the manifest). These must be network-first:
@@ -161,10 +173,13 @@ self.addEventListener("fetch", (event) => {
    // Versioned static assets: stale-while-revalidate. ONLY an exact cache match
    // is served from cache — a new ?v= goes straight to the network (revalidated),
    // instead of matching the previous deploy's entry via ignoreSearch.
+   // (On a local dev server the version is still the placeholder → never a cache hit,
+   //  see isUnbuiltAsset(), so edited files appear on the next plain reload.)
+   const devAsset = isUnbuiltAsset(url);
    event.respondWith(
       (async () => {
          const cache = await caches.open(CACHE_VERSION);
-         const cached = await cache.match(request);
+         const cached = devAsset ? null : await cache.match(request);
          const network = fetch(new Request(request, { cache: "no-cache" }))
             .then((response) => {
                if (response && response.ok && response.type === "basic") {

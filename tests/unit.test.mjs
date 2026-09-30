@@ -1943,7 +1943,7 @@ test("the service worker revalidates the shell instead of serving a stale copy",
    // Online reads of a versioned asset must be EXACT matches: the old
    // `cache.match(request) || cache.match(request, { ignoreSearch: true })` made
    // a new ?v= resolve to the previous deploy's file for one extra load.
-   assert.match(sw, /const cached = await cache\.match\(request\);/);
+   assert.match(sw, /const cached = devAsset \? null : await cache\.match\(request\);/);
    assert.ok(
       !/const cached = \(await cache\.match\(request\)\) \|\|/.test(sw),
       "the online asset lookup must not fall back to ignoreSearch",
@@ -1951,6 +1951,12 @@ test("the service worker revalidates the shell instead of serving a stale copy",
    const ignoreUses = sw.match(/ignoreSearch: true/g) || [];
    assert.equal(ignoreUses.length, 2, "ignoreSearch must survive ONLY as the two offline fallbacks");
    assert.match(sw, /if \(fresh\) return fresh;[\s\S]{0,200}?ignoreSearch: true/);
+   // LOCAL DEVELOPMENT: while the repo still carries the placeholder version, a cache-first reply
+   // would freeze the first copy of every module forever (the ?v= never changes locally), which
+   // looks exactly like "my edit did nothing" / "the feature I saved is not there". Those requests
+   // bypass the cache and only fall back to it offline. Production always has a real build id.
+   assert.match(sw, /const isUnbuiltAsset = \(url\) => url\.searchParams\.get\("v"\) === ASSET_VERSION;/);
+   assert.match(sw, /const devAsset = isUnbuiltAsset\(url\);/);
 });
 
 test("bar-selection chrome can never print as a green box in the PDF", () => {
