@@ -6290,27 +6290,27 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    Reuses the existing cloud tokens so light/dark stay in sync.
    ====================================================================== */
 
-/* Home tabs (My Songs | Albums) — a SEGMENTED TOGGLE in the app's brand green:
-   a --green track, two equal segments, the ACTIVE one is a WHITE pill with dark
-   green text; the inactive one is white text on the track. */
+/* Home tabs (My Songs | Albums) — a COMPACT segmented toggle: a dark charcoal
+   track with two equal segments; the ACTIVE one is a WHITE pill with dark text,
+   the inactive one is white text on the track. */
 .home-tabs {
    flex: 0 0 auto;
    align-self: center;
    display: inline-flex;
    align-items: stretch;
-   width: min(440px, 100%);
-   margin: 12px 0;
-   padding: 5px;
+   width: min(320px, 100%);
+   margin: 10px 0;
+   padding: 4px;
    border-radius: 999px;
-   background: var(--green);
+   background: #222222;
 }
 .home-tab {
    flex: 1 1 0;
    appearance: none;
    border: 0;
    border-radius: 999px;
-   padding: 12px 18px;
-   font: 700 14px inherit;
+   padding: 8px 14px;
+   font: 700 13px inherit;
    color: #ffffff;
    background: transparent;
    cursor: pointer;
@@ -6323,7 +6323,7 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
 }
 .home-tab.is-active,
 .home-tab[aria-selected="true"] {
-   color: var(--dark-green);
+   color: #1f2421;
    background: #ffffff;
 }
 .home-tab-panel {
@@ -6730,13 +6730,13 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
 }
 
 /* Dark theme tweaks for the album UI. */
-/* Dark theme: deepen the track so the white active pill still pops. */
+/* Dark theme: slightly lighten the charcoal track so it reads against the page. */
 html[data-theme="dark"] .home-tabs {
-   background: var(--dark-green);
+   background: #2b2b2b;
 }
 html[data-theme="dark"] .home-tab.is-active,
 html[data-theme="dark"] .home-tab[aria-selected="true"] {
-   color: var(--dark-green);
+   color: #1f2421;
    background: #ffffff;
 }
 html[data-theme="dark"] .album-card {
