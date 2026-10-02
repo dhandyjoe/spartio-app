@@ -6290,50 +6290,39 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    Reuses the existing cloud tokens so light/dark stay in sync.
    ====================================================================== */
 
-/* Home tabs (My Songs | Albums) — the "switcher": the active view is marked by
-   an UNDERLINE only. No pill, no green, no background colour. */
+/* Home tabs (My Songs | Albums) — a TOGGLE switcher: a rounded track with the
+   active segment as a filled pill (#000000). No underline. */
 .home-tabs {
    flex: 0 0 auto;
-   display: flex;
+   align-self: center;
+   display: inline-flex;
    align-items: center;
-   justify-content: center;
-   gap: 26px;
-   padding: 10px clamp(20px, 4vw, 56px) 12px;
-   border-bottom: 1px solid var(--line);
-   background: var(--surface);
+   gap: 4px;
+   margin: 12px 0;
+   padding: 4px;
+   border-radius: 999px;
+   background: rgba(0, 0, 0, 0.06);
 }
 .home-tab {
-   position: relative;
    appearance: none;
    border: 0;
-   border-radius: 0;
-   padding: 8px 2px;
+   border-radius: 999px;
+   padding: 8px 22px;
    font: 700 14px inherit;
    color: var(--muted);
    background: transparent;
    cursor: pointer;
-   transition: color 0.16s ease;
+   transition:
+      background 0.18s ease,
+      color 0.18s ease;
 }
 .home-tab:hover {
    color: var(--ink);
-   background: transparent;
 }
 .home-tab.is-active,
 .home-tab[aria-selected="true"] {
-   color: var(--ink);
-   background: transparent;
-   box-shadow: none;
-}
-.home-tab.is-active::after,
-.home-tab[aria-selected="true"]::after {
-   content: "";
-   position: absolute;
-   left: 2px;
-   right: 2px;
-   bottom: 0;
-   height: 2px;
-   border-radius: 2px;
-   background: currentColor;
+   color: #ffffff;
+   background: #000000;
 }
 .home-tab-panel {
    flex: 1 1 auto;
@@ -6739,11 +6728,11 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
 }
 
 /* Dark theme tweaks for the album UI. */
-/* The switcher has NO background, so the dark theme simply brightens the ink. */
+/* The switcher's active segment is a #000000 pill in both themes. */
 html[data-theme="dark"] .home-tab.is-active,
 html[data-theme="dark"] .home-tab[aria-selected="true"] {
-   color: #eaf2ea;
-   background: transparent;
+   color: #ffffff;
+   background: #000000;
 }
 html[data-theme="dark"] .album-card {
    background: #101210;
