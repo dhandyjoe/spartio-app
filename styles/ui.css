@@ -4027,6 +4027,19 @@ html[data-theme="dark"] .cloud-auth-primary {
    text-overflow: ellipsis;
    white-space: nowrap;
 }
+/* Small mode glyph at the head of each version row (♪ / # / ♬), so the writing
+   mode of every arrangement is visible in the dropdown. */
+.version-item-mode {
+   display: inline-block;
+   min-width: 15px;
+   margin-right: 6px;
+   color: var(--muted);
+   font-weight: 700;
+   text-align: center;
+}
+.version-list-item.is-current .version-item-mode {
+   color: var(--dark-green);
+}
 .version-item-current {
    flex: 0 0 auto;
    font-size: 11px;
@@ -4073,6 +4086,62 @@ html[data-theme="dark"] .cloud-auth-primary {
    flex-direction: column;
    gap: 4px;
    margin: 4px 0 2px;
+}
+/* ---- Version dialog: per-version WRITING MODE picker ----
+   One song can hold versions written in different modes, so the Create-version
+   dialog lets you pick the mode the new arrangement starts in. */
+.vd-mode-picker {
+   margin: 12px 0 2px;
+}
+.vd-mode-options {
+   display: grid;
+   grid-template-columns: repeat(3, 1fr);
+   gap: 8px;
+}
+.vd-mode-btn {
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   gap: 4px;
+   padding: 10px 8px;
+   border: 1.5px solid var(--line);
+   border-radius: 10px;
+   background: var(--surface);
+   color: var(--ink);
+   font: inherit;
+   font-size: 12px;
+   font-weight: 700;
+   text-align: center;
+   cursor: pointer;
+   transition:
+      border-color 0.16s ease,
+      box-shadow 0.16s ease,
+      background 0.16s ease,
+      color 0.16s ease;
+}
+.vd-mode-btn:hover {
+   border-color: color-mix(in srgb, var(--green) 45%, var(--line));
+}
+.vd-mode-btn:focus-visible {
+   outline: none;
+   border-color: var(--green);
+   box-shadow: 0 0 0 3px rgba(35, 122, 80, 0.14);
+}
+.vd-mode-btn.is-active {
+   border-color: var(--green);
+   background: color-mix(in srgb, var(--green) 12%, transparent);
+   color: var(--dark-green);
+}
+.vd-mode-btn-mark {
+   font-size: 18px;
+   line-height: 1;
+}
+.vd-mode-btn-label {
+   line-height: 1.2;
+}
+html[data-theme="dark"] .vd-mode-btn.is-active {
+   color: var(--green);
+   background: color-mix(in srgb, var(--green) 22%, transparent);
 }
 .vd-youtube .new-song-name-input {
    font-family: inherit;
@@ -7635,4 +7704,379 @@ body[data-view-only="1"] .chord-above-input {
       pointer-events: none;
    }
 }
+
+
+/* ============================================================================
+   HOME — Floating quick menu (FAB speed-dial) for tablet & phone.
+   On ≤1050px the tab row AND the header's create/import buttons give way to a
+   floating speed-dial in the bottom-right corner that holds view navigation
+   (My Songs / Albums) and the primary actions. Desktop (≥1051px) keeps the tab
+   row + header buttons EXACTLY as before, so nothing about the desktop home
+   changes. Screen-only: the gallery never prints, and the print rule below is a
+   belt-and-braces guard.
+   ============================================================================ */
+.home-fab {
+   /* One source of truth for the dial diameter: it drives the trigger size, the
+      menu offset above it, and the visual scale from phone → tablet. */
+   --fab-size: clamp(58px, 9vw, 80px);
+   position: fixed;
+   right: max(18px, env(safe-area-inset-right));
+   bottom: max(18px, env(safe-area-inset-bottom));
+   z-index: 12;
+   display: none;
+}
+.home-fab-trigger {
+   display: grid;
+   place-items: center;
+   width: var(--fab-size);
+   height: var(--fab-size);
+   border: none;
+   border-radius: 50%;
+   background: linear-gradient(150deg, color-mix(in srgb, var(--green) 86%, #fff), var(--green) 55%, var(--dark-green));
+   color: #fff;
+   font-size: clamp(26px, 4.4vw, 40px);
+   line-height: 1;
+   cursor: pointer;
+   box-shadow:
+      0 8px 20px -6px rgba(16, 40, 28, 0.5),
+      0 2px 6px rgba(16, 40, 28, 0.25);
+   transition:
+      transform 0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+      background 0.25s ease,
+      box-shadow 0.25s ease;
+}
+.home-fab-trigger:focus-visible {
+   outline: 2px solid var(--dark-green);
+   outline-offset: 3px;
+}
+.home-fab.is-open .home-fab-trigger {
+   transform: rotate(135deg);
+   background: var(--dark-green);
+}
+/* Blur + dim the page behind the dial so the focus lands on the menu: a
+   full-viewport layer INSIDE the FAB's stacking context but BELOW the dial
+   (z-index -1). It fades in AND out, so opening and closing both animate.
+   Clicking it bubbles to the document → closes the menu. */
+.home-fab::before {
+   content: "";
+   position: fixed;
+   inset: 0;
+   z-index: -1;
+   background: rgba(12, 28, 20, 0.42);
+   -webkit-backdrop-filter: blur(18px) saturate(1.15);
+   backdrop-filter: blur(18px) saturate(1.15);
+   opacity: 0;
+   pointer-events: none;
+   transition: opacity 0.3s ease;
+}
+.home-fab.is-open::before {
+   opacity: 1;
+   pointer-events: auto;
+}
+.home-fab-menu {
+   position: absolute;
+   right: 0;
+   bottom: calc(var(--fab-size) + 16px);
+   display: flex;
+   flex-direction: column;
+   align-items: flex-end;
+   gap: clamp(8px, 1vw, 12px);
+}
+.home-fab-menu[hidden] {
+   display: none;
+}
+/* Modern speed-dial card: a tinted rounded-square icon badge on the LEFT, a bold
+   label, soft elevation and a hairline. It scales from its bottom-right corner
+   (the trigger), so the reveal reads as "fanning out" from the dial. */
+.home-fab-item {
+   display: inline-flex;
+   align-items: center;
+   gap: clamp(9px, 1.1vw, 14px);
+   padding: clamp(8px, 1vw, 12px) clamp(15px, 1.8vw, 22px) clamp(8px, 1vw, 12px) clamp(8px, 1vw, 12px);
+   border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+   border-radius: 16px;
+   background: color-mix(in srgb, var(--surface) 92%, transparent);
+   color: var(--ink);
+   font-family: inherit;
+   font-size: clamp(13.5px, 1.5vw, 17px);
+   font-weight: 700;
+   letter-spacing: -0.01em;
+   white-space: nowrap;
+   cursor: pointer;
+   box-shadow:
+      0 10px 26px -14px rgba(16, 40, 28, 0.5),
+      0 2px 6px rgba(16, 40, 28, 0.08);
+   -webkit-backdrop-filter: blur(8px);
+   backdrop-filter: blur(8px);
+   opacity: 0;
+   transform: translateY(12px) scale(0.9);
+   transform-origin: bottom right;
+   transition:
+      opacity 0.22s ease,
+      transform 0.34s cubic-bezier(0.34, 1.56, 0.64, 1),
+      border-color 0.18s ease,
+      background 0.18s ease;
+}
+.home-fab-item[hidden] {
+   display: none;
+}
+.home-fab-item:hover,
+.home-fab-item:focus-visible {
+   border-color: color-mix(in srgb, var(--green) 45%, var(--line));
+   background: color-mix(in srgb, var(--green) 9%, var(--surface));
+   outline: none;
+}
+.home-fab.is-open .home-fab-item {
+   opacity: 1;
+   transform: translateY(0) scale(1);
+}
+/* Stagger the reveal from the item CLOSEST to the trigger upward. */
+.home-fab.is-open .home-fab-item:nth-child(2) {
+   transition-delay: 45ms;
+}
+.home-fab.is-open .home-fab-item:nth-child(3) {
+   transition-delay: 90ms;
+}
+.home-fab.is-open .home-fab-item:nth-child(4) {
+   transition-delay: 135ms;
+}
+.home-fab.is-open .home-fab-item:nth-child(5) {
+   transition-delay: 180ms;
+}
+.home-fab-item.is-active {
+   border-color: color-mix(in srgb, var(--green) 55%, transparent);
+   background: color-mix(in srgb, var(--green) 14%, var(--surface));
+   color: var(--dark-green);
+}
+/* The icon badge keeps the SAME (filled) look whether the item is active or not,
+   so the dial reads consistently. The ACTIVE view is still shown by the card's
+   tint + border — only the icon no longer flips colour. */
+.home-fab-item-icon {
+   display: inline-grid;
+   place-items: center;
+   flex: none;
+   width: clamp(32px, 3.8vw, 46px);
+   height: clamp(32px, 3.8vw, 46px);
+   border-radius: 12px;
+   font-size: clamp(16px, 1.9vw, 22px);
+   background: var(--green);
+   color: #fff;
+   box-shadow: 0 4px 12px -6px rgba(16, 40, 28, 0.55);
+   transition:
+      background 0.18s ease,
+      color 0.18s ease;
+}
+.home-fab-item:hover .home-fab-item-icon,
+.home-fab-item:focus-visible .home-fab-item-icon {
+   background: var(--dark-green);
+}
+html[data-theme="dark"] .home-fab-item-icon {
+   background: var(--green);
+   color: #06231a;
+}
+html[data-theme="dark"] .home-fab-item.is-active {
+   color: var(--green);
+   background: color-mix(in srgb, var(--green) 20%, var(--surface));
+}
+
+/* Tablet + phone: the floating menu replaces the tab row and the header's
+   create/import buttons. The header keeps the brand/title + the profile button. */
+@media (max-width: 1050px) {
+   .home-tabs {
+      display: none !important;
+   }
+   .home-fab {
+      display: block;
+   }
+   .cloud-gallery-actions #newSongBtn,
+   .cloud-gallery-actions #newAlbumBtn,
+   .cloud-gallery-actions #attachLinkBtn {
+      display: none !important;
+   }
+}
+
+/* Phone: two tidy rows — the BRAND lockup stays CENTERED on top; below it the
+   dynamic title + count sit on the LEFT and the profile button on the RIGHT
+   (same row). The profile keeps its usual phone size (unchanged rules). */
+@media (max-width: 680px) {
+   .cloud-gallery-head {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+         "heading heading"
+         "intro   actions";
+      align-items: center;
+      gap: 8px 12px;
+   }
+   .cloud-gallery-heading {
+      grid-area: heading;
+      justify-self: center;
+      text-align: center;
+   }
+   .home-intro {
+      grid-area: intro;
+      justify-self: start;
+      text-align: left;
+      margin: 0;
+   }
+   /* Profile sits on the title row, right-aligned; its size rules (min-width/
+      min-height/padding/avatar) are untouched so it matches the previous look. */
+   .cloud-gallery-actions {
+      grid-area: actions;
+      justify-self: end;
+      align-self: center;
+      width: auto;
+      justify-content: flex-end;
+      flex-wrap: nowrap;
+   }
+   /* "Back to editor" collapses to its arrow so the title row never overflows
+      when a song is open behind the library. */
+   .cloud-gallery-actions #backToEditorBtn .btn-label {
+      display: none;
+   }
+   /* Keep the last card row clear of the floating button. */
+   .cloud-cards {
+      padding-bottom: calc(96px + env(safe-area-inset-bottom));
+   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+   .home-fab-trigger,
+   .home-fab-item,
+   .home-fab::before {
+      transition: none;
+   }
+}
+@media print {
+   .home-fab {
+      display: none !important;
+   }
+}
+
+
+/* ============================================================================
+   TABLET — bigger, RESPONSIVE song cards.
+   On 681–1050px the desktop 214×252 cards look small and leave a lot of dead
+   space in the two-row carousel, so the cards scale with the viewport instead of
+   staying static. This targets BOTH the My Songs grid (#songCards) and the album
+   song list (#albumSongCards) — they share `.cloud-cards`/`.song-card`. Desktop
+   (≥1051px) keeps the original size, and the phone layout (≤680px, full-width
+   grid cells) is untouched.
+   ============================================================================ */
+@media (min-width: 681px) and (max-width: 1050px) {
+   .cloud-cards {
+      /* ONE source of truth for the card width: it drives the grid's centring
+         padding below AND the cards/skeletons inside it. */
+      --card-w: clamp(232px, 30vw, 320px);
+      padding: 30px max(16px, calc(50% - var(--card-w) / 2 + 2px));
+   }
+   .song-card {
+      width: var(--card-w);
+      /* Height follows the viewport too, but is capped against the VIEWPORT HEIGHT
+         so the two-row carousel never clips its bottom row (the grid is
+         overflow-y:hidden). 34vw alone can get too tall on a landscape tablet. */
+      height: clamp(252px, min(34vw, calc(50vh - 120px)), 360px);
+   }
+   /* The loading skeleton must match the real cards it stands in for. */
+   .skeleton-card {
+      width: var(--card-w);
+      height: clamp(252px, min(34vw, calc(50vh - 120px)), 360px);
+   }
+   /* The home header title sits TRULY centered now that the create buttons live
+      in the FAB: equal 1fr side columns put the middle (auto) column on the
+      viewport centre instead of leaning right (the old `auto 1fr auto` grid). */
+   .cloud-gallery-head {
+      grid-template-columns: 1fr auto 1fr;
+   }
+   /* Card CONTENT scales with the viewport too (not just the box), so the bigger
+      tablet cards don't keep desktop-sized text inside them. */
+   .song-card-title {
+      font-size: clamp(18px, 2.5vw, 24px);
+   }
+   .song-card-creator {
+      font-size: clamp(13px, 1.7vw, 16px);
+   }
+   .song-card-chip {
+      font-size: clamp(16px, 2.1vw, 20px);
+   }
+   .song-card-chip small {
+      font-size: clamp(9.5px, 1.2vw, 12px);
+   }
+   .song-card-detail {
+      font-size: clamp(12px, 1.5vw, 14px);
+   }
+   .song-card-mode-icon {
+      width: clamp(28px, 3.2vw, 34px);
+      height: clamp(28px, 3.2vw, 34px);
+      font-size: clamp(15px, 1.8vw, 18px);
+   }
+   .song-card-mode-mark {
+      font-size: clamp(96px, 13vw, 150px);
+   }
+   .song-card-action {
+      width: clamp(34px, 4vw, 42px);
+      height: clamp(34px, 4vw, 42px);
+      font-size: clamp(15px, 1.8vw, 18px);
+   }
+   .song-card-dock {
+      --dock-shift: clamp(42px, 5vw, 54px);
+   }
+   /* ---- Header + search bar also scale with the viewport (tablet) ----
+      The brand lockup ("WorshipNotationScore"), the page title, the profile
+      button, the help bubble and the search field all grow with the screen
+      instead of staying pinned to their desktop sizes. */
+   .home-brand-icon {
+      width: clamp(34px, 4.2vw, 46px);
+      height: clamp(34px, 4.2vw, 46px);
+   }
+   .home-brand-icon img {
+      width: clamp(20px, 2.6vw, 28px);
+      height: clamp(20px, 2.6vw, 28px);
+   }
+   .home-brand-text {
+      font-size: clamp(15px, 1.9vw, 19px);
+   }
+   .home-brand-text small {
+      font-size: clamp(10.5px, 1.3vw, 13px);
+   }
+   .home-intro h1 {
+      font-size: clamp(17px, 2.2vw, 22px);
+   }
+   .home-intro p {
+      font-size: clamp(12px, 1.5vw, 15px);
+   }
+   .cloud-gallery-actions .account-button {
+      min-height: clamp(44px, 5vw, 54px);
+      font-size: clamp(14px, 1.7vw, 17px);
+      padding-inline: clamp(12px, 1.6vw, 20px);
+   }
+   .cloud-gallery-actions .account-avatar {
+      width: clamp(24px, 3vw, 32px);
+      height: clamp(24px, 3vw, 32px);
+      font-size: clamp(13px, 1.6vw, 16px);
+   }
+   .topbar-help-btn {
+      padding: clamp(6px, 0.9vw, 10px);
+   }
+   .topbar-help-icon {
+      width: clamp(20px, 2.6vw, 28px);
+      height: clamp(20px, 2.6vw, 28px);
+      font-size: clamp(13px, 1.6vw, 17px);
+   }
+   .cloud-search {
+      width: min(clamp(360px, 50vw, 640px), 100%);
+   }
+   .cloud-search-icon {
+      left: clamp(14px, 1.8vw, 22px);
+      font-size: clamp(16px, 2vw, 21px);
+   }
+   .cloud-search input {
+      min-height: clamp(46px, 5.2vw, 58px);
+      font-size: clamp(14px, 1.7vw, 18px);
+      padding: clamp(9px, 1.1vw, 13px) clamp(14px, 1.8vw, 20px) clamp(9px, 1.1vw, 13px) clamp(38px, 4.6vw, 52px);
+   }
+}
+
+
+
+
 

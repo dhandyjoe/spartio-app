@@ -963,6 +963,28 @@ function applyFilter() {
    renderCards(filtered);
 }
 
+// The home header doubles as the page title AND the "where am I" cue — on tablet
+// & phone the tabs live inside the floating quick menu, so the title + count
+// follow the ACTIVE view (songs vs albums). Called on tab switch and after each
+// refresh, so the line is never stale.
+function updateHomeHeading() {
+   const title = $("#mySongsTitle");
+   const count = $("#libraryCount");
+   if (homeTab === "albums") {
+      if (title) title.textContent = "Your albums library";
+      if (count) {
+         const n = cachedAlbums.length;
+         count.textContent = n ? `${n} album${n === 1 ? "" : "s"} in your library` : "Your library is empty";
+      }
+      return;
+   }
+   if (title) title.textContent = "Your song library";
+   if (count) {
+      const n = cachedSongs.length;
+      count.textContent = n ? `${n} song${n === 1 ? "" : "s"} in your library` : "Your library is empty";
+   }
+}
+
 async function refreshSongs() {
    // Modern skeleton loader: shimmer cards while the library is being fetched.
    setGalleryState("skeleton");
@@ -970,19 +992,61 @@ async function refreshSongs() {
    updateNudgeVisibility();
    try {
       cachedSongs = await listSongs();
-      // The hero copy is static; the live library count goes in its own slot so
-      // the headline never gets overwritten.
-      const count = $("#libraryCount");
-      if (count) {
-         count.textContent = cachedSongs.length
-            ? `${cachedSongs.length} song${cachedSongs.length === 1 ? "" : "s"} in your library`
-            : "Your library is empty";
-      }
+      // The header title + count reflect the active view (songs vs albums).
+      updateHomeHeading();
       applyFilter();
    } catch (error) {
       setGalleryState("empty");
       toast(isFirestorePermissionsError(error) ? "Could not load — check Firestore security rules" : "Could not load your songs");
    }
+}
+
+// ---- Floating quick menu (tablet/phone) -------------------------------------
+// A speed-dial in the home's bottom-right corner. It carries view navigation and
+// the create/import actions when the tab row + header buttons are hidden (≤1050px,
+// see styles/ui.css). Open/close is pure UI state; the wiring lives in initGallery.
+let homeFabOpen = false;
+let homeFabCloseTimer = null;
+
+function syncHomeFab() {
+   const fab = $("#homeFab");
+   const menu = $("#homeFabMenu");
+   const btn = $("#homeFabBtn");
+   if (btn) btn.setAttribute("aria-expanded", homeFabOpen ? "true" : "false");
+   clearTimeout(homeFabCloseTimer);
+   if (!fab || !menu) return;
+   if (homeFabOpen) {
+      // Unhide FIRST, then add the class on the next frame — a display:none →
+      // visible jump cannot run a transition, so the enter animation needs this.
+      menu.hidden = false;
+      requestAnimationFrame(() => fab.classList.add("is-open"));
+   } else {
+      // Let the exit transition play before hiding the menu.
+      fab.classList.remove("is-open");
+      homeFabCloseTimer = setTimeout(() => {
+         menu.hidden = true;
+      }, 320);
+   }
+}
+
+function openHomeFab() {
+   if (homeFabOpen) return;
+   homeFabOpen = true;
+   syncHomeFab();
+   // Land focus inside the menu so keyboard/SR users arrive at the first action.
+   $("#homeFabMenu")?.querySelector(".home-fab-item:not([hidden])")?.focus();
+}
+
+function closeHomeFab({ restoreFocus = false } = {}) {
+   if (!homeFabOpen) return;
+   homeFabOpen = false;
+   syncHomeFab();
+   if (restoreFocus) $("#homeFabBtn")?.focus();
+}
+
+function toggleHomeFab() {
+   if (homeFabOpen) closeHomeFab();
+   else openHomeFab();
 }
 
 // Switch which home tab is visible (My Songs vs Albums) without navigating.
@@ -1014,6 +1078,28 @@ function setHomeTab(tab) {
    if (newSongBtn) newSongBtn.hidden = isAlbums;
    if (attachLinkBtn) attachLinkBtn.hidden = isAlbums;
    if (newAlbumBtn) newAlbumBtn.hidden = !isAlbums;
+   // The floating quick menu (tablet/phone) mirrors the tabs: mark the ACTIVE
+   // view and swap its New Song / New Album action.
+   const fabSongs = $("#fabTabSongs");
+   const fabAlbums = $("#fabTabAlbums");
+   if (fabSongs) {
+      fabSongs.classList.toggle("is-active", homeTab === "songs");
+      fabSongs.setAttribute("aria-checked", homeTab === "songs" ? "true" : "false");
+   }
+   if (fabAlbums) {
+      fabAlbums.classList.toggle("is-active", homeTab === "albums");
+      fabAlbums.setAttribute("aria-checked", homeTab === "albums" ? "true" : "false");
+   }
+   const fabNewSong = $("#fabNewSong");
+   const fabNewAlbum = $("#fabNewAlbum");
+   if (fabNewSong) fabNewSong.hidden = isAlbums;
+   if (fabNewAlbum) fabNewAlbum.hidden = !isAlbums;
+   // "Attach Link" imports a shared song into My Songs, so it makes no sense on the
+   // Albums view — hide it there (a plain New Album is all that view needs).
+   const fabAttachLink = $("#fabAttachLink");
+   if (fabAttachLink) fabAttachLink.hidden = isAlbums;
+   // The header title + count are the "where am I" cue now.
+   updateHomeHeading();
 }
 
 // Render the home screen (gallery). Called by the router; use navigate(HOME_ROUTE)
@@ -1027,6 +1113,8 @@ async function showGalleryScreen(tab) {
    }
    if (tab) pendingHomeTab = tab;
    openModal($("#mySongsModal"));
+   // A fresh visit to the home always starts with the floating menu closed.
+   closeHomeFab();
    setHomeTab(pendingHomeTab);
    const search = $("#songSearch");
    if (search) search.value = "";
@@ -1168,6 +1256,9 @@ function blankProject(mode, { title = "New Song", artist = "Artist / Composer" }
 //   • #versionDetailsDialog — rename / attach YouTube / delete ONE version
 // ======================================================================
 let versionNameDialogResolve = null; // open promise for the new-version name prompt
+// Writing mode currently selected in the New Version dialog. Each new arrangement
+// may be written in its own mode, so this is read when the dialog is confirmed.
+let versionNameDialogMode = "chords";
 let versionDetailsResolve = null;    // open promise for the details dialog
 let versionDetailsTarget = null;     // { songId, versionId } being edited
 let youtubePreviewGeneration = 0;    // guards stale thumbnail onload callbacks
@@ -1198,9 +1289,21 @@ function closeVersionNameDialog(label) {
    }, 260);
 }
 
+// Reflect the selected writing mode on the New Version dialog's picker (each
+// `.vd-mode-btn` carries its mode id in `data-mode`).
+function syncVersionModePicker() {
+   const picker = $("#newVersionModePicker");
+   if (!picker) return;
+   picker.querySelectorAll(".vd-mode-btn").forEach((btn) => {
+      const active = btn.dataset.mode === versionNameDialogMode;
+      btn.classList.toggle("is-active", active);
+      btn.setAttribute("aria-checked", active ? "true" : "false");
+   });
+}
+
 // Name prompt for creating a new blank arrangement. Resolves with the name, or
 // null on cancel. The name is REQUIRED.
-function openVersionNameDialog({ title = "New Version", desc = "", defaultLabel = "Version 1" } = {}) {
+function openVersionNameDialog({ title = "New Version", desc = "", defaultLabel = "Version 1", defaultMode = "chords" } = {}) {
    const dialog = $("#newVersionNameDialog");
    if (!dialog) return Promise.resolve(null);
    const input = $("#newVersionNameInput");
@@ -1223,6 +1326,11 @@ function openVersionNameDialog({ title = "New Version", desc = "", defaultLabel 
       };
    }
    if (error) error.hidden = true;
+   // Writing-mode picker: default to the given mode (normally the current
+   // arrangement's), but the user may switch it, so ONE song can hold versions
+   // written in different modes (Chord Chart / Numeric Notation / ChordPro).
+   versionNameDialogMode = normalizeEditorMode(defaultMode);
+   syncVersionModePicker();
    // Fresh dialog: start with an empty, optional YouTube field.
    const ytInput = $("#newVersionYoutube");
    if (ytInput) ytInput.value = "";
@@ -1378,6 +1486,10 @@ function initVersionCrud() {
          if (ytValue && !parsed) return; // invalid link → block create (hint shown)
          closeVersionNameDialog({
             label,
+            // The version is created in the mode the user picked (falling back to
+            // the current arrangement's) — so each version of a song keeps its OWN
+            // writing mode.
+            mode: versionNameDialogMode,
             youtubeUrl: parsed ? parsed.url : null,
             youtubeId: parsed ? parsed.videoId : null,
          });
@@ -1406,6 +1518,15 @@ function initVersionCrud() {
          if (ytInput) ytInput.value = "";
          syncYoutubePreview("", YT_NEW_VERSION_IDS);
       });
+      // Writing-mode picker: choose the mode the new version starts in.
+      $("#newVersionModePicker")
+         ?.querySelectorAll(".vd-mode-btn")
+         .forEach((btn) => {
+            btn.addEventListener("click", () => {
+               versionNameDialogMode = normalizeEditorMode(btn.dataset.mode);
+               syncVersionModePicker();
+            });
+         });
       nameDialog.addEventListener("click", (event) => {
          if (event.target.closest("[data-newversionname-dismiss]")) closeVersionNameDialog(null);
       });
@@ -1525,6 +1646,10 @@ async function renderVersionList() {
       .map((v) => {
          const current = v.versionId === ctx.versionId;
          const name = escapeHtml(v.label || "Untitled");
+         // Each version keeps its own writing mode; show it so the dropdown makes
+         // the mode of every arrangement obvious (glyph + tooltip = full badge).
+         const mode = normalizeEditorMode(v.editorMode);
+         const modeMark = `<span class="version-item-mode" title="${editorModeMeta[mode].badge}" aria-label="${editorModeMeta[mode].badge}">${editorModeMeta[mode].cardMark}</span>`;
          const ytIcon = v.youtubeId ? `<span class="version-item-yt" title="Has YouTube link">▶</span>` : "";
          const currentMark = current ? `<span class="version-item-current">Current</span>` : "";
          const editBtn = canEditDetails
@@ -1533,7 +1658,7 @@ async function renderVersionList() {
          return `
             <div class="version-list-item${current ? " is-current" : ""}">
                <button class="version-item-switch" type="button" data-version-id="${escapeHtml(v.versionId)}" title="Open this version">
-                  <span class="version-item-label">${name}${ytIcon}</span>
+                  <span class="version-item-label">${modeMark}${name}${ytIcon}</span>
                   ${currentMark}
                </button>
                ${editBtn}
@@ -1582,21 +1707,26 @@ async function onNewVersion() {
    closeVersionPopover();
    if (!ctx?.songId) return;
    const current = bridge.getProject();
-   const mode = normalizeEditorMode(current?.editorMode);
-   const blank = blankProject(mode, {
-      title: current?.title || "Song Title",
-      artist: current?.artist || "Artist / Composer",
-   });
+   const currentMode = normalizeEditorMode(current?.editorMode);
+   // Each version owns its writing mode, so a NEW version may start in ANY mode —
+   // the dialog asks for it (defaulting to the one currently open).
+   const blankFor = (mode) =>
+      blankProject(mode, {
+         title: current?.title || "Song Title",
+         artist: current?.artist || "Artist / Composer",
+      });
 
    if (!ctx.versionId) {
       // Add-state: no arrangement exists yet — create the first (blank) one.
       const input = await openVersionNameDialog({
          title: "New Version",
-         desc: "Start a new, blank arrangement.",
+         desc: "Start a new, blank arrangement — pick a writing mode.",
          defaultLabel: "Version 1",
+         defaultMode: currentMode,
       });
       if (!input) return;
       try {
+         const blank = blankFor(input.mode || currentMode);
          const payload = { ...blank, youtubeUrl: input.youtubeUrl, youtubeId: input.youtubeId };
          const created = await saveVersionFor(ctx, null, payload, { label: input.label });
          await updateLatestFor(ctx, created.versionId, created.label, 1, blank.editorMode, input.youtubeId, blank.key, blank.meter);
@@ -1618,10 +1748,12 @@ async function onNewVersion() {
          const count = (await listVersionsFor(ctx)).length;
          const input = await openVersionNameDialog({
             title: "New Version",
-            desc: "Start a new, blank arrangement — it will not copy the current score.",
+            desc: "Start a new, blank arrangement — pick a mode (it will not copy the current score).",
             defaultLabel: `Version ${count + 1}`,
+            defaultMode: currentMode,
          });
          if (!input) return;
+         const blank = blankFor(input.mode || currentMode);
          const payload = { ...blank, youtubeUrl: input.youtubeUrl, youtubeId: input.youtubeId };
          const created = await saveVersionFor(ctx, null, payload, { label: input.label });
          await updateLatestFor(ctx, created.versionId, created.label, count + 1, blank.editorMode, input.youtubeId, blank.key, blank.meter);
@@ -2052,18 +2184,11 @@ function initGallery() {
       { passive: true },
    );
 
-   // New song (Logic 1): the user MUST name the version, then pick a mode,
-   // before the editor opens. Guarded so starting fresh doesn't silently
-   // discard unsaved edits.
-   // Fallback: this button is hidden while the ALBUMS tab is active (see
-   // setHomeTab) because album songs are created from inside the album. The
-   // branch stays as a safety net in case the button is ever exposed there again
-   // — it would then create the song DIRECTLY inside an album, not in My Songs.
-   $("#newSongBtn")?.addEventListener("click", () => {
-      if (homeTab === "albums") {
-         openAlbumNewSongFromHome();
-         return;
-      }
+   // New song (Logic 1): the user MUST name the version, then pick a mode, before
+   // the editor opens. Guarded so starting fresh doesn't silently discard unsaved
+   // edits. Shared by the header button (desktop) AND the floating menu item
+   // (tablet/phone), so there is one source of truth.
+   function startNewSongFlow() {
       guardUnsavedThen(() => {
          openNewSongDialog({
             title: "New Song",
@@ -2074,7 +2199,7 @@ function initGallery() {
             initNewSong(result.mode, result.label);
          });
       });
-   });
+   }
 
    /** Initialize a blank project and land on the edit page (Logic 1). */
    function initNewSong(mode, versionLabel) {
@@ -2089,9 +2214,10 @@ function initGallery() {
       toast(`Started a new ${isNumbers ? "Nashville numbers" : "chord chart"} song`);
    }
 
-   // Attach Link: open a themed dialog to paste a share link, decode it, and
-   // show a confirm preview before applying to the editor.
-   $("#attachLinkBtn")?.addEventListener("click", async () => {
+   // Attach Link: open a themed dialog to paste a share link, decode it, and show
+   // a confirm preview before applying to the editor. Shared by the header button
+   // (desktop) and the floating menu item (tablet/phone).
+   async function attachLinkFlow() {
       const text = await openAttachLinkDialog();
       if (!text) return;
       const payload = extractPayloadFromLink(text);
@@ -2107,6 +2233,51 @@ function initGallery() {
          return;
       }
       await importFromPayload(payload);
+   }
+
+   // Header buttons (desktop). "New Song" keeps its album-tab safety branch: on
+   // the Albums tab it creates the song INSIDE an album, not in My Songs.
+   $("#newSongBtn")?.addEventListener("click", () => {
+      if (homeTab === "albums") {
+         openAlbumNewSongFromHome();
+         return;
+      }
+      startNewSongFlow();
+   });
+   $("#attachLinkBtn")?.addEventListener("click", attachLinkFlow);
+
+   // ---- Floating quick menu (tablet/phone) ----
+   // The trigger toggles the speed-dial; item clicks run the SAME flows as the
+   // header buttons. Clicks inside the menu stop propagation so the document-level
+   // outside-click handler doesn't close it before the item's own click runs.
+   $("#homeFabBtn")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleHomeFab();
+   });
+   $("#homeFabMenu")?.addEventListener("click", (event) => event.stopPropagation());
+   $("#fabTabSongs")?.addEventListener("click", () => {
+      closeHomeFab();
+      navigate("#/songs");
+   });
+   $("#fabTabAlbums")?.addEventListener("click", () => {
+      closeHomeFab();
+      navigate("#/albums");
+   });
+   $("#fabNewSong")?.addEventListener("click", () => {
+      closeHomeFab();
+      startNewSongFlow();
+   });
+   $("#fabNewAlbum")?.addEventListener("click", () => {
+      closeHomeFab();
+      openNewAlbumDialog();
+   });
+   $("#fabAttachLink")?.addEventListener("click", () => {
+      closeHomeFab();
+      attachLinkFlow();
+   });
+   document.addEventListener("click", () => closeHomeFab());
+   document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && homeFabOpen) closeHomeFab({ restoreFocus: true });
    });
 }
 
@@ -2264,6 +2435,10 @@ async function saveToCloud() {
          await updateSongMeta(songId, {
             title,
             artist,
+            // The just-saved version is now the topmost (newest `updatedAt`), so the
+            // denormalized summary — and the library card's mode — follows it.
+            latestVersionId: nextContext.versionId,
+            latestVersionLabel: nextContext.versionLabel,
             latestEditorMode: normalizeEditorMode(project.editorMode),
             latestKey: project.key || "",
             latestMeter: project.meter || "",
@@ -2601,6 +2776,8 @@ async function refreshAlbums() {
    updateAlbumNudgeVisibility();
    try {
       cachedAlbums = await listAlbums();
+      // Header title + count follow the active view (albums).
+      updateHomeHeading();
       applyAlbumFilter();
    } catch (error) {
       setAlbumsState("error");

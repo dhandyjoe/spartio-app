@@ -43,6 +43,7 @@ import {
    generateInviteCode,
    normalizeInviteCode,
    versionCopyPayload,
+   sortVersionsByRecency,
 } from "../src/cloud.js";
 import { friendlyName } from "../src/identity.js";
 import { parseYoutubeUrl, canonicalUrl, thumbnailUrl, youtubeFields, parseStartTime, formatStartTime, youtubeChipMeta } from "../src/youtube.js";
@@ -3031,3 +3032,208 @@ test("the role dialogs ask about MD, not co-owner", () => {
    assert.match(html, /MDs can promote members to MD and remove them\./);
    assert.ok(!html.includes("MD = Music Director."), "no preamble in the dialog markup either");
 });
+
+// ============================================================================
+// Version recency — ordering by updatedAt + per-version writing mode
+// ----------------------------------------------------------------------------
+// The version list is ordered MOST RECENTLY UPDATED first (a new or just-edited
+// version lands on top); `number` is only a tiebreak. The same order drives the
+// denormalized summary, so the library card shows the TOPMOST version's mode.
+// ============================================================================
+test("sortVersionsByRecency orders by updatedAt desc, then number desc as a tiebreak", () => {
+   const versions = [
+      { versionId: "a", number: 1, updatedAt: 300 },
+      { versionId: "b", number: 3, updatedAt: 100 },
+      { versionId: "c", number: 2, updatedAt: 300 }, // same recency as `a` → higher number first
+      { versionId: "d", number: 9, updatedAt: undefined }, // no timestamp → 0 → last
+   ];
+   const sorted = sortVersionsByRecency(versions);
+   assert.deepEqual(
+      sorted.map((v) => v.versionId),
+      ["c", "a", "b", "d"],
+   );
+   // Pure helper: the input array is never mutated.
+   assert.deepEqual(
+      versions.map((v) => v.versionId),
+      ["a", "b", "c", "d"],
+   );
+});
+
+test("sortVersionsByRecency is safe with an empty list", () => {
+   assert.deepEqual(sortVersionsByRecency([]), []);
+});
+
+test("listVersions and listAlbumVersions share the recency ordering", () => {
+   const cloud = readProjectFile("src/cloud.js");
+   // Both list functions must return sortVersionsByRecency(...) rather than an
+   // ad-hoc `number` sort (which would put the newest NUMBER on top, not the most
+   // recently updated version).
+   assert.equal((cloud.match(/return sortVersionsByRecency\(versions\);/g) || []).length, 2);
+});
+
+test("saveVersion/saveAlbumVersion keep source timestamps when copying", () => {
+   const cloud = readProjectFile("src/cloud.js");
+   // The create path honours an explicit createdAt/updatedAt (used by EVERY copy
+   // flow) so a duplicated song preserves its original recency order.
+   assert.match(cloud, /export async function saveVersion\(songId, versionId, data = \{\}, \{ label, number, createdAt, updatedAt \}/);
+   assert.match(cloud, /export async function saveAlbumVersion\(albumId, songId, versionId, data = \{\}, \{ label, number, createdAt, updatedAt \}/);
+   assert.equal((cloud.match(/createdAt: createdAt \?\? data\.createdAt \?\? now,/g) || []).length, 2);
+   assert.equal((cloud.match(/updatedAt: updatedAt \?\? data\.updatedAt \?\? now,/g) || []).length, 2);
+});
+
+test("the New Version dialog lets the user pick the version's writing mode", () => {
+   const html = readProjectFile("index.html");
+   const start = html.indexOf('id="newVersionModePicker"');
+   assert.ok(start !== -1, "the mode picker must exist in the New Version dialog");
+   // The picker offers ALL three modes (data-mode uses the stored ids).
+   const picker = html.slice(start, html.indexOf('class="vd-youtube"', start));
+   for (const mode of ["chords", "numbers", "chordpro"]) {
+      assert.match(picker, new RegExp(`data-mode="${mode}"`), `picker offers ${mode}`);
+   }
+});
+
+test("cloudUI builds a new version in the PICKED mode (not the current one)", () => {
+   const cloudUI = readProjectFile("src/cloudUI.js");
+   // The selected mode is remembered and reported back on confirm.
+   assert.match(cloudUI, /let versionNameDialogMode = "chords";/);
+   assert.match(cloudUI, /mode: versionNameDialogMode,/);
+   // onNewVersion must build the blank arrangement from the picked mode so versions
+   // of one song can differ in mode.
+   assert.match(cloudUI, /const currentMode = normalizeEditorMode\(current\?\.editorMode\);/);
+   assert.match(cloudUI, /const blank = blankFor\(input\.mode \|\| currentMode\);/);
+   assert.match(cloudUI, /defaultMode: currentMode,/);
+});
+
+test("saving a version refreshes the latest* summary (card mode follows the topmost version)", () => {
+   const cloud = readProjectFile("src/cloud.js");
+   const cloudUI = readProjectFile("src/cloudUI.js");
+   // My Songs save path...
+   assert.match(cloudUI, /latestVersionId: nextContext\.versionId,/);
+   assert.match(cloudUI, /latestVersionLabel: nextContext\.versionLabel,/);
+   // ...and the album save path.
+   assert.match(cloud, /latestVersionId: nextVersionId,/);
+   assert.match(cloud, /latestVersionLabel: nextLabel,/);
+});
+
+
+// ============================================================================
+// Home quick menu (FAB speed-dial) — tablet & phone navigation + actions
+// ----------------------------------------------------------------------------
+// On ≤1050px the tab row and the header's create/import buttons give way to a
+// floating speed-dial that holds view navigation (My Songs / Albums) + actions,
+// and the header title becomes the "where am I" cue (dynamic per view).
+// ============================================================================
+test("the home has a floating quick menu with view navigation and actions", () => {
+   const html = readProjectFile("index.html");
+   assert.match(html, /id="homeFab"/, "the FAB container exists");
+   assert.match(html, /id="homeFabMenu"[^>]*role="menu"/, "the menu has a menu role");
+   assert.match(html, /id="homeFabBtn"[^>]*aria-haspopup="menu"[^>]*aria-expanded="false"/, "the trigger is a collapsed menu button");
+   for (const id of ["fabTabSongs", "fabTabAlbums", "fabNewSong", "fabNewAlbum", "fabAttachLink"]) {
+      assert.match(html, new RegExp(`id="${id}"`), `the menu offers ${id}`);
+   }
+});
+
+test("the floating menu replaces the tab row and header actions on ≤1050px", () => {
+   const css = readProjectFile("styles/ui.css");
+   const at = css.indexOf("@media (max-width: 1050px)");
+   assert.ok(at !== -1, "the ≤1050px breakpoint exists");
+   const block = css.slice(at, at + 800);
+   assert.match(block, /\.home-tabs\s*\{\s*display:\s*none\s*!important/, "the tab row is hidden");
+   assert.match(block, /\.home-fab\s*\{\s*display:\s*block/, "the menu is shown");
+   for (const sel of ["#newSongBtn", "#newAlbumBtn", "#attachLinkBtn"]) {
+      assert.ok(block.includes(sel), `the header's ${sel} moves into the menu`);
+   }
+});
+
+test("cloudUI drives the floating menu and the dynamic home heading", () => {
+   const cloudUI = readProjectFile("src/cloudUI.js");
+   // Dynamic heading: the title/count follow the active view.
+   assert.match(cloudUI, /function updateHomeHeading\(\)/);
+   assert.match(cloudUI, /title\.textContent = "Your albums library"/);
+   assert.match(cloudUI, /album\$\{n === 1 \? "" : "s"\} in your library/);
+   // Menu open/close + item wiring.
+   assert.match(cloudUI, /function toggleHomeFab\(\)/);
+   assert.match(cloudUI, /\$\("#fabTabSongs"\)\?\.addEventListener/);
+   assert.match(cloudUI, /\$\("#fabNewSong"\)\?\.addEventListener/);
+   assert.match(cloudUI, /\$\("#fabNewAlbum"\)\?\.addEventListener/);
+   // setHomeTab mirrors the active view into the menu's nav items.
+   assert.match(cloudUI, /fabSongs\.classList\.toggle\("is-active", homeTab === "songs"\)/);
+   assert.match(cloudUI, /fabAlbums\.classList\.toggle\("is-active", homeTab === "albums"\)/);
+});
+
+
+test("the floating menu blurs the page behind it (focus on the dial)", () => {
+   const css = readProjectFile("styles/ui.css");
+   // The scrim is a full-viewport blurred layer inside the FAB's own stacking
+   // context, BELOW the dial (z-index -1) so the trigger/menu stay crisp.
+   const at = css.indexOf(".home-fab::before");
+   assert.ok(at !== -1, "the FAB scrim exists");
+   const block = css.slice(at, at + 380);
+   assert.match(block, /position:\s*fixed/);
+   assert.match(block, /inset:\s*0/);
+   assert.match(block, /z-index:\s*-1/);
+   assert.match(block, /backdrop-filter:\s*blur\(/);
+   // It FADES in/out via a transition, so closing animates too (not instant hide).
+   assert.match(block, /transition:\s*opacity/);
+   assert.match(css, /\.home-fab\.is-open::before\s*\{\s*opacity:\s*1/);
+});
+
+test("the floating menu animates open AND closed, and hides Attach Link on Albums", () => {
+   const cloudUI = readProjectFile("src/cloudUI.js");
+   // Open: unhide then add the class next frame; Close: keep the menu mounted for
+   // the exit transition, then hide it on a timer.
+   assert.match(cloudUI, /requestAnimationFrame\(\(\) => fab\.classList\.add\("is-open"\)\)/);
+   assert.match(cloudUI, /homeFabCloseTimer = setTimeout\(\(\) => \{\s*menu\.hidden = true;/);
+   // Attach Link only makes sense on My Songs.
+   assert.match(cloudUI, /fabAttachLink\.hidden = isAlbums/);
+});
+
+test("the floating dial and its items scale with the viewport", () => {
+   const css = readProjectFile("styles/ui.css");
+   assert.match(css, /\.home-fab\s*\{[\s\S]{0,220}?--fab-size:\s*clamp\(/);
+   assert.match(css, /\.home-fab-trigger\s*\{[\s\S]{0,140}?width:\s*var\(--fab-size\)/);
+   assert.match(css, /\.home-fab-item-icon\s*\{[\s\S]{0,140}?width:\s*clamp\(/);
+});
+
+test("tablet (681–1050px) song cards scale responsively; desktop is unchanged", () => {
+   const css = readProjectFile("styles/ui.css");
+   const at = css.indexOf("TABLET — bigger, RESPONSIVE song cards.");
+   assert.ok(at !== -1, "the tablet card-sizing block exists");
+   const block = css.slice(at);
+   assert.match(block, /@media \(min-width: 681px\) and \(max-width: 1050px\)/);
+   assert.match(block, /--card-w:\s*clamp\(/);
+   assert.match(block, /width:\s*var\(--card-w\)/);
+   // The header title is centered (equal side columns) and the card CONTENT scales.
+   assert.match(block, /\.cloud-gallery-head\s*\{\s*grid-template-columns:\s*1fr auto 1fr/);
+   assert.match(block, /\.song-card-title\s*\{\s*font-size:\s*clamp\(/);
+   assert.match(block, /\.song-card-chip\s*\{\s*font-size:\s*clamp\(/);
+   // The header (brand / title / profile) and the search bar scale too.
+   assert.match(block, /\.home-brand-text\s*\{\s*font-size:\s*clamp\(/);
+   assert.match(block, /\.home-intro h1\s*\{\s*font-size:\s*clamp\(/);
+   assert.match(block, /\.cloud-gallery-actions \.account-avatar\s*\{[\s\S]{0,80}?width:\s*clamp\(/);
+   assert.match(block, /\.cloud-search input\s*\{[\s\S]{0,160}?font-size:\s*clamp\(/);
+   // The base (desktop) card size is NOT touched.
+   assert.match(css, /\.song-card\s*\{[\s\S]{0,140}?width:\s*214px/);
+});
+
+
+test("the home keeps the title in the app bar and the switcher above the search", () => {
+   const html = readProjectFile("index.html");
+   // Title + count stay in the app bar's middle column.
+   const head = html.slice(html.indexOf('class="cloud-gallery-head"'), html.indexOf('class="home-tabs"'));
+   assert.match(head, /class="cloud-gallery-heading"/);
+   assert.match(head, /id="mySongsTitle"/);
+   assert.match(head, /id="libraryCount"/);
+   assert.match(head, /class="cloud-gallery-actions"/);
+   // The My Songs / Albums switcher sits ABOVE the panels (and their search bars).
+   assert.match(html, /class="home-tabs"[\s\S]{0,400}?id="tabMySongs"/);
+   assert.match(html, /class="home-tabs"[\s\S]{0,400}?id="tabAlbums"/);
+   assert.ok(
+      html.indexOf('class="home-tabs"') < html.indexOf('id="songsPanel"'),
+      "the switcher is above the panel/search",
+   );
+   // The search bars live INSIDE the panels (original layout).
+   assert.ok(html.indexOf('id="songSearch"') > html.indexOf('id="songsPanel"'), "songs search inside the panel");
+   assert.match(html, /class="cloud-gallery-searchbar albums-searchbar"[\s\S]{0,400}?id="joinAlbumBtn"/);
+});
+

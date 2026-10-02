@@ -133,16 +133,18 @@ users/{uid}/songs/{songId} = {
   artist:    string,
   createdAt: number,  // Date.now() at creation
   updatedAt: number,  // Date.now() at each save
-  // Denormalized summary of the most recent arrangement — powers the library
-  // card without a per-song version read:
+  // Denormalized summary of the TOPMOST arrangement (most recently updated —
+  // the same order the editor's version list uses), powers the library card
+  // (including its writing-mode badge) without a per-song version read:
   versionCount:       number,
   latestVersionId:    string,
-  latestVersionLabel: string
+  latestVersionLabel: string,
+  latestEditorMode:   "chords" | "numbers" | "chordpro"
 }
 users/{uid}/songs/{songId}/versions/{versionId} = {
   label:    string,  // human name: "Version 1", "Pop", "2024" …
-  number:   number,  // monotonic ordering — highest number = latest
-  ...projectData(),  // the FULL arrangement: key, sections[], pdfOptions, …
+  number:   number,  // monotonic id; the version LIST is ordered by `updatedAt` (newest first), with `number` only as a tiebreak
+  ...projectData(),  // the FULL arrangement: key, sections[], pdfOptions, editorMode, … (each version keeps its OWN editorMode)
   createdAt: number,
   updatedAt: number
 }
@@ -163,7 +165,7 @@ albums/{albumId}/songs/{songId} = {
   latestEditorMode, latestYoutubeId, latestKey, latestMeter, createdAt, updatedAt
 }
 albums/{albumId}/songs/{songId}/versions/{versionId} = {
-  label, number, ...projectData(), createdAt, updatedAt   // identical to user versions
+  label, number, ...projectData(), createdAt, updatedAt   // identical to user versions (own editorMode)
 }
 albums/{albumId}/members/{uid} = {
   uid, role: "owner" | "member", name, email, joinedAt, addedBy

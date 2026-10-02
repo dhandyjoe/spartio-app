@@ -268,7 +268,7 @@ export async function loadSongMeta(songId) {
 //   - `label`/`number` are the version's own metadata; label falls back to
 //     "Version 1" on create and is kept untouched on update unless provided.
 // Returns { versionId, label, number }.
-export async function saveVersion(songId, versionId, data = {}, { label, number } = {}) {
+export async function saveVersion(songId, versionId, data = {}, { label, number, createdAt, updatedAt } = {}) {
    await ensureFirebase();
    requireUser();
    const { dbFns } = sdk;
@@ -292,7 +292,16 @@ export async function saveVersion(songId, versionId, data = {}, { label, number 
    }
    const nextNumber = typeof number === "number" && number > 0 ? number : await nextVersionNumber(songId);
    const resolvedLabel = (label !== undefined ? label : data.label) || "Version 1";
-   const payload = { ...data, label: resolvedLabel, number: nextNumber, createdAt: now, updatedAt: now };
+   // Copies (album "Add from My Songs", "Save a copy") pass the SOURCE timestamps
+   // so the duplicated library keeps the same recency order as the original; a
+   // brand-new arrangement (the editor's first save) carries neither and gets now.
+   const payload = {
+      ...data,
+      label: resolvedLabel,
+      number: nextNumber,
+      createdAt: createdAt ?? data.createdAt ?? now,
+      updatedAt: updatedAt ?? data.updatedAt ?? now,
+   };
    delete payload.cloudId;
    delete payload.songId;
    delete payload.versionId;
@@ -314,7 +323,23 @@ export async function loadVersion(songId, versionId) {
    return { versionId: snapshot.id, ...snapshot.data() };
 }
 
-// Lightweight version summaries (label/number), newest number first.
+// Order version summaries by RECENCY: the most recently UPDATED arrangement comes
+// first (so a freshly created version — or one just edited — lands at the top of
+// the list), with the highest version `number` as the tiebreak when two share an
+// `updatedAt` (e.g. a copied song whose versions were saved in the same
+// millisecond, or documents migrated before `updatedAt` existed). Pure + exported
+// so the ordering rule is unit-tested once and shared by both list functions.
+export function sortVersionsByRecency(versions) {
+   return versions
+      .slice()
+      .sort(
+         (a, b) =>
+            (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0) ||
+            (Number(b.number) || 0) - (Number(a.number) || 0),
+      );
+}
+
+// Lightweight version summaries (label/number/editorMode), most recently updated first.
 export async function listVersions(songId) {
    await ensureFirebase();
    requireUser();
@@ -337,8 +362,9 @@ export async function listVersions(songId) {
          meter: data.meter || "",
       };
    });
-   // Nomor terbaru pertama; dokumen tanpa `number` dianggap 0 (terakhir).
-   return versions.sort((a, b) => (Number(b.number) || 0) - (Number(a.number) || 0));
+   // Paling baru di-update dulu (bukan nomor versi terbesar) supaya version yang
+   // baru dibuat / baru diedit muncul di atas; dokumen tanpa `updatedAt` dianggap 0.
+   return sortVersionsByRecency(versions);
 }
 
 // Delete one version, then re-point the song metadata at the new latest version.
@@ -622,14 +648,14 @@ export async function deleteSong(cloudId) {
    await dbFns.deleteDoc(songRef(cloudId));
 }
 
-// Duplicate an existing song: metadata + every version, newest number copied
-// as-is into fresh documents. Returns the new song's id.
+// Duplicate an existing song: metadata + every version, copied as-is into fresh
+// documents (each copy keeps its SOURCE timestamps so the duplicate preserves the
+// original's recency order). Returns the new song's id.
 export async function duplicateSong(cloudId) {
    await ensureFirebase();
    requireUser();
    const { dbFns } = sdk;
    const meta = await loadSongMeta(cloudId);
-   const now = Date.now();
    const created = await createSong({ title: `${meta.title || "Untitled"} (copy)`, artist: meta.artist || "" });
    const newSongId = created.songId;
    const snapshot = await dbFns.getDocs(versionsCollection(cloudId));
@@ -638,21 +664,24 @@ export async function duplicateSong(cloudId) {
    const versionDocs = snapshot.docs.slice().sort(
       (a, b) => (Number(a.data().number) || 0) - (Number(b.data().number) || 0),
    );
-   let latestId = null;
-   let latestLabel = "";
    let count = 0;
    for (const snap of versionDocs) {
-      const copy = { ...snap.data(), createdAt: now, updatedAt: now };
+      // Timestamps are carried over (NOT reset to now) so the copy keeps the same
+      // "most recently updated first" order as its source.
+      const copy = { ...snap.data() };
       delete copy.cloudId;
       delete copy.songId;
       delete copy.versionId;
-      const ref = await dbFns.addDoc(versionsCollection(newSongId), copy);
-      latestId = ref.id;
-      latestLabel = copy.label || "";
+      await dbFns.addDoc(versionsCollection(newSongId), copy);
       count += 1;
    }
    if (count) {
-      await writeLatestMeta(newSongId, latestId, latestLabel, count);
+      // "Latest" = the copy with the newest `updatedAt` (so the duplicate's library
+      // card shows the same mode as the source's topmost version).
+      const top = (await listVersions(newSongId))[0];
+      if (top) {
+         await writeLatestMeta(newSongId, top.versionId, top.label || "", count, top.editorMode, top.youtubeId, top.key, top.meter);
+      }
    } else {
       await updateSongMeta(newSongId, { versionCount: 0 });
    }
@@ -756,7 +785,7 @@ async function nextAlbumVersionNumber(albumId, songId) {
    return highest + 1;
 }
 
-export async function saveAlbumVersion(albumId, songId, versionId, data = {}, { label, number } = {}) {
+export async function saveAlbumVersion(albumId, songId, versionId, data = {}, { label, number, createdAt, updatedAt } = {}) {
    await ensureFirebase();
    requireUser();
    const { dbFns } = sdk;
@@ -779,7 +808,15 @@ export async function saveAlbumVersion(albumId, songId, versionId, data = {}, { 
    }
    const nextNumber = typeof number === "number" && number > 0 ? number : await nextAlbumVersionNumber(albumId, songId);
    const resolvedLabel = (label !== undefined ? label : data.label) || "Version 1";
-   const payload = { ...data, label: resolvedLabel, number: nextNumber, createdAt: now, updatedAt: now };
+   // Same rule as saveVersion(): a copy keeps its SOURCE timestamps (so the album
+   // copy preserves the source's recency order); a brand-new version gets now.
+   const payload = {
+      ...data,
+      label: resolvedLabel,
+      number: nextNumber,
+      createdAt: createdAt ?? data.createdAt ?? now,
+      updatedAt: updatedAt ?? data.updatedAt ?? now,
+   };
    delete payload.cloudId;
    delete payload.songId;
    delete payload.versionId;
@@ -798,14 +835,14 @@ export async function loadAlbumVersion(albumId, songId, versionId) {
    return { versionId: snapshot.id, ...snapshot.data() };
 }
 
-// Lightweight version summaries (label/number), newest number first.
+// Lightweight version summaries (label/number/editorMode), most recently updated first.
 export async function listAlbumVersions(albumId, songId) {
    await ensureFirebase();
    requireUser();
    const { dbFns } = sdk;
    // Sama seperti listVersions: hindari orderBy("number") karena Firestore
    // mendiamkan dokumen yang field `number`-nya hilang — ambil semua, urutkan
-   // di client (nomor terbaru pertama; tanpa `number` dianggap 0 / terakhir).
+   // di client (paling baru di-update dulu; tanpa `updatedAt` dianggap 0).
    const snapshot = await dbFns.getDocs(albumVersionsCollection(albumId, songId));
    const versions = snapshot.docs.map((snap) => {
       const data = snap.data();
@@ -820,7 +857,7 @@ export async function listAlbumVersions(albumId, songId) {
          meter: data.meter || "",
       };
    });
-   return versions.sort((a, b) => (Number(b.number) || 0) - (Number(a.number) || 0));
+   return sortVersionsByRecency(versions);
 }
 
 // Denormalize the "latest version" summary on an album song doc.
@@ -1200,6 +1237,11 @@ export async function saveToAlbum(albumId, project = {}, ctx = {}) {
       await updateAlbumSongMeta(albumId, songId, {
          title,
          artist,
+         // The just-saved version has the newest `updatedAt`, so it is now the
+         // TOPMOST arrangement — keep the denormalized summary (and therefore the
+         // library card's mode) pointing at it.
+         latestVersionId: nextVersionId,
+         latestVersionLabel: nextLabel,
          latestEditorMode: normalizeEditorMode(data.editorMode),
          latestKey: data.key || "",
          latestMeter: data.meter || "",
@@ -1266,7 +1308,11 @@ export async function addSongToAlbum(albumId, mySongId) {
       if (meta.legacy) {
          // Legacy flat song doc: the whole project IS the single arrangement.
          const payload = versionCopyPayload(meta);
-         const version = await saveAlbumVersion(albumId, newSongId, null, payload, { label: "Version 1" });
+         const version = await saveAlbumVersion(albumId, newSongId, null, payload, {
+            label: "Version 1",
+            createdAt: meta.createdAt,
+            updatedAt: meta.updatedAt,
+         });
          await writeAlbumLatestMeta(albumId, newSongId, version.versionId, version.label, 1, payload.editorMode, undefined, payload.key, payload.meter);
          versionCount = 1;
       } else {
@@ -1274,9 +1320,14 @@ export async function addSongToAlbum(albumId, mySongId) {
          for (const v of versions) {
             const source = await loadVersion(mySongId, v.versionId);
             const payload = versionCopyPayload(source);
-            // label/number are carried over so the album keeps the SAME version
-            // names and ordering as the source song.
-            await saveAlbumVersion(albumId, newSongId, null, payload, { label: v.label || source.label || "", number: v.number });
+            // label/number AND the source timestamps are carried over so the album
+            // keeps the SAME version names and recency order as the source song.
+            await saveAlbumVersion(albumId, newSongId, null, payload, {
+               label: v.label || source.label || "",
+               number: v.number,
+               createdAt: source.createdAt,
+               updatedAt: source.updatedAt,
+            });
             versionCount += 1;
          }
          if (!versionCount) {
@@ -1289,11 +1340,15 @@ export async function addSongToAlbum(albumId, mySongId) {
             const fallbackData = versionCopyPayload(source);
             fallbackData.title = meta.title || "Untitled";
             fallbackData.artist = meta.artist || "";
-            await saveAlbumVersion(albumId, newSongId, null, fallbackData, { label: meta.latestVersionLabel || "Version 1" });
+            await saveAlbumVersion(albumId, newSongId, null, fallbackData, {
+               label: meta.latestVersionLabel || "Version 1",
+               createdAt: source.createdAt,
+               updatedAt: source.updatedAt,
+            });
             versionCount = 1;
          }
-         // "Latest" = the album copy with the HIGHEST version number
-         // (listAlbumVersions is sorted newest-first) — independent of the
+         // "Latest" = the album copy with the newest `updatedAt` (the source's
+         // topmost version, kept by the preserved timestamps) — independent of the
          // iteration order of the source versions.
          const copied = await listAlbumVersions(albumId, newSongId);
          const latest = copied[0] || null;
@@ -1338,13 +1393,7 @@ export async function copyAlbumSongToMySongs(albumId, songId, { preferVersionId 
       await updateSongMeta(newSongId, { versionCount: 0 });
       return { songId: newSongId, versionId: null, versionLabel: "" };
    }
-   let latestId = null;
-   let latestLabel = "";
    let count = 0;
-   let latestEditorMode = "";
-   let latestYoutubeId = "";
-   let latestKey = "";
-   let latestMeter = "";
    let preferredId = null;
    let preferredLabel = "";
    for (const v of versions) {
@@ -1355,22 +1404,25 @@ export async function copyAlbumSongToMySongs(albumId, songId, { preferVersionId 
       delete payload.versionId;
       delete payload.label;
       delete payload.number;
+      // The payload keeps the source `createdAt`/`updatedAt`, so saveVersion()
+      // preserves the album song's recency order in the private copy.
       const createdVersion = await saveVersion(newSongId, null, payload, { label: v.label, number: v.number });
-      latestId = createdVersion.versionId;
-      latestLabel = createdVersion.label;
       count += 1;
-      latestEditorMode = normalizeEditorMode(version.editorMode || latestEditorMode);
-      latestYoutubeId = version.youtubeId || latestYoutubeId;
-      latestKey = version.key || latestKey;
-      latestMeter = version.meter || latestMeter;
       if (preferVersionId && v.versionId === preferVersionId) {
          preferredId = createdVersion.versionId;
          preferredLabel = createdVersion.label;
       }
    }
-   await writeLatestMeta(newSongId, latestId, latestLabel, count, latestEditorMode, latestYoutubeId, latestKey, latestMeter);
+   // "Latest" = the copy with the newest `updatedAt` (the topmost version, so the
+   // private copy's card shows the same mode as the album song's topmost version).
+   const top = (await listVersions(newSongId))[0] || null;
+   if (top) {
+      await writeLatestMeta(newSongId, top.versionId, top.label || "", count, top.editorMode, top.youtubeId, top.key, top.meter);
+   } else {
+      await updateSongMeta(newSongId, { versionCount: count });
+   }
    await updateSongMeta(newSongId, { title: meta.title, artist: meta.artist || "" });
-   return { songId: newSongId, versionId: preferredId || latestId, versionLabel: preferredLabel || latestLabel };
+   return { songId: newSongId, versionId: preferredId || top?.versionId || null, versionLabel: preferredLabel || top?.label || "" };
 }
 // ---- Join + membership (invite-code self-service) ----
 // The current code is mirrored on the album doc (activeInviteCode) so reading it

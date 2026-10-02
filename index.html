@@ -1064,6 +1064,26 @@
                   <p class="new-song-name-error" id="newVersionNameError" role="alert" hidden>Version name is required — enter a name to continue.</p>
                </div>
 
+               <!-- Writing mode for THIS version. One song can hold several versions,
+                    each written in its own mode, so it is chosen per version. -->
+               <div class="vd-mode-picker" id="newVersionModePicker" role="radiogroup" aria-label="Writing mode">
+                  <span class="new-song-name-label">Writing mode</span>
+                  <div class="vd-mode-options">
+                     <button class="vd-mode-btn is-active" type="button" data-mode="chords" role="radio" aria-checked="true">
+                        <span class="vd-mode-btn-mark" aria-hidden="true">♪</span>
+                        <span class="vd-mode-btn-label">Chord Chart</span>
+                     </button>
+                     <button class="vd-mode-btn" type="button" data-mode="numbers" role="radio" aria-checked="false">
+                        <span class="vd-mode-btn-mark" aria-hidden="true">#</span>
+                        <span class="vd-mode-btn-label">Numeric Notation</span>
+                     </button>
+                     <button class="vd-mode-btn" type="button" data-mode="chordpro" role="radio" aria-checked="false">
+                        <span class="vd-mode-btn-mark" aria-hidden="true">♬</span>
+                        <span class="vd-mode-btn-label">ChordPro</span>
+                     </button>
+                  </div>
+               </div>
+
                <div class="vd-youtube">
                   <label class="new-song-name-label" for="newVersionYoutube">YouTube link <em>(optional)</em></label>
                   <input
@@ -1275,9 +1295,7 @@
                      <span class="home-brand-text">WorshipNotationScore<small>Chord &amp; Number Score Builder</small></span>
                   </span>
                </div>
-               <!-- Compact, centered page title in the header's middle column. A short
-                    functional label (not the marketing tagline) — the user is already
-                    signed in here, and the New Song button supplies the action. -->
+               <!-- Compact, centred page title in the header's middle column. -->
                <div class="home-intro">
                   <h1 id="mySongsTitle">Your song library</h1>
                   <p id="mySongsSub"><span class="library-count" id="libraryCount"></span></p>
@@ -1344,9 +1362,6 @@
 
             <div class="home-tab-panel" id="songsPanel">
 
-            <!-- Hero copy sits directly under the brand header so it reads as a
-                 page title, leaving the search bar visually on its own with room
-                 to breathe before the song list. -->
             <div class="cloud-gallery-searchbar">
                <button
                   class="topbar-help-btn"
@@ -1422,6 +1437,43 @@
                </div>
             </div>
          </div>
+         <!-- ==================== FLOATING QUICK MENU (tablet + phone) =========
+              A bottom-right speed-dial that REPLACES the tab row and the header's
+              create/import buttons on ≤1050px (see styles/ui.css). It holds view
+              navigation (My Songs / Albums) and the primary actions, so the header
+              stays a single clean row. Hidden on desktop, where the tab row and the
+              header buttons remain exactly as before. Driven by cloudUI.js.
+              It is a direct child of the modal (NOT the shell) so its `position:
+              fixed` anchor is the viewport, not the shell's CSS transform. -->
+         <div class="home-fab" id="homeFab">
+            <div class="home-fab-menu" id="homeFabMenu" role="menu" aria-label="Quick menu" hidden>
+               <button class="home-fab-item" id="fabTabSongs" type="button" role="menuitemradio" aria-checked="true" data-home-tab="songs">
+                  <span class="home-fab-item-icon" aria-hidden="true">♪</span>
+                  <span class="home-fab-item-label">My Songs</span>
+               </button>
+               <button class="home-fab-item" id="fabTabAlbums" type="button" role="menuitemradio" aria-checked="false" data-home-tab="albums">
+                  <span class="home-fab-item-icon" aria-hidden="true">▦</span>
+                  <span class="home-fab-item-label">Albums</span>
+               </button>
+               <button class="home-fab-item" id="fabNewSong" type="button" role="menuitem">
+                  <span class="home-fab-item-icon" aria-hidden="true">＋</span>
+                  <span class="home-fab-item-label">New Song</span>
+               </button>
+               <button class="home-fab-item" id="fabNewAlbum" type="button" role="menuitem" hidden>
+                  <span class="home-fab-item-icon" aria-hidden="true">＋</span>
+                  <span class="home-fab-item-label">New Album</span>
+               </button>
+               <button class="home-fab-item" id="fabAttachLink" type="button" role="menuitem">
+                  <span class="home-fab-item-icon" aria-hidden="true">🔗</span>
+                  <span class="home-fab-item-label">Attach Link</span>
+               </button>
+            </div>
+            <button class="home-fab-trigger" id="homeFabBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="homeFabMenu" aria-label="Quick menu">
+               <span class="home-fab-plus" aria-hidden="true">＋</span>
+            </button>
+         </div>
+
+
       </div>
 
       <!-- ==================== ALBUM DETAIL =============================
