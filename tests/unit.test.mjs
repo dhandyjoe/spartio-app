@@ -2347,9 +2347,9 @@ test("the chord row above the numbers prints as a chord and never prints chrome"
       !/\.bar-batch \.bar \{[^}]*margin-top: [1-9]/.test(preview),
       "a plain bar (row OFF) must never gain extra top margin",
    );
-   // The per-bar toggle is editor chrome: it lives inside .bar-tools, which both
-   // print scopes hide.
-   assert.match(ui, /\.chord-above-bar-toggle \{/);
+   // The per-bar ♪ toggle was REMOVED — the chord row is section-level only now.
+   assert.ok(!/\.chord-above-bar-toggle/.test(ui), "the per-bar chords+ button must be gone");
+   // The remaining bar tools live inside .bar-tools, which both print scopes hide.
    assert.match(preview, /html\.is-print-layout \.bar-tools,/);
    // Read-only members keep the row readable but cannot type into it.
    assert.match(ui, /body\[data-member-readonly="1"\] \.chord-above-input/);
@@ -2419,9 +2419,10 @@ test("the help dialog and README document the chord row above the numbers", () =
    assert.ok(dialog, "the help dialog must exist");
    assert.match(dialog[0], /Chords above the numbers/);
    assert.match(dialog[0], /Chords On\/Off/);
-   assert.match(dialog[0], /♪<\/strong> button in a bar/);
+   // The per-bar ♪ control was removed from the help — the row is section-level only.
+   assert.ok(!/♪<\/strong> button in a bar/.test(dialog[0]), "no per-bar ♪ control in the help");
    // The ••• menu keeps copy/paste/delete only: the bulk "Chord row: all bars / no bars"
-   // entries were deliberately removed, so the ♪ button is the ONLY per-bar control.
+   // entries were deliberately removed, and so was the per-bar ♪ toggle.
    assert.ok(
       !/Chord row: (?:all|no) bars/.test(html),
       "the section menu must not offer the bulk chord-row actions",
@@ -2433,7 +2434,10 @@ test("the help dialog and README document the chord row above the numbers", () =
    assert.match(readme, /chordAboveBars/);
    assert.ok(!/Chord row: (?:all|no) bars/.test(readme), "the README must not document them either");
    assert.match(readme, /\| Section \|[\s\S]{0,220}?Chords On\/Off/);
-   assert.match(readme, /\| Bar \|[\s\S]{0,220}?♪/);
+   assert.ok(
+      !/\| Bar \|[\s\S]{0,220}?♪/.test(readme),
+      "the README must not list a per-bar row control",
+   );
    assert.ok(!/\| Song \|/.test(readme), "the README must not list a song-level switch");
    // ...and the album doc lists the new controls as locked for members.
    const album = readProjectFile("docs/ALBUM-FEATURE.md");
@@ -2782,3 +2786,248 @@ test("the LIVE PREVIEW bar is bold, larger and aligned with the preview card", (
    assert.match(css, /\.cp-card \{[\s\S]*?padding: var\(--cp-card-pad-y, 12mm\) var\(--cp-card-pad-x, 10mm\)/);
 });
 
+// ---- Album roles are shown as MD (Music Director) on every screen ----
+// The app has exactly two Firestore roles — `owner` (full access) and `member`
+// (read-only) — but the UI never says "owner"/"co-owner": the person who leads
+// the band is the MUSIC DIRECTOR ("MD"), flagged next to their name.
+
+test("an album owner is labelled MD (Music Director), never co-owner", () => {
+   const cloudUI = readProjectFile("src/cloudUI.js");
+   // One source of truth for the wording…
+   assert.match(cloudUI, /const MD_LABEL = "MD";/);
+   assert.match(cloudUI, /const MD_TITLE = "Music Director";/);
+   assert.match(cloudUI, /function roleShortLabel\(role\) \{\n\s+return role === "owner" \? MD_LABEL : "Member";/);
+   // …used by the Members dialog, the album header, the album card and the picker.
+   assert.match(cloudUI, /const roleLabel = roleShortLabel\(currentAlbum\.role\);/);
+   assert.match(cloudUI, /const roleLabel = album\.role === "owner" \? MD_LABEL : "Member · read-only";/);
+   assert.match(cloudUI, /song\$\{a\.songCount === 1 \? "" : "s"\} · \$\{MD_LABEL\}<\/small>/);
+   // No screen may print the old naming (the only mentions left are the comment
+   // that explains the rename and the DB-side word "owner").
+   [readProjectFile("index.html"), readProjectFile("src/cloud.js")].forEach((source, i) => {
+      assert.doesNotMatch(source, /co-owner|Co-owner|⭐ Owner/, `co-owner wording gone (${i})`);
+   });
+   assert.ok(!/>"Owner"<|⭐ Co-owner|↓ Member/.test(cloudUI), "the old role labels are gone");
+   // The stale-role guard toast speaks MD too.
+   assert.match(
+      readProjectFile("src/cloud.js"),
+      /You are the only MD\. Promote another member to MD first, or delete the album\./,
+   );
+});
+
+test("a member row flags an MD with a bold-italic (MD) marker beside the name", () => {
+   const cloudUI = readProjectFile("src/cloudUI.js");
+   const css = readProjectFile("styles/ui.css");
+   // roleMarker() emits the parenthesised flag; a plain member gets nothing.
+   assert.match(cloudUI, /function roleMarker\(role\) \{[\s\S]{0,140}?class="member-md-mark" title="\$\{MD_TITLE\}">\(\$\{MD_LABEL\}\)<\/span>/);
+   // A plain member renders no marker at all (absence = member).
+   assert.match(cloudUI, /return role === "owner"\n\s+\? ` <span class="member-md-mark"[\s\S]{0,90}?\n\s+: "";/);
+   // …and it is printed straight after the name: "Dhandy (MD) (you)".
+   assert.match(cloudUI, /const mdMark = roleMarker\(m\.role\);/);
+   assert.match(cloudUI, /<strong>\$\{escapeHtml\(memberName\)\}\$\{mdMark\}\$\{you\}<\/strong>/);
+   // BOLD (800) + ITALIC, in the album accent, light and dark.
+   assert.match(css, /\.member-md-mark \{[^}]*font-style: italic;[^}]*font-weight: 800;[^}]*white-space: nowrap;/);
+   assert.match(css, /html\[data-theme="dark"\] \.member-md-mark \{\n\s+color: #7fd3a4;/);
+});
+
+test("the member-actions buttons use VERB labels and a red SVG Remove", () => {
+   const cloudUI = readProjectFile("src/cloudUI.js");
+   const css = readProjectFile("styles/ui.css");
+   // Verb-first labels, both directions: "Make MD" / "Make member". A bare noun in
+   // a pill reads as a STATUS badge ("Andi 🎼 MD" = Andi IS an MD), which is the
+   // confusion this replaced — the sheet's subtitle states the CURRENT role.
+   assert.match(cloudUI, /is-promote"[\s\S]{0,340}?<span aria-hidden="true">🎼<\/span> Make \$\{MD_LABEL\}<\/button>/);
+   assert.match(cloudUI, /is-demote"[\s\S]{0,340}?<span aria-hidden="true">👤<\/span> Make member<\/button>/);
+   // The destructive one is a red SVG trash with its full label next to it.
+   assert.match(
+      cloudUI,
+      /const REMOVE_ICON =\n\s+'<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">[\s\S]{0,400}?<\/svg>';/,
+   );
+   assert.match(
+      cloudUI,
+      /is-danger member-remove-btn"[\s\S]{0,300}?\$\{REMOVE_ICON\}<span class="member-remove-label">Remove from album<\/span><\/button>/,
+   );
+   assert.ok(!/member-remove-btn"[\s\S]{0,600}?🗑/.test(cloudUI), "the trash must be an SVG, not the 🗑 emoji");
+   assert.ok(!/🗑 Remove/.test(cloudUI), "the trash is an SVG; the label is words");
+   assert.ok(!/member-role-chip/.test(cloudUI), "the old role chip is replaced by the (MD) marker");
+   // No crown / star for the MD role: the glyph must read as MUSIC direction.
+   assert.ok(!/👑|⭐/.test(cloudUI), "no crown or star in the role controls");
+   // MD wears a SOFT GOLD tint (12% over the surface) — the same restrained
+   // recipe as the red actions, NOT a saturated gradient that out-shouts the
+   // primary buttons. `:is()` covers the row AND the phone sheet.
+   assert.match(
+      css,
+      /:is\(#albumMembersDialog, #memberActionsDialog\) \.member-controls \.button\.member-role-btn\.is-promote \{\n\s+color: #854d0e;\n\s+border: 1px solid color-mix\(in srgb, #f59e0b 32%, transparent\);\n\s+background: color-mix\(in srgb, #f59e0b 12%, #fff\);/,
+   );
+   assert.match(
+      css,
+      /:is\(#albumMembersDialog, #memberActionsDialog\) \.member-controls \.button\.member-role-btn\.is-promote:hover \{[\s\S]{0,220}?background: color-mix\(in srgb, #f59e0b 20%, #fff\);/,
+   );
+   assert.match(
+      css,
+      /html\[data-theme="dark"\] :is\(#albumMembersDialog, #memberActionsDialog\) \.member-controls \.button\.member-role-btn\.is-promote \{\n\s+color: #fcd34d;\n\s+border-color: color-mix\(in srgb, #fbbf24 34%, transparent\);\n\s+background: color-mix\(in srgb, #fbbf24 16%, #111\);/,
+   );
+   assert.ok(!/member-role-btn\.is-promote[\s\S]{0,200}?linear-gradient/.test(css), "no gradient on MD");
+   assert.match(css, /:is\(#albumMembersDialog, #memberActionsDialog\) \.member-controls \.button\.member-role-btn\.is-demote \{\n\s+color: var\(--dark-green\);\n\s+border: 1px solid color-mix\(in srgb, var\(--line\) 95%, transparent\);\n\s+background: #fff;/);
+   assert.match(css, /html\[data-theme="dark"\] :is\(#albumMembersDialog, #memberActionsDialog\) \.member-controls \.button\.member-role-btn\.is-demote \{\n\s+color: #d7e6d9;/);
+   // Icon-only square, wearing the app's single red — byte-identical to the
+   // album header's Leave button so "red" keeps exactly one meaning.
+   const decl = [
+      "color: #be123c;",
+      "background: color-mix(in srgb, #e11d48 8%, #fff);",
+      "border: 1px solid color-mix(in srgb, #e11d48 22%, transparent);",
+   ];
+   const leave = css.match(/\.cloud-album-actions \.button\.is-danger \{[\s\S]*?\n\}/)[0];
+   const remove = css.match(/:is\(#albumMembersDialog, #memberActionsDialog\) \.member-controls \.button\.member-remove-btn \{[\s\S]*?\n\}/)[0];
+   // Square + grid-centred, so the SVG cannot be off-centre by a pixel.
+   assert.match(
+      remove,
+      /display: grid;\n\s+place-items: center;\n\s+width: 38px;\n\s+min-width: 38px;\n\s+height: 38px;\n\s+min-height: 38px;\n\s+padding: 0;\n\s+line-height: 0;/,
+   );
+   assert.match(
+      css,
+      /:is\(#albumMembersDialog, #memberActionsDialog\) \.member-controls \.button\.member-remove-btn svg \{\n\s+display: block;\n\s+width: 17px;\n\s+height: 17px;/,
+   );
+   decl.forEach((line) => {
+      assert.ok(leave.includes(line), `Leave keeps ${line}`);
+      assert.ok(remove.includes(line), `Remove matches Leave: ${line}`);
+   });
+   assert.match(
+      css,
+      /html\[data-theme="dark"\] :is\(#albumMembersDialog, #memberActionsDialog\) \.member-controls \.button\.member-remove-btn \{[\s\S]*?color: #fda4af;[\s\S]*?background: color-mix\(in srgb, #fb7185 14%, #111\);/,
+   );
+   // …and the old chip styling is gone with it.
+   assert.ok(!/\.member-role-chip/.test(css), "dead chip CSS removed");
+});
+
+test("the sheet opens from the row's ⋮ (desktop) or a row tap (phone)", () => {
+   const cloudUI = readProjectFile("src/cloudUI.js");
+   const css = readProjectFile("styles/ui.css");
+   const html = readProjectFile("index.html");
+   // ONE builder feeds the sheet; the ROW carries a single ⋮ instead of the two
+   // verb buttons — inline they read as a status badge ("Andi 🎼 MD").
+   assert.match(cloudUI, /function memberControlsMarkup\(member\) \{/);
+   assert.match(cloudUI, /const controls = manageable\n\s+\? `\$\{memberManageButtonMarkup\(\{ uid: m\.uid, name: memberName \}\)\}<span class="member-row-chevron" aria-hidden="true">›<\/span>`/);
+   assert.match(cloudUI, /body\.innerHTML = memberControlsMarkup\(member\);/);
+   assert.match(cloudUI, /function memberManageButtonMarkup\(member\) \{/);
+   assert.match(cloudUI, /class="member-row-menu-btn" data-member-menu data-uid="\$\{uid\}"/);
+   assert.match(cloudUI, /aria-haspopup="dialog" aria-controls="memberActionsDialog" aria-expanded="false"/);
+   // ONE affordance per width: the ⋮ lives in the row but CSS hides it on a phone,
+   // where the whole row is the tap target and a chevron signals that.
+   assert.match(css, /#albumMembersDialog \.member-row-menu-btn \{\n\s+display: none;\n\s+\}/);
+   assert.match(css, /\.member-row-chevron \{\n\s+display: none;/);
+   assert.match(css, /#albumMembersDialog \.member-row\.is-manageable \.member-row-chevron \{\n\s+display: block;\n\s+\}/);
+   // A row is manageable only for ANOTHER MD (rules forbid self-writes, which is
+   // what keeps the last MD from orphaning the album).
+   assert.match(cloudUI, /const manageable = isOwner && !self;/);
+   assert.match(cloudUI, /class="member-row\$\{manageable \? " is-manageable" : ""\}"/);
+   // The sheet's dialog markup + its own dismiss hook.
+   assert.match(html, /<div class="confirm-dialog" id="memberActionsDialog" hidden role="dialog" aria-modal="true"/);
+   assert.match(html, /data-memberactions-dismiss/);
+   assert.match(html, /<div class="member-actions-body" id="memberActionsBody"><\/div>/);
+   // A row's ⋮ opens the sheet on EVERY width; isPhone() only WIDENS the hit area
+   // (a phone may also tap the row), never changes what opens.
+   assert.match(cloudUI, /\$\("#memberList"\)\?\.addEventListener\("click", \(event\) => \{\n\s+const row = event\.target\.closest\("\.member-row\.is-manageable"\);\n\s+if \(!row\) return;\n\s+const menuBtn = event\.target\.closest\("\[data-member-menu\]"\);\n\s+if \(!menuBtn && !isPhone\(\)\) return;/);
+   assert.match(cloudUI, /openMemberActionsDialog\(\{\n\s+uid: member\.uid,\n\s+name: friendlyName\(member\) \|\| "Musician",/);
+   assert.match(cloudUI, /\}, row\.querySelector\("\[data-member-menu\]"\)\);/);
+   // The sheet names WHOM it manages, moves the focus in — and puts it back on the
+   // ⋮ that opened it (aria-expanded tracks that too, like #versionSwitcherBtn).
+   assert.match(cloudUI, /title\.textContent = `Manage \$\{who\}/);
+   assert.match(cloudUI, /memberActionsTrigger\?\.setAttribute\("aria-expanded", "true"\);/);
+   assert.match(cloudUI, /trigger\.setAttribute\("aria-expanded", "false"\);/);
+   assert.match(cloudUI, /const visible = trigger\.isConnected && !!trigger\.offsetParent;/);
+   assert.match(cloudUI, /\(\$\("#memberActionsBody \[data-member-action\]"\) \|\| \$\("#memberActionsClose"\)\)\?\.focus\(\);/);
+   // The base ⋮ is the same neutral 38px grid-centred square the trash used to be,
+   // and it wears neither the destructive red nor the MD gold.
+   assert.match(css, /\.member-row-menu-btn \{\n\s+flex: 0 0 auto;\n\s+display: grid;\n\s+place-items: center;\n\s+width: 38px;\n\s+min-width: 38px;\n\s+height: 38px;\n\s+min-height: 38px;/);
+   assert.ok(!/\.member-row-menu-btn[^}]*#be123c/.test(css), "the ⋮ must not wear the destructive red");
+   assert.match(cloudUI, /\$\("#memberActionsDialog"\)\?\.addEventListener\("click", \(event\) => \{/);
+   assert.match(cloudUI, /const btn = event\.target\.closest\("#memberActionsBody \[data-member-action\]"\);/);
+   assert.match(cloudUI, /closeMemberActionsDialog\(\);\n\s+handleMemberAction\(action, uid, memberActionMembers\);/);
+   // Escape closes the sheet first (it sits on top of the member list).
+   assert.match(cloudUI, /if \(memberActionsOpen\(\)\) closeMemberActionsDialog\(\);\n\s+else if \(albumJoinResolve\)/);
+   // …and a MISSING sheet must read as closed, or Escape would be swallowed.
+   assert.match(cloudUI, /const d = \$\("#memberActionsDialog"\);\n\s+return !!d && !d\.hidden;/);
+   // Closing the list also closes the sheet — and does NOT hand the focus back to
+   // a ⋮ that sits inside a dialog which is going away.
+   assert.match(cloudUI, /function closeMembersDialog\(\) \{[\s\S]{0,300}?closeMemberActionsDialog\(\{ restoreFocus: false \}\);/);
+   // The list teaches the affordance of THIS width: tap the row on a phone, ⋮ on a
+   // desktop — owners only, since a plain member has no controls at all.
+   assert.match(cloudUI, /const hint = isPhone\(\)\n\s+\? " Tap a member to manage them\."\n\s+: " Use ⋮ on a member to manage them\.";/);
+   assert.match(cloudUI, /const tapHint = isOwner \? hint : "";/);
+   // The phone block: the ⋮ steps aside for the chevron, and the row becomes tap.
+   assert.match(css, /@media \(max-width: 680px\) \{\n\s+#albumMembersDialog \.member-row \{\n\s+flex-wrap: nowrap;\n\s+\}\n\s+#albumMembersDialog \.member-row-menu-btn \{\n\s+display: none;\n\s+\}\n\s+#albumMembersDialog \.member-row\.is-manageable \{\n\s+cursor: pointer;\n\s+\}/);
+   // The Remove label is never hidden any more: the sheet is the only surface and
+   // it says "Remove from album" out loud.
+   assert.match(css, /\.member-remove-label \{\n\s+display: inline;\n\s+font-weight: 700;\n\}/);
+   assert.match(css, /\.member-actions-body \.member-controls \{\n\s+flex-direction: column;\n\s+align-items: stretch;\n\s+gap: 10px;\n\s+width: 100%;/);
+   assert.match(
+      css,
+      /#memberActionsDialog \.member-actions-body \.member-controls \.button\.member-remove-btn \{\n\s+display: inline-flex;\n\s+width: 100%;\n\s+min-width: 0;\n\s+height: auto;\n\s+min-height: 46px;/,
+   );
+});
+
+test("the member-actions buttons survive the phone breakpoint", () => {
+   const css = readProjectFile("styles/ui.css");
+   // styles.css really does hide EVERY ghost button at ≤560px (the trap)…
+   assert.match(
+      readProjectFile("styles/styles.css"),
+      /@media\(max-width:560px\)\{[\s\S]{0,200}?\.button-ghost\{display:none\}/,
+   );
+   // …and the sheet's buttons are ghost buttons, so they must be re-shown
+   // (an ID selector beats the class rule; media queries add no specificity).
+   assert.match(
+      css,
+      /@media \(max-width: 560px\) \{\n\s+:is\(#albumMembersDialog, #memberActionsDialog\) \.member-controls \.button,\n\s+#addSongCancel\.button-ghost \{\n\s+display: inline-flex;/,
+   );
+});
+
+test("a hidden home-toolbar button stays hidden on a phone", () => {
+   const css = readProjectFile("styles/ui.css");
+   const ui = readProjectFile("src/cloudUI.js");
+   // The tabs really do swap the actions through the hidden attribute: "New Song"
+   // and "Attach Link" are MY SONGS actions, "+ New Album" is the ALBUMS one.
+   assert.match(ui, /if \(newSongBtn\) newSongBtn\.hidden = isAlbums;/);
+   assert.match(ui, /if \(attachLinkBtn\) attachLinkBtn\.hidden = isAlbums;/);
+   assert.match(ui, /if \(newAlbumBtn\) newAlbumBtn\.hidden = !isAlbums;/);
+   // The phone re-shows (styles.css drops every .button-ghost at ≤560px) carry an
+   // ID selector AND !important — so the generic `.cloud-gallery-actions > [hidden]`
+   // LOSES to them and the 🔗 Attach Link stayed visible on the Albums tab on a
+   // phone. An ID-level [hidden] guard is what makes `hidden` win again, and it
+   // must come AFTER the re-shows (order breaks the tie at equal specificity).
+   const reshows = css.indexOf("#attachLinkBtn.button-ghost {");
+   const guard = css.indexOf("#attachLinkBtn[hidden],");
+   assert.ok(reshows > -1, "the phone re-show for Attach Link exists");
+   assert.ok(guard > -1, "an ID-level [hidden] guard exists");
+   assert.ok(guard > reshows, "the guard comes after the re-show, so it wins");
+   assert.match(css, /#attachLinkBtn\[hidden\],[\s\S]{0,400}?display: none !important;/);
+   // It covers every button in the app that is toggled through `hidden`.
+   ["#newSongBtn[hidden]", "#newAlbumBtn[hidden]", "#joinAlbumBtn[hidden]", "#albumMembersBtn[hidden]", "#albumLeaveBtn[hidden]"].forEach((sel) => {
+      assert.ok(css.includes(sel), `the guard covers ${sel}`);
+   });
+   // Belt and braces: the generic toolbar rule is still there for children.
+   assert.match(css, /\.cloud-gallery-actions > \[hidden\] \{\n\s+display: none !important;\n\}/);
+});
+
+test("the role dialogs ask about MD, not co-owner", () => {
+   const cloudUI = readProjectFile("src/cloudUI.js");
+   assert.match(cloudUI, /title: `Make \$\{MD_TITLE\} \(\$\{MD_LABEL\}\)\?`/);
+   assert.match(cloudUI, /confirmLabel: `Make \$\{MD_LABEL\}`/);
+   assert.match(cloudUI, /title: "Change back to a member\?"/);
+   // Each confirm dialog leads with the SAME icon as its row button: 🎼 / 👤.
+   assert.match(cloudUI, /confirmLabel: `Make \$\{MD_LABEL\}`, cancelLabel: "Cancel", icon: "🎼"/);
+   assert.match(cloudUI, /confirmLabel: "Make member", cancelLabel: "Cancel", icon: "👤"/);
+   // The dialog's own subtitle explains the counts and goes STRAIGHT to the
+   // permission sentence — no "MD = Music Director." preamble any more.
+   assert.match(cloudUI, /`\$\{mdCount\} \$\{MD_LABEL\}\$\{mdCount === 1 \? "" : "s"\}/);
+   assert.match(
+      cloudUI,
+      /const verbs = isOwner\n\s+\? `As an \$\{MD_LABEL\} you can promote a member to \$\{MD_LABEL\} or remove them\.`\n\s+: `\$\{MD_LABEL\}s can promote members to \$\{MD_LABEL\} and remove them\.`;/,
+   );
+   assert.ok(
+      !cloudUI.includes("MD = Music Director."),
+      "the abbreviation preamble must not come back",
+   );
+   const html = readProjectFile("index.html");
+   assert.match(html, /MDs can promote members to MD and remove them\./);
+   assert.ok(!html.includes("MD = Music Director."), "no preamble in the dialog markup either");
+});

@@ -1158,46 +1158,68 @@ for (const [width, height, deviceScaleFactor = 1] of [
       scoreLayout.barsFit && scoreLayout.barsStack,
       JSON.stringify(scoreLayout),
    );
+   // ---- PHONE VIEW-ONLY CANVAS ----
+   // Arranging needs room, so a phone is view-only: the palette, beat editing,
+   // lyrics and bar tools refuse, while metadata + Key / Meter / Transpose / BPM +
+   // Play and Export stay live. (Desktop keeps full editing — see the suites above.)
+   record(
+      `${width}px canvas is view-only (body[data-view-only="1"])`,
+      (await evaluate("document.body.dataset.viewOnly")) === "1",
+   );
    await click(".chord-family .chord", 0);
    await click(".drop-target", 0);
-   record(`${width}px tap-to-place chord works`, (await chordText(0)) === "C");
-   // Removal now happens via the ✕ badge (clicking the chord body re-opens the
-   // inline editor instead of deleting). Removal is animated (chord-leaving →
-   // transitionend / 200ms fallback), so wait for the element to leave the DOM.
-   await click(".placed-chord .chord-remove", 0);
-   await waitFor("document.querySelectorAll('.placed-chord').length===0");
    record(
-      `${width}px tapping the ✕ badge removes a placed chord`,
+      `${width}px palette tap does NOT place a chord (view-only)`,
       (await evaluate("document.querySelectorAll('.placed-chord').length")) === 0,
    );
-   await click("#tabNashville");
-   await click(".nashville-row-block:nth-child(2) .nashville-key", 6);
-   await click("#nashvilleChordBank .chord", 1);
-   await click(".drop-target", 1);
-   record(`${width}px Nashville mobile selection works`, (await chordText(0)).includes("7m"));
-   await click("#tabLyrics");
-   await click("#lyricsEnabled");
    record(
-      `${width}px lyric inputs fit inside scrollable score`,
-      await evaluate("document.querySelectorAll('.lyric-input').length>=16"),
-   );
-   record(
-      `${width}px delete-bar touch target is usable`,
+      `${width}px tapping a beat does not open the chord editor`,
       await evaluate(
-         "(()=>{const r=document.querySelector('.delete-bar').getBoundingClientRect();return r.width>=40&&r.height>=40})()",
+         "(()=>{const b=document.querySelector('.beat');b.dispatchEvent(new MouseEvent('click',{bubbles:true}));return !document.querySelector('.chord-popover')})()",
       ),
    );
    record(
-      `${width}px delete-bar does not cover the fourth beat`,
+      `${width}px per-bar edit chrome is hidden (no ✕ / no ⧉ ⎘)`,
       await evaluate(
-         "(()=>{const bar=document.querySelector('.bar'),button=bar.querySelector('.delete-bar').getBoundingClientRect(),lastBeat=[...bar.querySelectorAll(':scope > .beat-column')].at(-1).getBoundingClientRect();return button.left>=lastBeat.right})()",
+         "(()=>{const d=document.querySelector('.delete-bar'),t=document.querySelector('.bar-tools');return !!d&&!!t&&getComputedStyle(d).display==='none'&&getComputedStyle(t).display==='none'})()",
       ),
    );
-   const mobileBarsBefore = await evaluate("document.querySelectorAll('.bar').length");
-   await click(".delete-bar", 0);
    record(
-      `${width}px delete-bar removes one bar`,
-      await evaluate(`document.querySelectorAll('.bar').length===${mobileBarsBefore - 1}`),
+      `${width}px Undo/Redo are inert`,
+      (await evaluate("getComputedStyle(document.querySelector('#undoBtn')).pointerEvents")) === "none",
+   );
+   record(
+      `${width}px Key / Transpose / BPM controls stay enabled`,
+      await evaluate(
+         "(()=>{const ok=id=>{const el=document.querySelector(id);return !!el&&!el.disabled&&getComputedStyle(el).pointerEvents!=='none'};return ok('#keySelect')&&ok('#transposeUp')&&ok('#bpmInput')})()",
+      ),
+   );
+   record(
+      `${width}px Time signature is locked on a phone`,
+      await evaluate(
+         "(()=>{const m=document.querySelector('#timeSignature');return !!m&&m.disabled&&getComputedStyle(document.querySelector('#previewMeter')).pointerEvents==='none'})()",
+      ),
+   );
+   record(
+      `${width}px Play / Export stay reachable`,
+      await evaluate(
+         "(()=>{const ok=id=>{const el=document.querySelector(id);return !!el&&getComputedStyle(el).pointerEvents!=='none'};return ok('#playBtn')&&ok('#exportBtn')})()",
+      ),
+   );
+   // The ribbon is hidden on phones, so the reachable Key path is the preview's
+   // inline editor — tapping it must open the select, and a change must commit.
+   record(
+      `${width}px tapping the preview Key opens the inline editor`,
+      await evaluate(
+         "(()=>{const p=document.querySelector('#previewKey');p.dispatchEvent(new MouseEvent('click',{bubbles:true}));return !!p.querySelector('select,input')})()",
+      ),
+   );
+   await evaluate(
+      "(()=>{const e=document.querySelector('#previewKey input,#previewKey select');if(e){e.value='E';e.dispatchEvent(new Event('change',{bubbles:true}));}return true})()",
+   );
+   record(
+      `${width}px the inline Key editor commits on a phone`,
+      (await evaluate("document.querySelector('#previewKey').textContent.trim()")) === "E",
    );
    // PDF options on phones: the dialog opens as an options-only sheet — the live
    // PDF preview pane is hidden (no room to render a full page usefully), but all

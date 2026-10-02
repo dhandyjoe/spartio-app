@@ -1006,9 +1006,10 @@ export async function deleteAlbum(albumId) {
       await dbFns.deleteDoc(song.ref);
    }
    const members = await dbFns.getDocs(membersCollection(albumId));
-   // Rule 3 forbids an owner from deleting their own membership (protects the
-   // last owner) — skip our own row; the album doc itself is deleted below and
-   // its invite codes go stale, so the leftover membership is inert.
+   // Our OWN membership row is skipped: the album doc itself is deleted below and
+   // its invite codes go stale, so a leftover membership of a deleted album is
+   // inert (and this keeps the delete working even for a build whose rules still
+   // forbid an owner from removing their own row).
    await Promise.all(
       members.docs.filter((snap) => snap.id !== currentUser.uid).map((snap) => dbFns.deleteDoc(snap.ref)),
    );
@@ -1496,8 +1497,23 @@ export async function leaveAlbum(albumId) {
    const { dbFns } = sdk;
    const me = await getOwnMembership(albumId);
    if (!me) return;
+   // Everyone may leave — a MEMBER and an OWNER / MD alike. The single
+   // exception is the LAST owner: an album with no owner could never be managed
+   // (or deleted) again, so we refuse and point at the two ways out. This guard
+   // lives here because Firestore rules cannot count owners. The UI calls an
+   // owner an MD (Music Director).
    if (me.role === "owner") {
-      throw new Error("Owners cannot leave. Ask another owner to change your role, or delete the album.");
+      let owners = 1;
+      try {
+         owners = (await listMembers(albumId)).filter((member) => member.role === "owner").length;
+      } catch {
+         owners = 1; // unknown → be conservative and refuse
+      }
+      if (owners <= 1) {
+         throw new Error(
+            "You are the only MD. Promote another member to MD first, or delete the album.",
+         );
+      }
    }
    await dbFns.deleteDoc(memberRef(albumId, currentUser.uid));
    try {

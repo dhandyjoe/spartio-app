@@ -157,9 +157,15 @@
                <span class="album-pill-icon" aria-hidden="true">💿</span>
                <span class="album-pill-text" id="albumPillText">Album</span>
             </span>
-            <button class="button button-save" id="saveCloudBtn" type="button" title="Save this score to your cloud library">
-               <span aria-hidden="true">⤒</span> Save to Cloud</button
-            ><button class="button button-dark" id="exportBtn" type="button" title="Adjust PDF layout, then export" aria-haspopup="dialog" aria-controls="pdfOptionsModal"><span aria-hidden="true">↗</span> Export .pdf</button>
+            <!-- The two primary actions travel as ONE flex group (`.topbar-action-group`),
+                 so on a phone they share a single line with the mode badge — and, in
+                 album scope where the context pill makes the line too tight, the pair
+                 drops to the next line TOGETHER instead of splitting across two rows. -->
+            <div class="topbar-action-group">
+               <button class="button button-save" id="saveCloudBtn" type="button" title="Save this score to your cloud library">
+                  <span aria-hidden="true">⤒</span> Save to Cloud</button
+               ><button class="button button-dark" id="exportBtn" type="button" title="Adjust PDF layout, then export" aria-haspopup="dialog" aria-controls="pdfOptionsModal"><span aria-hidden="true">↗</span> Export .pdf</button>
+            </div>
          </div>
       </header>
 
@@ -739,9 +745,9 @@
          <div class="device-hint-card">
             <div class="device-hint-icon" aria-hidden="true">🖥️</div>
             <div class="device-hint-copy">
-               <strong id="deviceHintTitle">Best on a bigger screen</strong>
+               <strong id="deviceHintTitle">View-only on a phone</strong>
                <p id="deviceHintDesc">
-                  You can arrange on your phone, but a desktop, laptop, or tablet gives you more room to place chords and preview the full page.
+                  Arranging needs room, so on a phone the score is view-only — you can still change the title, artist, key, time signature, transpose and BPM, and play or export it. Open on a desktop, laptop, or tablet to edit chords, bars and sections.
                </p>
             </div>
             <button class="device-hint-close" id="deviceHintClose" type="button">Got it</button>
@@ -829,11 +835,11 @@
                <li class="howto-group">💿 Albums — share with your team</li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">💿</span>
-                  <span class="howto-item-text"><strong>Create or join</strong> — <em>New Album</em> creates an album with an invite code (rotate it any time from <em>Invite</em>); teammates join with <em>Join with code</em>. Everyone uses their own account, so the album stays curatable. Hover an album card for <em>📝 Edit details</em> to change its name and description (owners only).</span>
+                  <span class="howto-item-text"><strong>Create or join</strong> — <em>New Album</em> creates an album with an invite code (rotate it any time from <em>Invite</em>); teammates join with <em>Join with code</em>. Everyone uses their own account, so the album stays curatable. Hover an album card for <em>📝 Edit details</em> to change its name and description (MDs only).</span>
                </li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">⭐</span>
-                  <span class="howto-item-text"><strong>Owner vs Member</strong> — an <em>Owner</em> invites people, adds songs, promotes a member to co-owner and can remove songs; a <em>Member</em> only reads. The last owner can never be demoted or removed, so the album can never be left owner-less.</span>
+                  <span class="howto-item-text"><strong>MD vs Member</strong> — the <em>MD</em> (Music Director — the app's name for an album owner) invites people, adds songs, promotes a member to MD and can remove songs; a <em>Member</em> only reads. The last MD can never be demoted or removed, so the album can never be left without one. Anyone — a member <em>or</em> an MD — can walk away with the red <em>Leave</em> button in the album header; the last MD is asked to promote another MD first (or delete the album).</span>
                </li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">📥</span>
@@ -850,7 +856,7 @@
                </li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">🔢</span>
-                  <span class="howto-item-text"><strong>Chords above the numbers</strong> — in <strong>Chord Chart</strong> mode every section has its own <strong>Chords On/Off</strong> switch in its heading. Turn it on and a chord row opens above every beat of <em>that section</em>: write the Nashville number on the beat (type <code>1</code>, <code>5</code>, <code>6m</code>, <code>1̇</code>) and its chord above it (<code>C</code>, <code>G</code>, <code>Am</code>) — you read the <em>melody</em> and the <em>harmony</em> on the same line, and <em>▶ Play</em> sounds both together. It is per section on purpose, so turn it on only where it is needed; use the <strong>♪</strong> button in a bar (hover or focus a bar — it appears next to ⧉ ⎘) to switch a single bar on or off. The row transposes with the key, follows rhythm subdivisions and prints with the score, while bars where it is switched off keep their height so the barlines stay lined up.</span>
+                  <span class="howto-item-text"><strong>Chords above the numbers</strong> — in <strong>Chord Chart</strong> mode every section has its own <strong>Chords On/Off</strong> switch in its heading. Turn it on and a chord row opens above every beat of <em>that section</em>: write the Nashville number on the beat (type <code>1</code>, <code>5</code>, <code>6m</code>, <code>1̇</code>) and its chord above it (<code>C</code>, <code>G</code>, <code>Am</code>) — you read the <em>melody</em> and the <em>harmony</em> on the same line, and <em>▶ Play</em> sounds both together. It is per section on purpose, so turn it on only where it is needed. The row transposes with the key, follows rhythm subdivisions and prints with the score, while bars where it is switched off keep their height so the barlines stay lined up.</span>
                </li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">♬</span>
@@ -1277,6 +1283,10 @@
                   <p id="mySongsSub"><span class="library-count" id="libraryCount"></span></p>
                </div>
                <div class="cloud-gallery-actions">
+                  <!-- "+ New Album" mirrors "+ New Song": the SAME primary slot in the
+                       toolbar (immediately left of the profile button, and pinned to the
+                       left edge on phones). Shown only while the Albums tab is open. -->
+                  <button class="button button-primary" id="newAlbumBtn" type="button" title="Create a new album" hidden><span aria-hidden="true">＋</span><span class="btn-label">New Album</span></button>
                   <button class="button button-primary" id="newSongBtn" type="button" title="Start a new song" aria-label="New Song"><span aria-hidden="true">＋</span><span class="btn-label">New Song</span></button>
                   <button class="button button-ghost" id="attachLinkBtn" type="button" title="Attach a song link from another user" aria-label="Attach Link"><span aria-hidden="true">🔗</span><span class="btn-label">Attach Link</span></button>
                   <!-- Profile menu: the account button opens a card with the
@@ -1384,8 +1394,7 @@
                      <span class="cloud-search-icon" aria-hidden="true">⌕</span>
                      <input type="search" id="albumSearch" placeholder="Search albums…" aria-label="Search albums" />
                   </div>
-                  <button class="button button-ghost" id="joinAlbumBtn" type="button" title="Join an album with an invite code"><span aria-hidden="true">🔑</span> Join with code</button>
-                  <button class="button button-primary" id="newAlbumBtn" type="button"><span aria-hidden="true">＋</span> New Album</button>
+                  <button class="button button-ghost" id="joinAlbumBtn" type="button" title="Join an album with an invite code" aria-label="Join with code"><span aria-hidden="true">🔑</span><span class="btn-label">Join with code</span></button>
                </div>
                <!-- Album cards, laid out EXACTLY like the My Songs carousel. -->
                <div class="cloud-gallery-body albums-body">
@@ -1428,11 +1437,11 @@
                   <p class="cloud-modal-sub" id="albumMeta"></p>
                </div>
                <div class="cloud-album-actions">
-                  <button class="button button-ghost" id="albumInviteBtn" type="button" title="Invite musicians with a code" hidden><span aria-hidden="true">✉</span> Invite</button>
-                  <button class="button button-ghost" id="albumMembersBtn" type="button" title="Manage members" hidden><span aria-hidden="true">👥</span> Members</button>
-                  <button class="button button-ghost" id="albumAddFromBtn" type="button" title="Copy a song from My Songs" hidden><span aria-hidden="true">＋</span> Add from My Songs</button>
-                  <button class="button button-primary" id="albumNewSongBtn" type="button" title="Create a new song in this album" hidden><span aria-hidden="true">＋</span> New Song</button>
-                  <button class="button button-ghost is-danger" id="albumLeaveBtn" type="button" title="Leave this album" hidden><span aria-hidden="true">⇥</span> Leave</button>
+                  <button class="button button-ghost" id="albumInviteBtn" type="button" title="Invite musicians with a code" aria-label="Invite" hidden><span aria-hidden="true">✉</span><span class="btn-label">Invite</span></button>
+                  <button class="button button-ghost" id="albumMembersBtn" type="button" title="Manage members" aria-label="Members" hidden><span aria-hidden="true">👥</span><span class="btn-label">Members</span></button>
+                  <button class="button button-ghost" id="albumAddFromBtn" type="button" title="Copy a song from My Songs" aria-label="Add from My Songs" hidden><span aria-hidden="true">＋</span><span class="btn-label">Add from My Songs</span></button>
+                  <button class="button button-primary" id="albumNewSongBtn" type="button" title="Create a new song in this album" hidden><span aria-hidden="true">＋</span><span class="btn-label">New Song</span></button>
+                  <button class="button button-ghost is-danger" id="albumLeaveBtn" type="button" title="Leave this album" aria-label="Leave album" hidden><span aria-hidden="true">⇥</span><span class="btn-label">Leave</span></button>
                </div>
             </header>
 
@@ -1559,7 +1568,7 @@
       </div>
 
       <!-- ==================== ADD SONG TO ALBUM =============================
-           Owner copies an existing My Songs song (all arrangements) into the album. -->
+           An MD copies an existing My Songs song (all arrangements) into the album. -->
       <div class="confirm-dialog" id="addSongDialog" hidden role="dialog" aria-modal="true" aria-labelledby="addSongTitle" aria-describedby="addSongDesc">
          <div class="confirm-dialog-backdrop" data-addsong-dismiss></div>
          <div class="confirm-dialog-card add-song-dialog-card" role="document">
@@ -1584,8 +1593,15 @@
       </div>
 
       <!-- ==================== ALBUM MEMBERS =============================
-           Owners see the member list and can promote (co-owner) or demote and
-           remove members. Members see only the list read-only. -->
+           Every member sees the list read-only. An MD (Music Director — the
+           app's name for an album owner) also gets ONE control per manageable row:
+           a ⋮ "Manage" button that opens #memberActionsDialog below — on a PHONE
+           the ⋮ is hidden and a › chevron shows instead, because there the whole
+           row is the tap target. The role flag in the list is the marker after a
+           name: Dhandy (MD).
+           Why the verbs are not in the row: 🎼 MD / 👤 Member inline read as a
+           STATUS badge ("Andi 🎼 MD" looked like it said Andi IS an MD). Status
+           lives in the (MD) marker, actions live in the sheet. -->
       <div class="confirm-dialog" id="albumMembersDialog" hidden role="dialog" aria-modal="true" aria-labelledby="albumMembersTitle" aria-describedby="albumMembersDesc">
          <div class="confirm-dialog-backdrop" data-albummembers-dismiss></div>
          <div class="confirm-dialog-card member-dialog-card" role="document">
@@ -1593,12 +1609,38 @@
                <div class="confirm-dialog-icon" aria-hidden="true">👥</div>
                <div class="vd-dialog-head-text">
                   <h2 class="confirm-dialog-title" id="albumMembersTitle">Members</h2>
-                  <p class="confirm-dialog-desc" id="albumMembersDesc">Owners and co-owners can add songs and manage membership.</p>
+                  <p class="confirm-dialog-desc" id="albumMembersDesc">MDs can promote members to MD and remove them.</p>
                </div>
             </div>
             <div class="member-list" id="memberList" role="list" aria-label="Album members"></div>
             <div class="confirm-dialog-actions">
                <button class="button button-primary" id="albumMembersClose" type="button" data-albummembers-dismiss>Done</button>
+            </div>
+         </div>
+      </div>
+
+      <!-- ==================== MEMBER ACTIONS (all widths) =================
+           THE place the verbs live — opened by a row's ⋮ on a desktop/tablet, and
+           on a phone by tapping the row itself (that is where the ⋮ is hidden and
+           the › chevron takes over).
+           memberControlsMarkup() in cloudUI.js builds the two buttons inside, and
+           their labels are VERBS — "🎼 Make MD" / "👤 Make member" / "Remove from
+           album" — never a bare role name, because a noun in a pill reads as a
+           status badge. The header above them already states the member's CURRENT
+           name / email / role, so the buttons only ever state actions. -->
+      <div class="confirm-dialog" id="memberActionsDialog" hidden role="dialog" aria-modal="true" aria-labelledby="memberActionsTitle" aria-describedby="memberActionsDesc">
+         <div class="confirm-dialog-backdrop" data-memberactions-dismiss></div>
+         <div class="confirm-dialog-card member-actions-card" role="document">
+            <div class="vd-dialog-head">
+               <div class="confirm-dialog-icon member-actions-avatar" id="memberActionsAvatar" aria-hidden="true">•</div>
+               <div class="vd-dialog-head-text">
+                  <h2 class="confirm-dialog-title" id="memberActionsTitle">Member</h2>
+                  <p class="confirm-dialog-desc" id="memberActionsDesc">Member · read-only</p>
+               </div>
+            </div>
+            <div class="member-actions-body" id="memberActionsBody"></div>
+            <div class="confirm-dialog-actions">
+               <button class="button button-ghost" id="memberActionsClose" type="button" data-memberactions-dismiss>Cancel</button>
             </div>
          </div>
       </div>

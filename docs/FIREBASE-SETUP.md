@@ -81,9 +81,12 @@ service cloud.firestore {
         || (isSignedIn() && request.auth.uid == uid
             && request.resource.data.role == resource.data.role
             && !("inviteCode" in request.resource.data));
-      // Owners remove ANY other member; a MEMBER may remove themselves (leave).
+      // Owners remove ANY other member; anyone may remove THEMSELVES to leave the
+      // album (a member OR an owner / MD). The "an album is never left
+      // owner-less" guarantee is enforced by the CLIENT (leaveAlbum() refuses the
+      // last owner), because security rules cannot count owners.
       allow delete: if (isOwner(albumId) && request.auth.uid != uid)
-        || (isSignedIn() && request.auth.uid == uid && resource.data.role == "member");
+        || (isSignedIn() && request.auth.uid == uid);
     }
 
     // ===== 4. Album doc CREATE (chicken-and-egg) =====
@@ -109,10 +112,17 @@ service cloud.firestore {
 }
 ```
 
-> ⚠️ Because an owner can never write their own membership doc, the **last owner
-> can never accidentally demote/remove themselves** (a co-owner must change them
-> first) — the album can not be left owner-less through the UI. Owners who want
-> to leave delete the album.
+> ⚠️ An **owner can still not write their OWN membership row**, so an owner can
+> never demote himself — a co-owner has to do it, which keeps the last owner from
+> being quietly demoted.
+>
+> **Leaving** is allowed for everyone, including an owner / co-owner. Firestore
+> rules cannot count owners, so the "an album is never left owner-less" guarantee
+> lives in the client (`leaveAlbum()` in `src/cloud.js`): an owner may leave only
+> while ANOTHER owner remains; the last owner is told to promote a co-owner
+> (Members) or delete the album. If your deployed rules still require
+> `resource.data.role == "member"` on `delete`, owners will hit a permission error
+> when they leave — deploy the block above.
 
 ## Data model
 

@@ -1503,7 +1503,7 @@ html[data-theme="dark"] .chord-above-editor.has-chord-above .chord-above-input {
 
 /*
   A chord-row bar keeps the top band of the bar (the absolutely positioned hover
-  affordances: ✕ delete bar at top:3px, ⧉ ⎘ ♪ tools next to it — 22px tall, so they
+  affordances: ✕ delete bar at top:3px, ⧉ ⎘ tools next to it — 22px tall, so they
   occupy the first 25px) clear, otherwise those buttons sit on top of the chord
   field above the first beat and visually crop it. Screen only: on paper those
   buttons are hidden and the bar uses its own --print-bar-pad-y-* tokens.

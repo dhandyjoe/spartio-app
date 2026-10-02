@@ -4,7 +4,7 @@
 // to Firebase only through cloud.js, and to the editor only through injected
 // callbacks (getProject / applyProject / getCloudContext / setCloudContext). This
 // keeps the module graph acyclic: cloudUI → { cloud, dom }, and events.js → cloudUI.
-import { $, toast } from "./dom.js?v=__BUILD__";
+import { $, isPhone, toast } from "./dom.js?v=__BUILD__";
 import { friendlyName } from "./identity.js?v=__BUILD__";
 import { editorModeMeta, normalizeEditorMode } from "./notation.js?v=__BUILD__";
 import {
@@ -1004,13 +1004,16 @@ function setHomeTab(tab) {
       btnAlbums.setAttribute("aria-selected", homeTab === "albums" ? "true" : "false");
    }
    // "New Song" and "Attach Link" are MY SONGS actions (starting your own score /
-   // importing someone else's share link). Album songs are created from inside the
-   // album itself (album detail → New Song), and the Albums tab carries its own
-   // actions (New Album / Join with code), so both buttons are hidden there.
+   // importing someone else's share link); album songs are created from inside the
+   // album itself (album detail → New Song). "+ New Album" takes the SAME primary
+   // toolbar slot while Albums is open — immediately left of the profile button,
+   // exactly like "+ New Song" — so the three toggle with the active tab.
    const newSongBtn = $("#newSongBtn");
    const attachLinkBtn = $("#attachLinkBtn");
+   const newAlbumBtn = $("#newAlbumBtn");
    if (newSongBtn) newSongBtn.hidden = isAlbums;
    if (attachLinkBtn) attachLinkBtn.hidden = isAlbums;
+   if (newAlbumBtn) newAlbumBtn.hidden = !isAlbums;
 }
 
 // Render the home screen (gallery). Called by the router; use navigate(HOME_ROUTE)
@@ -2411,6 +2414,26 @@ function renderSkeletonCards(track, count = SKELETON_COUNT) {
       </div>`).join("");
 }
 
+// ---- Role naming: an "owner" is shown as MD (Music Director) ------------
+// Firestore stores exactly two roles: `owner` (full access) and `member`
+// (read-only). Musicians do not say "owner"/"co-owner" — the person who leads
+// the band is the MUSIC DIRECTOR — so every screen prints **MD**. These two
+// helpers are the single source of truth for that wording:
+//   roleShortLabel(role) → the pill/label text (also used by the album cards,
+//                          the album header and the video/album pickers)
+//   roleMarker(role)     → the "(MD)" marker printed right after a name in the
+//                          Members list: bold (inherited) + ITALIC
+const MD_LABEL = "MD";
+const MD_TITLE = "Music Director";
+function roleShortLabel(role) {
+   return role === "owner" ? MD_LABEL : "Member";
+}
+function roleMarker(role) {
+   return role === "owner"
+      ? ` <span class="member-md-mark" title="${MD_TITLE}">(${MD_LABEL})</span>`
+      : "";
+}
+
 // Album cards use the SAME visual language as song cards (shares .song-card
 // + .cloud-cards CSS → identical carousel look as the My Songs list).
 // Recommended max characters for an album description shown on card hover;
@@ -2419,7 +2442,7 @@ const ALBUM_DESC_MAX = 500;
 
 function albumCardMarkup(album) {
    const title = escapeHtml(album.name || "Untitled Album");
-   const roleLabel = album.role === "owner" ? "Owner" : "Member · read-only";
+   const roleLabel = album.role === "owner" ? MD_LABEL : "Member · read-only";
    const count = `${album.songCount} song${album.songCount === 1 ? "" : "s"}`;
    const updated = album.updatedAt ? new Date(album.updatedAt).toLocaleDateString() : "";
    const detail = `updated ${escapeHtml(updated)}`;
@@ -2683,7 +2706,7 @@ function renderAlbumHeader() {
    const meta = $("#albumMeta");
    if (title) title.textContent = currentAlbum.name;
    if (meta) {
-      const roleLabel = currentAlbum.role === "owner" ? "Owner" : "Member";
+      const roleLabel = roleShortLabel(currentAlbum.role);
       const date = currentAlbum.createdAt ? new Date(currentAlbum.createdAt).toLocaleDateString() : "";
       meta.textContent = `${currentAlbum.songCount} song${currentAlbum.songCount === 1 ? "" : "s"} · ${roleLabel}${currentAlbum.role === "member" ? " · read-only" : ""}${date ? ` · created ${date}` : ""}`;
    }
@@ -2696,7 +2719,7 @@ function renderAlbumHeader() {
    if (invite) invite.hidden = !isOwner;
    if (addFrom) addFrom.hidden = !isOwner;
    if (newSong) newSong.hidden = !isOwner;
-   if (leave) leave.hidden = isOwner; // owners leave via the Members management
+   if (leave) leave.hidden = false; // anyone may leave — member OR MD
    if (members) members.hidden = false; // everyone may view the member list
 }
 
@@ -2828,7 +2851,7 @@ async function openAlbumSongInEditor(albumId, songId, versionId) {
    });
 }
 
-// Owner starts a brand-new song DIRECTLY inside the album (no My Songs copy).
+// An MD starts a brand-new song DIRECTLY inside the album (no My Songs copy).
 async function openAlbumNewSongFlow(albumId, { replaceHistory } = {}) {
    let album = currentAlbum;
    let albumName = currentAlbum?.name || "";
@@ -2908,7 +2931,7 @@ function openChooseAlbumDialog(albums) {
                  <input type="radio" name="chooseAlbumChoice" value="${escapeHtml(a.albumId)}" ${i === 0 ? "checked" : ""} />
                  <span class="add-song-option-text">
                     <strong>${escapeHtml(a.name)}</strong>
-                    <small>${a.songCount} song${a.songCount === 1 ? "" : "s"} · Owner</small>
+                    <small>${a.songCount} song${a.songCount === 1 ? "" : "s"} · ${MD_LABEL}</small>
                  </span>
               </label>`,
          )
@@ -3267,9 +3290,115 @@ async function submitAddSong() {
 }
 
 // ---- Members dialog ----
+// Role NAMING lives in roleShortLabel()/roleMarker() above; this section owns the
+// CONTROLS. Every verb lives in the member-actions sheet (#memberActionsDialog),
+// which is used at EVERY width: a row carries exactly one ⋮ "Manage" button and
+// the status stays where it belongs, in the bold-italic (MD) marker after a name.
+// Reason: the old inline role buttons read as a STATUS badge — "Andi 🎼 MD" looks
+// like it states that Andi IS an MD, not that pressing it makes him one. A ⋮ is
+// unambiguous ("there are actions behind this"), and phones get the very same
+// sheet instead of a separate code path.
+// `member` = { uid, name, isMd }.
+const REMOVE_ICON =
+   '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 6h16" /><path d="M9 6V4h6v2" /><path d="M6.5 6l.9 14h9.2l.9-14" /><path d="M10 10.5v6.5" /><path d="M14 10.5v6.5" /></svg>';
+// ⋮ — three FILLED dots. The trash below is stroked because it is an outline
+// shape; a stroked 1.9px dot would just read as a tiny hollow circle.
+const MEMBER_MENU_ICON =
+   '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="12" cy="5" r="1.9" /><circle cx="12" cy="12" r="1.9" /><circle cx="12" cy="19" r="1.9" /></svg>';
+// The per-row control on a DESKTOP: a 38px ⋮ that opens the sheet. On a phone it
+// is hidden by CSS (≤680px) and the row's own chevron takes over — there the WHOLE
+// row is the target, so a button inside it would only compete with the chevron.
+// It stays the element that carries the full "what can I do here" copy for
+// assistive tech, and it is what gets the focus back when the sheet closes.
+function memberManageButtonMarkup(member) {
+   const uid = escapeHtml(member.uid);
+   const name = escapeHtml(member.name || "this member");
+   return `<button class="member-row-menu-btn" data-member-menu data-uid="${uid}" type="button" title="Manage ${name}" aria-label="Manage ${name} — make ${MD_LABEL}, make member, or remove from album" aria-haspopup="dialog" aria-controls="memberActionsDialog" aria-expanded="false">${MEMBER_MENU_ICON}</button>`;
+}
+// The sheet's two buttons — built HERE, once, so they can never drift apart from
+// the sheet again. The labels are VERBS ("Make MD", never a bare "MD") so they
+// can only be read as actions: a noun in a pill reads as a status. The subtitle
+// of the sheet already states the member's CURRENT role, so the buttons don't.
+function memberControlsMarkup(member) {
+   const uid = escapeHtml(member.uid);
+   const name = escapeHtml(member.name || "this member");
+   const roleBtn = member.isMd
+      ? `<button class="button button-ghost button-small member-role-btn is-demote" data-member-action="demote" data-uid="${uid}" type="button" title="Change back to a regular member (read-only)" aria-label="Make ${name} a regular member"><span aria-hidden="true">👤</span> Make member</button>`
+      : `<button class="button button-ghost button-small member-role-btn is-promote" data-member-action="promote" data-uid="${uid}" type="button" title="Make ${MD_TITLE} (${MD_LABEL}) — full access" aria-label="Make ${name} the ${MD_TITLE}"><span aria-hidden="true">🎼</span> Make ${MD_LABEL}</button>`;
+   // The trash is an inline SVG (the app's stroke-icon language, see index.html)
+   // instead of the 🗑 emoji: U+1F5D1 defaults to the TEXT presentation and its
+   // glyph metrics never sit dead-centre in the button. A 17px SVG in a
+   // grid-centred square is centred by construction and stays crisp at any zoom.
+   // The label is always rendered now — the sheet is the only surface, and there
+   // a full-width bar reads better with the words "Remove from album" in it.
+   const removeBtn = `<button class="button button-ghost button-small is-danger member-remove-btn" data-member-action="remove" data-uid="${uid}" type="button" title="Remove from album" aria-label="Remove ${name} from the album">${REMOVE_ICON}<span class="member-remove-label">Remove from album</span></button>`;
+   return `<div class="member-controls">${roleBtn}${removeBtn}</div>`;
+}
+
+// The member-actions sheet: the ONE place the verbs live, opened by the row's ⋮
+// at every width (and by tapping the row itself on a phone, where the whole row
+// is the comfortable thumb target). BUTTONS are the sheet's only focusable
+// elements, so opening it moves focus to the first action and closing hands it
+// back to the ⋮ that opened it — the same contract as openConfirmDialog().
+let memberActionMembers = [];
+let memberActionsTrigger = null;
+function memberActionsOpen() {
+   // Null-safe on purpose: if the markup is missing (e.g. a service-worker-cached
+   // index.html), this must read as CLOSED — otherwise the Escape chain below
+   // would swallow the key and the album dialogs could never be dismissed.
+   const d = $("#memberActionsDialog");
+   return !!d && !d.hidden;
+}
+function closeMemberActionsDialog({ restoreFocus = true } = {}) {
+   const trigger = memberActionsTrigger;
+   memberActionsTrigger = null;
+   if (trigger) {
+      trigger.setAttribute("aria-expanded", "false");
+      // The list can be re-rendered while the sheet is open (an action does
+      // exactly that), which leaves `trigger` detached and unfocusable — then the
+      // Members dialog's Done button takes the focus instead of the <body>.
+      if (restoreFocus) {
+         setTimeout(() => {
+            // A HIDDEN trigger cannot take focus: on a phone the ⋮ is display:none
+            // (the row's chevron is the affordance there), so the Members dialog's
+            // Done button receives the focus instead of the <body>.
+            const visible = trigger.isConnected && !!trigger.offsetParent;
+            if (visible) trigger.focus();
+            else $("#albumMembersClose")?.focus();
+         }, 320);
+      }
+   }
+   closeModal($("#memberActionsDialog"));
+}
+function openMemberActionsDialog(member, trigger = null) {
+   const d = $("#memberActionsDialog");
+   if (!d || !member) return;
+   const who = member.name || member.email || "Member";
+   const avatar = $("#memberActionsAvatar");
+   const title = $("#memberActionsTitle");
+   const desc = $("#memberActionsDesc");
+   if (avatar) avatar.textContent = who.trim().charAt(0).toUpperCase();
+   if (title) title.textContent = `Manage ${who}${member.isMd ? ` (${MD_LABEL})` : ""}`;
+   if (desc) desc.textContent = `${member.email || "—"} · ${member.isMd ? `${MD_LABEL} — full access` : "Member · read-only"}`;
+   const body = $("#memberActionsBody");
+   if (body) body.innerHTML = memberControlsMarkup(member);
+   // Remember where to put the focus back, and tell assistive tech that the ⋮ now
+   // has its dialog open (the same aria-expanded contract as #versionSwitcherBtn).
+   memberActionsTrigger = trigger && trigger.isConnected ? trigger : null;
+   memberActionsTrigger?.setAttribute("aria-expanded", "true");
+   openModal(d);
+   // Keyboard parity with the app's other dialogs (see openConfirmDialog): focus
+   // the first action so the sheet is operable the moment it appears.
+   setTimeout(() => {
+      ($("#memberActionsBody [data-member-action]") || $("#memberActionsClose"))?.focus();
+   }, 40);
+}
+
 function closeMembersDialog() {
    const resolve = membersResolve;
    membersResolve = null;
+   // The whole dialog is going away: the ⋮ inside it must not take the focus back.
+   closeMemberActionsDialog({ restoreFocus: false });
    closeModal($("#albumMembersDialog"));
    resolve?.(true);
 }
@@ -3286,50 +3415,59 @@ async function openMembersDialog() {
       // Owners first (creation order), then members (join order).
       const rank = (m) => (m.role === "owner" ? 0 : 1);
       members.sort((a, b) => rank(a) - rank(b) || Number(a.joinedAt || 0) - Number(b.joinedAt || 0));
-      const ownerCount = members.filter((m) => m.role === "owner").length;
-      const memberCount = members.length - ownerCount;
+      const mdCount = members.filter((m) => m.role === "owner").length;
+      const memberCount = members.length - mdCount;
+      memberActionMembers = members;
       if (desc) {
-         desc.textContent = `${ownerCount} owner${ownerCount === 1 ? "" : "s"}${memberCount ? ` · ${memberCount} member${memberCount === 1 ? "" : "s"}` : ""} — ${isOwner ? "you can change roles and remove members." : "owners can change roles and remove members."}`;
+         const counts = `${mdCount} ${MD_LABEL}${mdCount === 1 ? "" : "s"}${memberCount ? ` · ${memberCount} member${memberCount === 1 ? "" : "s"}` : ""}`;
+         const verbs = isOwner
+            ? `As an ${MD_LABEL} you can promote a member to ${MD_LABEL} or remove them.`
+            : `${MD_LABEL}s can promote members to ${MD_LABEL} and remove them.`;
+         // How to reach the sheet differs by width: a phone hides the ⋮ and makes
+         // the whole row the target (that is what the chevron signals), while a
+         // desktop shows the ⋮. Owners only — a plain member has no controls.
+         const hint = isPhone()
+            ? " Tap a member to manage them."
+            : " Use ⋮ on a member to manage them.";
+         const tapHint = isOwner ? hint : "";
+         desc.textContent = `${counts} — ${verbs}${tapHint}`;
       }
       if (list) {
          list.innerHTML = members
             .map((m) => {
-               const isOwnerRow = m.role === "owner";
                const self = m.uid === meUid;
-               const you = self ? `<em class="member-you">(you)</em>` : "";
-               const chip = `<span class="member-role-chip ${isOwnerRow ? "is-owner" : "is-member"}">${isOwnerRow ? "⭐ Owner" : "Member"}</span>`;
-               let controls = "";
-               if (isOwner && !self) {
-                  const roleBtn = isOwnerRow
-                     ? `<button class="button button-ghost button-small" data-member-action="demote" data-uid="${escapeHtml(m.uid)}" type="button" title="Change to a read-only member">↓ Member</button>`
-                     : `<button class="button button-ghost button-small" data-member-action="promote" data-uid="${escapeHtml(m.uid)}" type="button" title="Promote to co-owner">⭐ Co-owner</button>`;
-                  const removeBtn = `<button class="button button-ghost button-small is-danger" data-member-action="remove" data-uid="${escapeHtml(m.uid)}" type="button" title="Remove from album">🗑 Remove</button>`;
-                  controls = `<div class="member-controls">${chip}${roleBtn}${removeBtn}</div>`;
-               } else {
-                  controls = chip;
-               }
+               const you = self ? ` <em class="member-you">(you)</em>` : "";
                // Name shown for a member: Auth displayName (Google) → derived from
                // the email local part (email/password sign-up has no displayName)
                // → "Musician" as the last resort. The email stays visible below.
                const derived = friendlyName(m);
                const memberName = derived || "Musician";
                const avatarInitial = (derived || m.email || "?").trim().charAt(0).toUpperCase();
-               return `<div class="member-row" data-uid="${escapeHtml(m.uid)}">
+               // Role marker sits right after the name: "Dhandy (MD)" — bold
+               // (inherited from <strong>) + italic, see .member-md-mark in ui.css.
+               const mdMark = roleMarker(m.role);
+               // A row is "manageable" only for ANOTHER MD (never their own:
+               // Firestore rules forbid self-writes, which is what keeps the last
+               // MD from orphaning the album). A manageable row carries the ⋮
+               // "Manage" button (desktop/tablet) plus the phone's chevron
+               // affordance; CSS shows exactly ONE of the two per width.
+               const manageable = isOwner && !self;
+               const controls = manageable
+                  ? `${memberManageButtonMarkup({ uid: m.uid, name: memberName })}<span class="member-row-chevron" aria-hidden="true">›</span>`
+                  : "";
+               return `<div class="member-row${manageable ? " is-manageable" : ""}" data-uid="${escapeHtml(m.uid)}">
                        <span class="member-avatar" aria-hidden="true">${escapeHtml(avatarInitial)}</span>
                        <span class="member-who">
-                          <strong>${escapeHtml(memberName)} ${you}</strong>
+                          <strong>${escapeHtml(memberName)}${mdMark}${you}</strong>
                           <small>${escapeHtml(m.email || "—")}</small>
                        </span>
                        ${controls}
                     </div>`;
             })
             .join("");
-         list.querySelectorAll("[data-member-action]").forEach((btn) => {
-            btn.addEventListener("click", (event) => {
-               event.stopPropagation();
-               handleMemberAction(btn.dataset.memberAction, btn.dataset.uid, members);
-            });
-         });
+         // No per-row listeners to bind any more: a row's only control is the ⋮,
+         // so one DELEGATED handler on #memberList (wired below) opens the sheet
+         // for it, and clicks inside the sheet use the sheet's own handler.
       }
    } catch (error) {
       console.error("[cloudUI] listMembers failed:", error);
@@ -3345,9 +3483,9 @@ async function handleMemberAction(action, uid, members) {
    const name = member.name || member.email || "this member";
    let confirmed = false;
    if (action === "promote") {
-      confirmed = await openConfirmDialog({ title: "Make co-owner?", message: `${name} will get full owner access (edit songs, invite, manage members).`, confirmLabel: "Make co-owner", cancelLabel: "Cancel", icon: "⭐" });
+      confirmed = await openConfirmDialog({ title: `Make ${MD_TITLE} (${MD_LABEL})?`, message: `${name} gets full access — edit songs, invite people and manage members.`, confirmLabel: `Make ${MD_LABEL}`, cancelLabel: "Cancel", icon: "🎼" });
    } else if (action === "demote") {
-      confirmed = await openConfirmDialog({ title: "Change to member?", message: `${name} will become a read-only member.`, confirmLabel: "Make member", cancelLabel: "Cancel", icon: "↓" });
+      confirmed = await openConfirmDialog({ title: "Change back to a member?", message: `${name} becomes a read-only member: they can still play, transpose and export, but no longer edit.`, confirmLabel: "Make member", cancelLabel: "Cancel", icon: "👤" });
    } else if (action === "remove") {
       confirmed = await openConfirmDialog({ title: "Remove member?", message: `${name} will lose access to this album.`, confirmLabel: "Remove", cancelLabel: "Cancel", icon: "🗑", danger: true });
    }
@@ -3363,7 +3501,7 @@ async function handleMemberAction(action, uid, members) {
    }
 }
 
-// ---- Leave album (members) ----
+// ---- Leave album (member AND MD) ----
 async function confirmLeaveAlbum() {
    if (!currentAlbum) return;
    const confirmed = await openConfirmDialog({
@@ -3565,16 +3703,50 @@ function initAlbums() {
    // Members dialog.
    $("#albumMembersClose")?.addEventListener("click", closeMembersDialog);
    $("#albumMembersDialog")?.addEventListener("click", (e) => { if (e.target.closest("[data-albummembers-dismiss]")) closeMembersDialog(); });
+   // The member-actions sheet — the one place the verbs live — opens from the row's
+   // ⋮ on a desktop/tablet, and from a tap ANYWHERE on the row on a phone (that is
+   // where the ⋮ is hidden by CSS and the chevron shows instead). Delegated, so it
+   // survives every re-render of the list; both paths open the same sheet with the
+   // same two verb buttons, and both use the row's ⋮ as the focus/aria trigger.
+   $("#memberList")?.addEventListener("click", (event) => {
+      const row = event.target.closest(".member-row.is-manageable");
+      if (!row) return;
+      const menuBtn = event.target.closest("[data-member-menu]");
+      if (!menuBtn && !isPhone()) return;
+      const member = memberActionMembers.find((m) => m.uid === row.dataset.uid);
+      if (!member) return;
+      // The row's own ⋮ is the trigger even when the row was tapped: that is what
+      // gets the focus back (and the aria-expanded flag) when the sheet closes.
+      openMemberActionsDialog({
+         uid: member.uid,
+         name: friendlyName(member) || "Musician",
+         email: member.email,
+         isMd: member.role === "owner",
+      }, row.querySelector("[data-member-menu]"));
+   });
+   // Member-actions sheet: one delegated handler feeds the SAME handleMemberAction
+   // the inline buttons use, so both paths stay identical.
+   $("#memberActionsDialog")?.addEventListener("click", (event) => {
+      if (event.target.closest("[data-memberactions-dismiss]")) { closeMemberActionsDialog(); return; }
+      const btn = event.target.closest("#memberActionsBody [data-member-action]");
+      if (!btn) return;
+      const action = btn.dataset.memberAction;
+      const uid = btn.dataset.uid;
+      closeMemberActionsDialog();
+      handleMemberAction(action, uid, memberActionMembers);
+   });
 
    // Choose-album dialog (New Song while on the Albums tab).
    $("#chooseAlbumOk")?.addEventListener("click", submitChooseAlbum);
    $("#chooseAlbumCancel")?.addEventListener("click", () => closeChooseAlbumDialog(null));
    $("#chooseAlbumDialog")?.addEventListener("click", (e) => { if (e.target.closest("[data-choosealbum-dismiss]")) closeChooseAlbumDialog(null); });
 
-   // Global: Escape closes album dialogs.
+   // Global: Escape closes album dialogs (the member-actions sheet sits ON TOP of
+   // the member list, so it goes first).
    document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
-      if (albumJoinResolve) closeJoinAlbumDialog(null);
+      if (memberActionsOpen()) closeMemberActionsDialog();
+      else if (albumJoinResolve) closeJoinAlbumDialog(null);
       else if (newAlbumResolve) closeNewAlbumDialog(null);
       else if (editAlbumResolve) closeEditAlbumDialog(null);
       else if (addSongResolve) closeAddSongDialog(null);

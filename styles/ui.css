@@ -290,6 +290,13 @@ label,
    align-items: center;
    gap: 7px;
 }
+/* Save to Cloud + Export .pdf are wrapped in this group so they always sit side by
+   side and wrap as a pair (see the <=680px rule in the phone block below). */
+.topbar-action-group {
+   display: flex;
+   align-items: center;
+   gap: 7px;
+}
 .autosave-status {
    display: inline-flex;
    align-items: center;
@@ -1224,49 +1231,6 @@ html.is-print-layout .preview-section.is-selecting .bar.is-selected::after {
    opacity: 0.4;
    cursor: default;
 }
-/* Per-bar chord-row toggle (Chord Chart mode) — a third button in .bar-tools,
-   so the bar-selection and print rules that hide the tools hide this one too. */
-.chord-above-bar-toggle {
-   width: 22px;
-   height: 22px;
-   display: grid;
-   place-items: center;
-   border: 1px solid #cfe0d3;
-   border-radius: 6px;
-   padding: 0;
-   background: rgba(255, 255, 255, 0.94);
-   color: #7d9c88;
-   font:
-      800 12px/1 Inter,
-      ui-sans-serif,
-      sans-serif;
-   cursor: pointer;
-   -webkit-user-select: none;
-   user-select: none;
-   -webkit-touch-callout: none;
-   touch-action: manipulation;
-}
-.chord-above-bar-toggle:hover {
-   background: #e5f4e8;
-   border-color: #8eb99a;
-   color: var(--dark-green, #1f704a);
-}
-.chord-above-bar-toggle.active {
-   background: #e5f4e8;
-   border-color: #7fb08f;
-   color: var(--dark-green, #1f704a);
-}
-html[data-theme="dark"] .chord-above-bar-toggle {
-   border-color: var(--line);
-   background: #151715;
-   color: var(--muted);
-}
-html[data-theme="dark"] .chord-above-bar-toggle:hover,
-html[data-theme="dark"] .chord-above-bar-toggle.active {
-   border-color: #327a52;
-   background: #1b3022;
-   color: #6dcc98;
-}
 /* Multi-bar selection mode highlights */
 .bar.is-selectable {
    cursor: pointer;
@@ -2020,11 +1984,45 @@ html[data-theme="dark"] .confirm-dialog-icon {
       width: 34px;
       height: 34px;
    }
+   /* ONE row for the topbar actions. This used to be a 2-column grid, which put
+      the mode badge + "Save to Cloud" on the first line and dropped
+      "Export .pdf" onto a second one (3 children = 2 rows), wasting half the
+      row and pushing the second action out of thumb reach. Now the icon-only
+      badge (34px below 1050px), the album pill and the Save/Export group share
+      a SINGLE line — always true for a My Songs song (no pill) down to 320px,
+      where the two buttons split the remaining width evenly (~125px each, still
+      wider than their "Save to Cloud" / "Export .pdf" labels at 10px).
+      In ALBUM scope the pill can make the line too tight, so the group simply
+      drops to the next line as a PAIR (never one button per row, never clipped).
+      The group is content-sized first and only then grows, so `flex-wrap` breaks
+      the line before the labels could ever be squeezed. */
    .topbar-actions {
-      display: grid;
+      display: flex;
+      flex-wrap: wrap;
       width: 100%;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 6px;
+   }
+   .topbar-actions .editor-mode-badge {
+      flex: 0 0 auto;
+   }
+   .topbar-actions .album-pill {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 30%;
+      overflow: hidden;
+   }
+   .topbar-actions .album-pill-text {
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+   }
+   .topbar-actions .topbar-action-group {
+      flex: 1 1 auto;
+      gap: 6px;
+   }
+   .topbar-actions .topbar-action-group .button {
+      flex: 1 1 auto;
    }
    /* Editor header on small screens: Back stays a compact button and the
       breadcrumb takes the remaining width (it truncates rather than wraps). */
@@ -2254,6 +2252,9 @@ html[data-theme="dark"] .confirm-dialog-icon {
       margin-left: -8px;
       border-radius: 14px;
    }
+   /* The live preview itself never scrolls sideways on a phone — the horizontal
+      scroll belongs to EACH SECTION's bar grid (see .bar-grid below), so a long
+      bar only moves its own section, exactly like the desktop behaviour. */
    .preview-viewport {
       padding: 0;
       overflow-x: hidden;
@@ -2321,9 +2322,14 @@ html[data-theme="dark"] .confirm-dialog-icon {
       left: 0;
       width: 170px;
    }
+   /* PER-SECTION horizontal scroll (the desktop behaviour): a bar whose content
+      is wider than the pane scrolls inside its OWN section's grid instead of
+      stretching or clipping the whole live preview. Mirrors the desktop rule in
+      styles/preview.css (`.bar-grid { overflow-x: auto }`). */
    .bar-grid {
       width: 100%;
-      overflow: visible;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
    }
    .bar-batch,
    .bar-batch.has-lyrics {
@@ -4241,6 +4247,44 @@ html[data-theme="dark"] .topbar-help-btn {
       align-items: center;
       padding: 8px 10px;
    }
+   /* "Attach Link" is a SECONDARY ghost button, so styles.css drops it entirely at
+      this width. Keep the action as an icon-only square instead of losing it —
+      and note the ID-level `[hidden]` guard further down (home toolbar) so this
+      re-show can never beat the Albums tab's `hidden`. */
+   #attachLinkBtn.button-ghost {
+      display: inline-flex !important;
+      align-items: center;
+      justify-content: center;
+      min-width: 46px;
+      min-height: 44px;
+      padding: 8px;
+   }
+   /* "Join with code" (Albums tab) is a ghost button too — same trap, same fix. */
+   #joinAlbumBtn.button-ghost {
+      display: inline-flex !important;
+      align-items: center;
+      justify-content: center;
+      min-width: 46px;
+      min-height: 44px;
+      padding: 8px;
+   }
+   /* …and so is the album-detail "← Albums" BACK button, which left a phone user
+      with no way back to the album list. */
+   #albumBackBtn.button-ghost {
+      display: inline-flex !important;
+      align-items: center;
+      padding: 8px 12px;
+   }
+   /* Same trap for the album detail actions: Invite / Members / Add from My Songs /
+      Leave are ghost buttons too, so an album OWNER lost them entirely on a phone. */
+   #albumInviteBtn.button-ghost,
+   #albumMembersBtn.button-ghost,
+   #albumAddFromBtn.button-ghost,
+   #albumLeaveBtn.button-ghost {
+      display: inline-flex !important;
+      align-items: center;
+      padding: 8px 10px;
+   }
    /* Login page: collapse to a single column, hide the brand panel. */
    .login-page {
       grid-template-columns: 1fr;
@@ -4360,6 +4404,29 @@ html[data-theme="dark"] .topbar-help-btn {
    a song is open). Without this, any future rule that sets `display` on .button
    would silently override the UA [hidden] default and show them anyway. */
 .cloud-gallery-actions > [hidden] {
+   display: none !important;
+}
+/* …but that generic rule is NOT enough, because the phone re-shows carry an ID
+   selector AND !important — `#attachLinkBtn.button-ghost { display: inline-flex
+   !important }` at ≤560px outranks `.cloud-gallery-actions > [hidden]`, so on a
+   phone the 🔗 Attach Link (a MY SONGS action) stayed visible on the ALBUMS tab,
+   exactly where it must be hidden. [hidden] means "not shown", so it has to win
+   with the same ID-level weight, for every button in the app that is toggled
+   through the hidden attribute. Placed AFTER those re-shows: at equal specificity
+   the later rule wins, and this selector is deliberately higher anyway. */
+#attachLinkBtn[hidden],
+#newSongBtn[hidden],
+#newAlbumBtn[hidden],
+#joinAlbumBtn[hidden],
+#backToEditorBtn[hidden],
+#backToSongsBtn[hidden],
+#albumBackBtn[hidden],
+#albumInviteBtn[hidden],
+#albumMembersBtn[hidden],
+#albumAddFromBtn[hidden],
+#albumLeaveBtn[hidden],
+#albumNewSongBtn[hidden],
+#newVersionBtn[hidden] {
    display: none !important;
 }
 /* Hero + search stack. The hero moved here from the editor: only the home
@@ -4933,17 +5000,57 @@ html[data-theme="dark"] .song-card-mode-mark {
       gap: 12px;
       padding: 16px 18px;
    }
+   /* The brand lockup and the page title are CENTERED on phones (the header is a
+      single column there), while the action row keeps the primary action
+      ("+ New Song" / "+ New Album") on the LEFT and pushes the secondary actions
+      + profile to the RIGHT edge. */
    .cloud-gallery-heading {
-      justify-self: start;
+      justify-self: center;
+      text-align: center;
    }
    .cloud-gallery-actions {
       width: 100%;
       justify-self: stretch;
       justify-content: flex-start;
    }
+   .cloud-gallery-actions #newSongBtn,
+   .cloud-gallery-actions #newAlbumBtn {
+      margin-right: auto;
+   }
+   /* Secondary header actions collapse to icon-only squares (the accessible name
+      comes from aria-label). "Attach Link" (🔗) is re-shown at ≤560 by the
+      ghost-button rule; the account button keeps its avatar and drops its name. */
+   .cloud-gallery-actions #attachLinkBtn .btn-label,
+   .cloud-gallery-actions .account-label {
+      display: none;
+   }
+   .cloud-gallery-actions #attachLinkBtn,
+   .cloud-gallery-actions #accountBtn {
+      min-width: 46px;
+      min-height: 44px;
+      padding: 8px;
+      justify-content: center;
+   }
+   .cloud-gallery-actions #accountBtn .account-avatar {
+      width: 26px;
+      height: 26px;
+   }
+   /* "How to use" (?) shares ONE row with the search field, to its left. */
+   #songsPanel .cloud-gallery-searchbar {
+      flex-wrap: nowrap;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 10px;
+   }
+   #songsPanel .cloud-gallery-searchbar .cloud-search {
+      flex: 1 1 auto;
+      width: auto;
+      min-width: 0;
+   }
+   /* The page title + count are centered on phones too. */
    .home-intro {
-      justify-self: start;
-      text-align: left;
+      justify-self: center;
+      text-align: center;
       margin: 0;
       padding: 0;
    }
@@ -5811,9 +5918,9 @@ html[data-theme="dark"] .mca-num {
 body[data-editor-mode="numbers"] .song-meta-lyrics-toggle {
    display: inline-flex;
 }
-/* NOTE: the chord row above the numbers is a PER-SECTION feature, so there is no
-   header switch for it any more (see .section-chord-above-toggle in
-   styles/preview.css and the per-bar .chord-above-bar-toggle below). */
+/* NOTE: the chord row above the numbers is a PER-SECTION feature — the only switch
+   is .section-chord-above-toggle (see styles/preview.css); the old per-bar toggle
+   was removed. */
 .song-meta-lyrics-caption {
    font-size: 11px;
    font-weight: 700;
@@ -6078,6 +6185,36 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge {
 html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon {
    background: rgba(129, 140, 248, 0.2);
    color: #b0b4ff;
+}
+/* Mobile + tablet: the mode badge keeps ONLY its glyph — the icon already encodes
+   the mode and the label costs precious topbar width. Also give the touch-only
+   affordances a real target (no hover on a finger) and keep the versions popover
+   inside a narrow screen. Screen-only, so paper/PDF is untouched. */
+@media screen and (max-width: 1050px) {
+   .editor-mode-badge-text {
+      display: none;
+   }
+   .editor-mode-badge {
+      gap: 0;
+      padding: 5px;
+      /* The phone topbar-actions is a 2-column grid, whose items stretch by
+         default — without this the icon-only pill would stretch to half the row. */
+      justify-self: start;
+      align-self: center;
+   }
+   .version-item-edit {
+      opacity: 1;
+      width: 38px;
+      height: 38px;
+   }
+   .version-popover {
+      width: min(280px, calc(100vw - 24px));
+   }
+   .youtube-chip-edit {
+      width: 30px;
+      height: 30px;
+      font-size: 14px;
+   }
 }
 /* ======================================================================
    ALBUM (Fase 3/4) — Albums tab, album cards, album detail, invite UI.
@@ -6570,25 +6707,29 @@ html[data-theme="dark"] .member-badge {
    background: #1d211e;
    color: #7fd3a4;
 }
-/* Danger ghost buttons in the album header (Delete / Leave). */
+/* Danger button in the album header (Leave). Uses the SAME rose accent as the
+   Edit-page YouTube chip (#e11d48 / #be123c in light, #fb7185 / #fda4af in dark)
+   so "red" means one single thing across the app. It is the header's one
+   destructive action, available to a member AND an owner / co-owner. */
 .cloud-album-actions .button.is-danger {
-   color: #b3261e;
-   border: 1px solid color-mix(in srgb, #d96a5f 55%, transparent);
-   background: rgba(255, 240, 238, 0.85);
+   color: #be123c;
+   border: 1px solid color-mix(in srgb, #e11d48 22%, transparent);
+   background: color-mix(in srgb, #e11d48 8%, #fff);
 }
 .cloud-album-actions .button.is-danger:hover {
-   background: #fdecec;
-   color: #a01f18;
-   border-color: #c9564b;
+   color: #9f1239;
+   border-color: color-mix(in srgb, #e11d48 55%, transparent);
+   background: color-mix(in srgb, #e11d48 14%, #fff);
 }
 html[data-theme="dark"] .cloud-album-actions .button.is-danger {
-   color: #f2b2a9;
-   background: #2a1c1a;
-   border: 1px solid #7c3d37;
+   color: #fda4af;
+   border: 1px solid color-mix(in srgb, #fb7185 30%, transparent);
+   background: color-mix(in srgb, #fb7185 14%, #111);
 }
 html[data-theme="dark"] .cloud-album-actions .button.is-danger:hover {
-   background: #3a2622;
-   color: #ffd7d0;
+   color: #fecdd3;
+   border-color: color-mix(in srgb, #fb7185 52%, transparent);
+   background: color-mix(in srgb, #fb7185 22%, #111);
 }
 /* Album list card delete affordance (owner cards only). */
 .album-card-delete {
@@ -6630,30 +6771,26 @@ html[data-theme="dark"] .album-card-delete:hover {
    z-index: 1900;
 }
 
-/* Members list polish. */
-.member-role-chip {
-   flex: 0 0 auto;
-   padding: 3px 10px;
-   border-radius: 999px;
-   background: var(--soft);
-   color: var(--muted);
-   font-size: 11.5px;
-   font-weight: 700;
-   white-space: nowrap;
-}
-.member-role-chip.is-owner {
-   background: linear-gradient(135deg, rgba(184, 232, 92, 0.35), var(--soft));
+/* Members list polish.
+   Role naming: the app calls a full-access "owner" the MUSIC DIRECTOR and prints
+   MD everywhere — the word "co-owner" is never shown. The marker after a name is
+   the one role flag in this list: "Dhandy (MD)" — BOLD (inherited from the row's
+   <strong>) + ITALIC, in the album accent so it reads at a glance. A row with no
+   marker is a plain member. */
+.member-md-mark {
+   font-style: italic;
+   font-weight: 800;
    color: var(--dark-green);
-   border: 1px solid color-mix(in srgb, var(--lime) 55%, transparent);
-}
-.member-role-chip.is-member {
-   border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+   letter-spacing: 0.02em;
+   white-space: nowrap;
 }
 .member-you {
    font-size: 11px;
    font-weight: 600;
    color: var(--muted);
 }
+/* The sheet's stack of two verb buttons. A member ROW no longer renders this at
+   all: it carries the ⋮ / chevron pair (see .member-row-menu-btn below). */
 .member-controls {
    display: flex;
    align-items: center;
@@ -6661,32 +6798,65 @@ html[data-theme="dark"] .album-card-delete:hover {
    flex-wrap: wrap;
    justify-content: flex-end;
 }
-/* Narrow screens: let the controls wrap under the identity instead of crushing. */
-@media (max-width: 620px) {
-   .member-row {
-      flex-wrap: wrap;
-   }
-   .member-who {
-      flex: 1 1 auto;
-      min-width: 120px;
-   }
-   .member-controls {
-      width: 100%;
-      justify-content: flex-end;
-      margin-top: 2px;
-   }
-   .member-controls .button {
-      padding: 6px 9px;
-      font-size: 11.5px;
-   }
+/* The per-row control on a desktop/tablet: a ⋮ that opens the member-actions sheet.
+   It replaced two inline buttons whose labels were the role NAMES, which made the
+   row read as a status badge ("Andi 🎼 MD" looked like a statement about Andi, not
+   an action). A ⋮ is unambiguous, and the verbs now live in the sheet.
+   On a phone this button is HIDDEN (≤680px, see the media query at the end of this
+   block) and the row shows a chevron instead, because there the whole row is the
+   tap target. Deliberately neither red nor gold: red belongs to the destructive
+   Remove and gold to the MD accent, so this stays the quiet, universal "actions
+   here" chip. Same 38px square + grid centring as the old trash square, so the
+   rows keep their rhythm. */
+.member-row-menu-btn {
+   flex: 0 0 auto;
+   display: grid;
+   place-items: center;
+   width: 38px;
+   min-width: 38px;
+   height: 38px;
+   min-height: 38px;
+   padding: 0;
+   border: 1px solid var(--line);
+   border-radius: 10px;
+   background: var(--surface);
+   color: var(--muted);
+   cursor: pointer;
+   transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
 }
-html[data-theme="dark"] .member-role-chip.is-owner {
-   background: linear-gradient(135deg, rgba(129, 140, 248, 0.3), #1d211e);
-   color: #7fd3a4;
+.member-row-menu-btn:hover {
+   border-color: #a9c9b3;
+   background: var(--soft);
+   color: var(--dark-green);
+}
+.member-row-menu-btn:active {
+   background: var(--soft);
+}
+/* While its sheet is open (cloudUI.js keeps this attribute in sync). */
+.member-row-menu-btn[aria-expanded="true"] {
+   border-color: #a9c9b3;
+   background: var(--soft);
+   color: var(--dark-green);
+}
+.member-row-menu-btn svg {
+   display: block;
+}
+html[data-theme="dark"] .member-row-menu-btn {
    border-color: #3d4642;
+   background: #1d211e;
+   color: #9fb69f;
 }
-html[data-theme="dark"] .member-role-chip.is-member {
-   border-color: var(--line);
+html[data-theme="dark"] .member-row-menu-btn:hover,
+html[data-theme="dark"] .member-row-menu-btn[aria-expanded="true"] {
+   border-color: #7fd3a4;
+   background: #232a26;
+   color: #d7e6d9;
+}
+html[data-theme="dark"] .member-md-mark {
+   color: #7fd3a4;
 }
 html[data-theme="dark"] .member-you {
    color: #9fb69f;
@@ -6705,10 +6875,6 @@ html[data-theme="dark"] .member-you {
 #albumMembersDialog .member-who strong {
    font-size: 14.5px;
 }
-#albumMembersDialog .member-controls .button {
-   padding: 7px 11px;
-   font-size: 12px;
-}
 html[data-theme="dark"] #albumMembersDialog .member-row {
    background: #101210;
 }
@@ -6719,6 +6885,205 @@ html[data-theme="dark"] #albumMembersDialog .member-row {
 }
 #albumMembersDialog .confirm-dialog-actions .button {
    min-width: 96px;
+}
+/* The two VERB buttons — rendered only by the member-actions sheet now, which is
+   the single surface at every width (a row carries just the ⋮).
+   memberControlsMarkup() in cloudUI.js is the single builder, and the :is() list
+   is kept as defensive coverage: it holds the ID-level specificity that beats
+   `styles.css`'s `.button-ghost { display: none }` on phones (see the ≤560px
+   override at the end of this block) — the trap that once hid these buttons.
+
+   LABELS ARE VERBS: "Make MD" / "Make member" / "Remove from album" — never a bare
+   "MD" / "Member". A noun inside a pill reads as a STATUS badge ("Andi 🎼 MD"),
+   which is exactly the confusion this replaced; the sheet's subtitle already
+   states the member's CURRENT role, so the buttons only ever state actions.
+
+   The two icons are deliberately far apart so they never blur together:
+   🎼 Make MD = the score a music director works from (the promote action), and
+   👤 Make member = the quiet read-only musician (the demote action). Remove wears
+   the app's single red (rose) — byte-identical values to the album header's Leave
+   button and the Edit-page YouTube chip (#e11d48 / #be123c light, #fb7185 /
+   #fda4af dark), so "red" keeps exactly one meaning.
+
+   MD's surface is a SOFT GOLD TINT (12% of the accent over the surface) — the
+   same restrained recipe the app already uses for its red actions. A saturated
+   gradient read as "primary/selected" and competed with Save to Cloud; a tint
+   keeps a warm, calm surface next to 👤 and the red Remove, and keeps the label
+   legible (contrast ≈ 6.2:1 light, ≈ 9.4:1 dark). */
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn {
+   display: inline-flex;
+   align-items: center;
+   gap: 6px;
+   font-size: 12.5px;
+}
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn span {
+   font-size: 14px;
+   line-height: 1;
+}
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn.is-promote {
+   color: #854d0e;
+   border: 1px solid color-mix(in srgb, #f59e0b 32%, transparent);
+   background: color-mix(in srgb, #f59e0b 12%, #fff);
+}
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn.is-promote:hover {
+   color: #713f12;
+   border-color: color-mix(in srgb, #f59e0b 55%, transparent);
+   background: color-mix(in srgb, #f59e0b 20%, #fff);
+}
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn.is-demote {
+   color: var(--dark-green);
+   border: 1px solid color-mix(in srgb, var(--line) 95%, transparent);
+   background: #fff;
+}
+html[data-theme="dark"] :is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn.is-promote {
+   color: #fcd34d;
+   border-color: color-mix(in srgb, #fbbf24 34%, transparent);
+   background: color-mix(in srgb, #fbbf24 16%, #111);
+}
+html[data-theme="dark"] :is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn.is-promote:hover {
+   color: #fde68a;
+   border-color: color-mix(in srgb, #fbbf24 58%, transparent);
+   background: color-mix(in srgb, #fbbf24 24%, #111);
+}
+html[data-theme="dark"] :is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn.is-demote {
+   color: #d7e6d9;
+   border-color: #3d4642;
+   background: #1d211e;
+}
+/* "Remove from album" is always visible now: the sheet renders this button as a
+   full-width bar, where the icon alone would look like a stray red chip. */
+.member-remove-label {
+   display: inline;
+   font-weight: 700;
+}
+/* Remove's BASE shape is the 38px icon square — an inline SVG (not an emoji
+   glyph, see the markup comment) in a grid-centred box, so the trash sits
+   DEAD-CENTRE by construction at any zoom; no font metrics, no padding
+   asymmetry, no optical nudge needed. The sheet then stretches it into the
+   full-width bar that shows the label (see MEMBER ACTIONS SHEET below). */
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-remove-btn {
+   display: grid;
+   place-items: center;
+   width: 38px;
+   min-width: 38px;
+   height: 38px;
+   min-height: 38px;
+   padding: 0;
+   line-height: 0;
+   color: #be123c;
+   border: 1px solid color-mix(in srgb, #e11d48 22%, transparent);
+   background: color-mix(in srgb, #e11d48 8%, #fff);
+}
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-remove-btn svg {
+   display: block;
+   width: 17px;
+   height: 17px;
+}
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-remove-btn:hover {
+   color: #9f1239;
+   border-color: color-mix(in srgb, #e11d48 55%, transparent);
+   background: color-mix(in srgb, #e11d48 14%, #fff);
+}
+html[data-theme="dark"] :is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-remove-btn {
+   color: #fda4af;
+   border: 1px solid color-mix(in srgb, #fb7185 30%, transparent);
+   background: color-mix(in srgb, #fb7185 14%, #111);
+}
+html[data-theme="dark"] :is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-remove-btn:hover {
+   color: #fecdd3;
+   border-color: color-mix(in srgb, #fb7185 52%, transparent);
+   background: color-mix(in srgb, #fb7185 22%, #111);
+}
+/* ---------------------------------------------------------------------------
+   MEMBER ACTIONS SHEET — used at EVERY width, not just on phones.
+   It is the one place the verbs live: the row's ⋮ opens it on a desktop, and a
+   phone opens it from the ⋮ or by tapping the row itself. It states the
+   member's CURRENT role in the header, so the two buttons below only state
+   ACTIONS ("Make MD" / "Make member" / "Remove from album") and can never be
+   mistaken for status badges.
+   Both buttons stretch full width as comfortable targets — which is also why
+   Remove shows its label here instead of being the icon-only square of the base
+   rule above.
+--------------------------------------------------------------------------- */
+.member-actions-card {
+   width: min(420px, 94vw);
+   align-items: stretch;
+   text-align: left;
+}
+.member-actions-avatar {
+   font-size: 17px;
+   font-weight: 800;
+}
+.member-actions-body {
+   margin-top: 14px;
+}
+.member-actions-body .member-controls {
+   flex-direction: column;
+   align-items: stretch;
+   gap: 10px;
+   width: 100%;
+}
+#memberActionsDialog .member-actions-body .member-controls .button {
+   width: 100%;
+   min-height: 46px;
+   justify-content: center;
+   font-size: 13px;
+}
+#memberActionsDialog .member-actions-body .member-controls .button.member-remove-btn {
+   display: inline-flex;
+   width: 100%;
+   min-width: 0;
+   height: auto;
+   min-height: 46px;
+   gap: 8px;
+}
+/* Phones: the ⋮ is replaced by the row's chevron — there the WHOLE row is the tap
+   target (see the delegation in cloudUI.js), so a button inside the row would just
+   compete with that affordance. Desktop/tablet keeps the ⋮. */
+.member-row-chevron {
+   display: none;
+   flex: 0 0 auto;
+   align-self: center;
+   margin-left: 2px;
+   color: var(--muted);
+   font-size: 22px;
+   line-height: 1;
+}
+html[data-theme="dark"] .member-row-chevron {
+   color: #9fb69f;
+}
+@media (max-width: 680px) {
+   #albumMembersDialog .member-row {
+      flex-wrap: nowrap;
+   }
+   #albumMembersDialog .member-row-menu-btn {
+      display: none;
+   }
+   #albumMembersDialog .member-row.is-manageable {
+      cursor: pointer;
+   }
+   #albumMembersDialog .member-row.is-manageable .member-row-chevron {
+      display: block;
+   }
+   #albumMembersDialog .member-row.is-manageable:active {
+      background: var(--soft);
+   }
+}
+html[data-theme="dark"] #albumMembersDialog .member-row.is-manageable:active {
+   background: #1d211e;
+}
+/* PHONES: styles.css hides EVERY .button-ghost at ≤560px, and the member-actions
+   buttons are ghost buttons — so without this a phone showed a sheet with NO
+   Make MD / Make member / Remove buttons at all. An ID selector beats the class
+   rule (media queries add no specificity), so re-show them here, at every width.
+   Same trap for the "Add from My Songs" Cancel button. */
+@media (max-width: 560px) {
+   :is(#albumMembersDialog, #memberActionsDialog) .member-controls .button,
+   #addSongCancel.button-ghost {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+   }
 }
 /* ======================================================================
    ALBUMS PANE (home tab) — the album cards use EXACTLY the My Songs carousel
@@ -6755,6 +7120,62 @@ html[data-theme="dark"] #albumMembersDialog .member-row {
 .albums-searchbar .cloud-search {
    width: min(420px, 100%);
    margin: 0;
+}
+/* "Join with code" sits to the LEFT of the search field, on the same row. The DOM
+   keeps the field first (it is the primary control), so `order` does the flip —
+   and it applies on every screen size. */
+.albums-searchbar #joinAlbumBtn {
+   order: -1;
+}
+/* ---------------------------------------------------------------------------
+   ALBUM DETAIL + ALBUMS TOOLBAR on phones.
+   Placed AFTER the album base rules above on purpose: a media query adds no
+   specificity, so ORDER decides. The header stacks (back button, then the
+   CENTERED album name + meta line, then the action row), and the Albums search
+   field keeps "Join with code" as an icon-only square (styles.css hides
+   .button-ghost at ≤560px, which used to drop the action entirely).
+--------------------------------------------------------------------------- */
+@media (max-width: 680px) {
+   .cloud-album-head {
+      grid-template-columns: 1fr;
+      justify-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+   }
+   .album-back {
+      justify-self: start;
+   }
+   .cloud-album-heading {
+      justify-self: center;
+      text-align: center;
+   }
+   .cloud-album-actions {
+      width: 100%;
+      justify-self: stretch;
+      justify-content: center;
+   }
+   .albums-searchbar .btn-label {
+      display: none;
+   }
+   /* "Join with code" shares ONE row with the album search field, to its LEFT
+      (its `order: -1` lives with the base rule above). */
+   #albumsPanel .albums-searchbar {
+      flex-wrap: nowrap;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 10px;
+   }
+   #albumsPanel .albums-searchbar .cloud-search {
+      flex: 1 1 auto;
+      width: auto;
+      min-width: 0;
+   }
+   .albums-searchbar #joinAlbumBtn {
+      min-width: 46px;
+      min-height: 44px;
+      padding: 8px;
+      justify-content: center;
+   }
 }
 .albums-toolbar-note {
    align-self: center;
@@ -6909,7 +7330,7 @@ html[data-theme="dark"] .song-card.is-album .song-card-desc-text {
    that edits the arrangement is dimmed + inert here. The rules hang off <body>
    for two reasons: the flag is set once by cloudUI (syncAlbumContextUI), and it
    survives renderPreview() rebuilding the whole preview. JS ALSO disables the
-   in-preview controls (applyMemberReadOnlyAffordances in events.js) as
+   in-preview controls (applyReadOnlyAffordances in events.js) as
    defence-in-depth — the CSS just makes the state visible.
 
    Deliberately NOT listed (they stay usable): #keySelect, #timeSignature,
@@ -6946,6 +7367,65 @@ body[data-member-readonly="1"] .section-title {
    only look "flat" — events.js sets them readOnly. */
 body[data-member-readonly="1"] .lyric-input,
 body[data-member-readonly="1"] .chord-above-input {
+   cursor: text;
+}
+
+/* ---------------------------------------------------------------------------
+   PHONE VIEW-ONLY EDITOR (isPhone())
+   Same idea as the member block above, but for phones: arranging a score needs
+   room, so the phone canvas is view-only. A phone user MAY still change Title,
+   Artist, Key, Time signature, Transpose and BPM, and Play / Export — everything
+   that edits the arrangement is inert, and Undo/Redo (editor history) is refused
+   too. The flag is set by applyReadOnlyAffordances() in events.js.
+--------------------------------------------------------------------------- */
+body[data-view-only="1"] .drop-target,
+body[data-view-only="1"] .placed-chord {
+   cursor: default;
+}
+body[data-view-only="1"] .ribbon-tabs,
+body[data-view-only="1"] .ribbon-panel,
+body[data-view-only="1"] .section-menu,
+body[data-view-only="1"] .song-meta-lyrics-toggle,
+body[data-view-only="1"] #resetSheetBtn,
+body[data-view-only="1"] #addSectionBtn,
+body[data-view-only="1"] .add-bar,
+body[data-view-only="1"] .delete-bar,
+body[data-view-only="1"] .copy-bar,
+body[data-view-only="1"] .paste-bar,
+body[data-view-only="1"] .section-title,
+body[data-view-only="1"] .section-lyrics-toggle,
+body[data-view-only="1"] .section-chord-above-toggle,
+body[data-view-only="1"] .bar-selection-copy,
+body[data-view-only="1"] #undoBtn,
+body[data-view-only="1"] #redoBtn {
+   opacity: 0.45;
+   pointer-events: none;
+   cursor: not-allowed;
+}
+/* A locked section title is text, not a rename affordance. */
+body[data-view-only="1"] .section-title {
+   cursor: default;
+}
+/* Per-bar edit chrome is meaningless in a view-only canvas — hide it entirely
+   (dimming still left a column of red × buttons that could only ever refuse). */
+body[data-view-only="1"] .bar-tools,
+body[data-view-only="1"] .delete-bar {
+   display: none;
+}
+/* Time signature is locked on a phone as well (Key / Transpose / BPM stay live).
+   SCREEN-ONLY: #previewMeter is PRINTED sheet content, so this dim must never
+   reach paper — the JS guard is the real gate, this only makes the state read. */
+@media screen {
+   body[data-view-only="1"] #timeSignature,
+   body[data-view-only="1"] #previewMeter {
+      opacity: 0.45;
+      pointer-events: none;
+      cursor: not-allowed;
+   }
+}
+/* Lyrics / chord-above fields stay selectable + copyable, just not editable. */
+body[data-view-only="1"] .lyric-input,
+body[data-view-only="1"] .chord-above-input {
    cursor: text;
 }
 
@@ -7094,7 +7574,7 @@ body[data-member-readonly="1"] .chord-above-input {
 /* ============================================================================
    TOUCH TABLETS — tap-to-reveal for per-bar tools (no hover).
    A tablet has no hover, so the desktop `:hover` reveal for the per-bar tools
-   (⧉ copy, ⎘ paste, × delete, ♪ chord-row) and the × chord badge never fires.
+   (⧉ copy, ⎘ paste, × delete) and the × chord badge never fires.
    Instead we reveal them for the bar the user just TOUCHED — the `.is-tools-open`
    class that events.js sets (and render.js re-stamps so it survives a re-render).
    Scoped to touch TABLETS only (`hover: none` + ≥681px): PHONES keep their
@@ -7124,7 +7604,6 @@ body[data-member-readonly="1"] .chord-above-input {
       match the desktop footprint (tucked into the bar's top-right corner). */
    .copy-bar,
    .paste-bar,
-   .chord-above-bar-toggle,
    .delete-bar {
       width: 24px;
       height: 24px;

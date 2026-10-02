@@ -19,8 +19,7 @@ Chord & Number Score Builder — arrange chords and number (Nashville) notation,
   melodic line one octave up, the chord as the harmony underneath.
 - 🔢 **Chord row above the numbers (Chord Chart mode)** — write the Nashville number on the beat
   and its chord above it, so a musician reads (and hears) the melody and the harmony at once.
-  It is **per section**: every section has its own *Chords On/Off* button, and the **♪** button in a
-  bar, via the **♪** button in the bar tools, narrows it further. The row
+  It is **per section**: every section has its own *Chords On/Off* button. The row
   transposes with the key, follows rhythm splits, and prints with the score — bars with the row
   switched off keep the same height, so the barlines always line up.
 - 🥁 Rhythm subdivisions ½ / ⅓ / ¼ per beat (nested up to two levels)
@@ -55,8 +54,9 @@ Chord & Number Score Builder — arrange chords and number (Nashville) notation,
   owner curates arrangements and every member can read them. Joining is
   **self-service with an invite code** verified **server-side by Firestore rules**
   (no password sharing, no links — each musician uses their own account). Members
-  view read-only and can save a private copy; any owner may invite, promote
-  co-owners, or remove members.
+  view read-only and can save a private copy; an **MD (Music Director — the app's
+  name for an album owner)** may invite, promote another member to MD, or remove
+  members.
 
 ## Running
 
@@ -209,7 +209,10 @@ OFF until you turn it on for the section that needs it:
 | Level | Control | Notes |
 | --- | --- | --- |
 | Section | *Chords On/Off* button in the section head | ON/OFF default for every bar of that section. Only rendered in Chord Chart mode, hidden for read-only members and never printed |
-| Bar | **♪** button in the bar tools | Explicit per-bar override; JSON key `chordAboveBars` (`{"3": false}`). A single bar can be switched on even while its section default is off |
+
+> **Per-bar overrides:** there is no per-bar UI control for the chord row any more — it is
+> section-level only. The underlying per-bar data key (`chordAboveBars`, e.g. `{"3": false}`) is
+> still honoured when present (older files, or a pasted bar) and is preserved by copy / paste.
 
 Rules worth knowing:
 

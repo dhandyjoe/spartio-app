@@ -411,14 +411,9 @@ function sectionHTML(section) {
          state.activeBar && state.activeBar.sectionId === section.id && state.activeBar.bar === bar
             ? " is-tools-open"
             : "";
-      // Per-bar toggle (Chord Chart mode only) — lives in .bar-tools, so it is
-      // hidden while selecting bars and never printed (see styles/ui.css). It is the
-      // per-bar entry point of the feature: a single bar can be switched on without
-      // switching the whole section on.
-      const barChordAboveToggle = chordRowAvailable
-         ? `<button class="chord-above-bar-toggle ${chordAboveShown ? "active" : ""}" type="button" data-section="${section.id}" data-bar="${bar}" aria-pressed="${chordAboveShown}" title="${chordAboveShown ? "Hide" : "Show"} the chord row in bar ${globalBarNum}" aria-label="${chordAboveShown ? "Hide" : "Show"} chord row in bar ${globalBarNum}"><span aria-hidden="true">♪</span></button>`
-         : "";
-      return `<div class="bar ${showLyrics ? "has-lyrics" : ""}${chordAboveTrack ? " has-chord-above" : ""}${chordAboveOffClass}${barSelClass}${barSelectedClass}${toolsOpen}" style="--beats:${beats}" data-bar="${bar}"><span class="bar-num" aria-hidden="true">${globalBarNum}</span><span class="bar-tools">${barChordAboveToggle}<button class="copy-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Copy bar ${globalBarNum}" aria-label="Copy bar ${globalBarNum}">⧉</button><button class="paste-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Paste into bar ${globalBarNum}" aria-label="Paste into bar ${globalBarNum}">⎘</button></span><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Delete bar ${globalBarNum}" aria-label="Delete bar ${globalBarNum}">×</button>${Array.from({ length: beats }, (_, beat) => beatHTML(section, bar, beat, chordAboveTrack, chordAboveShown)).join("")}</div>`;
+      // NOTE: the per-bar chord-row (♪) toggle was removed — the chord row is now
+      // controlled only by the section-level "Chords On/Off" button.
+      return `<div class="bar ${showLyrics ? "has-lyrics" : ""}${chordAboveTrack ? " has-chord-above" : ""}${chordAboveOffClass}${barSelClass}${barSelectedClass}${toolsOpen}" style="--beats:${beats}" data-bar="${bar}"><span class="bar-num" aria-hidden="true">${globalBarNum}</span><span class="bar-tools"><button class="copy-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Copy bar ${globalBarNum}" aria-label="Copy bar ${globalBarNum}">⧉</button><button class="paste-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Paste into bar ${globalBarNum}" aria-label="Paste into bar ${globalBarNum}">⎘</button></span><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Delete bar ${globalBarNum}" aria-label="Delete bar ${globalBarNum}">×</button>${Array.from({ length: beats }, (_, beat) => beatHTML(section, bar, beat, chordAboveTrack, chordAboveShown)).join("")}</div>`;
    });
    const batches = Array.from(
       { length: Math.ceil(bars.length / 4) },
