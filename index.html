@@ -1277,8 +1277,8 @@
                   <p id="mySongsSub"><span class="library-count" id="libraryCount"></span></p>
                </div>
                <div class="cloud-gallery-actions">
-                  <button class="button button-primary" id="newSongBtn" type="button"><span aria-hidden="true">＋</span> New Song</button>
-                  <button class="button button-ghost" id="attachLinkBtn" type="button" title="Attach a song link from another user"><span aria-hidden="true">🔗</span> Attach Link</button>
+                  <button class="button button-primary" id="newSongBtn" type="button" title="Start a new song" aria-label="New Song"><span aria-hidden="true">＋</span><span class="btn-label">New Song</span></button>
+                  <button class="button button-ghost" id="attachLinkBtn" type="button" title="Attach a song link from another user" aria-label="Attach Link"><span aria-hidden="true">🔗</span><span class="btn-label">Attach Link</span></button>
                   <!-- Profile menu: the account button opens a card with the
                        signed-in identity, a theme switch and Sign out. -->
                   <div class="account-menu">
@@ -1286,7 +1286,7 @@
                         class="button button-ghost account-button"
                         id="accountBtn"
                         type="button"
-                        title="Sign in to sync your songs"
+                        title="Sign in to sync your songs" aria-label="Account menu"
                         aria-haspopup="true"
                         aria-expanded="false"
                         aria-controls="accountPopover"
@@ -1321,8 +1321,8 @@
                   </div>
                   <!-- Home cannot be "closed"; this only appears when a song is
                        already open in the editor, so there is never a dead end. -->
-                  <button class="button button-ghost gallery-resume" id="backToEditorBtn" type="button" hidden>
-                     Back to editor <span aria-hidden="true">→</span>
+                  <button class="button button-ghost gallery-resume" id="backToEditorBtn" type="button" hidden aria-label="Back to editor" title="Back to editor">
+                     <span class="btn-label">Back to editor</span> <span aria-hidden="true">→</span>
                   </button>
                </div>
             </header>

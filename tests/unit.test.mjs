@@ -728,6 +728,7 @@ import {
    replaceBarContent,
    cloneSection,
    extractBars,
+   extractBarsByIndices,
    insertBars,
    overwriteBars,
 } from "../src/notation.js?v=20260808-hide-dot-active";
@@ -849,6 +850,34 @@ test("extractBars is order-agnostic (start/end swapped)", () => {
    const a = extractBars(section, 1, 2);
    const b = extractBars(section, 2, 1);
    assert.deepStrictEqual(a, b);
+});
+
+test("extractBarsByIndices packs a non-contiguous set ascending and pastes in order", () => {
+   const section = {
+      id: "s",
+      name: "T",
+      bars: 5,
+      beats: { "0-0": "C", "1-0": "F", "2-0": "G", "3-0": "Dm", "4-0": "Am" },
+      lyricBeats: { "2-0": "word" },
+      chordAboveBars: { "2": false },
+   };
+   // Passed unsorted on purpose: the payload must come out in ascending bar order.
+   const payload = extractBarsByIndices(section, [2, 0]);
+   assert.equal(payload.count, 2);
+   // bar 0 -> output bar 0, bar 2 -> output bar 1
+   assert.deepStrictEqual(payload.beats, { "0-0": "C", "1-0": "G" });
+   assert.deepStrictEqual(payload.lyricBeats, { "1-0": "word" });
+   // The chord-row override follows its bar into the packed payload.
+   assert.deepStrictEqual(payload.chordAboveBars, { "1": false });
+   // Paste fills consecutive bars in that order: target 3 gets bar 0's "C",
+   // target 4 gets bar 2's "G" (this is the copy-{1,3}-then-paste behaviour).
+   const target = { id: "t", name: "T", bars: 5, beats: {}, lyricBeats: {}, chordAboveBeats: {}, chordAboveBars: {} };
+   assert.equal(overwriteBars(target, 3, payload), true);
+   assert.equal(target.beats["3-0"], "C");
+   assert.equal(target.beats["4-0"], "G");
+   // Duplicate indices collapse (a Set), and an empty set yields an empty payload.
+   assert.equal(extractBarsByIndices(section, [2, 2, 0]).count, 2);
+   assert.equal(extractBarsByIndices(section, []).count, 0);
 });
 
 test("insertBars shifts existing bars right and writes payload before target", () => {

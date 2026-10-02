@@ -20,6 +20,7 @@ import {
    replaceBarContent,
    cloneSection,
    extractBars,
+   extractBarsByIndices,
    insertBars,
    overwriteBars,
    beatValue,
@@ -640,7 +641,7 @@ function bindPreview() {
             const barEl = beat.closest(".bar");
             const bar = Number(barEl?.dataset.bar);
             if (!Number.isNaN(bar)) {
-               handleBarSelectionClick(beat.dataset.section, bar, event.shiftKey);
+               handleBarSelectionClick(beat.dataset.section, bar);
             }
             event.stopPropagation();
             return;
@@ -1065,7 +1066,7 @@ function bindPreview() {
             event.preventDefault();
             const barIndex = Number(bar.dataset.bar);
             if (Number.isNaN(barIndex)) return;
-            handleBarSelectionClick(sel.sectionId, barIndex, event.shiftKey);
+            handleBarSelectionClick(sel.sectionId, barIndex);
          },
          true, // capture phase: intercept before inner beat/chord/lyric handlers
       );
@@ -1464,11 +1465,12 @@ function isSelectionActiveFor(sectionId) {
    return !!(barSelection && barSelection.active && barSelection.sectionId === sectionId);
 }
 
-// Enter selection mode for a section. The first bar click sets the anchor.
+// Enter selection mode for a section. `bars` is the SET of selected bar indices
+// (a block can become non-contiguous by toggling bars off).
 function beginBarSelection(sectionId) {
-   barSelection = { active: true, sectionId, anchor: null, focus: null };
+   barSelection = { active: true, sectionId, anchor: null, bars: new Set() };
    renderPreview();
-   toast("Copy bars: click a bar, Shift+click another to extend");
+   toast("Copy bars: tap bars to build the block (tap a selected bar to remove it)");
 }
 
 function cancelBarSelection() {
@@ -1477,30 +1479,47 @@ function cancelBarSelection() {
    renderPreview();
 }
 
-// Handle a bar click while in selection mode. Plain click = set/reset anchor;
-// Shift+click = extend the range to that bar.
-function handleBarSelectionClick(sectionId, bar, extend) {
+// Handle a bar click while in selection mode. NO modifier key is needed: the
+// FIRST click anchors the range and every following click sets its other end —
+// so "bar 1, then bar 2" selects the block 1–2. Identical on mouse and touch
+// (a tablet has no Shift key, which is why the old Shift+click model could only
+// ever select a single bar there).
+function handleBarSelectionClick(sectionId, bar) {
    if (!barSelection || !barSelection.active) return;
    // Selection is confined to the section it was started in.
    if (sectionId !== barSelection.sectionId) return;
-   if (extend && barSelection.anchor !== null) {
-      barSelection.focus = bar;
-   } else {
+   const { bars } = barSelection;
+   if (bars.size === 0) {
+      // First tap: start the block here.
       barSelection.anchor = bar;
-      barSelection.focus = bar;
+      bars.add(bar);
+   } else if (bars.has(bar)) {
+      // Tapping a bar that is ALREADY selected REMOVES it — so a block can end up
+      // non-contiguous (1·2·3 → tap 2 → 1·3). Removing the last bar empties it.
+      bars.delete(bar);
+      if (bars.size === 0) barSelection.anchor = null;
+   } else if (bars.size === 1 && barSelection.anchor !== null) {
+      // Second tap: complete a contiguous BLOCK from the first bar to this one —
+      // keeps the "pick start, pick end" shortcut for long ranges.
+      const lo = Math.min(barSelection.anchor, bar),
+         hi = Math.max(barSelection.anchor, bar);
+      for (let i = lo; i <= hi; i++) bars.add(i);
+   } else {
+      // Later tap: toggle one more bar into the block.
+      bars.add(bar);
    }
    renderPreview();
 }
 
 // Copy the currently-selected bar range into the clipboard as a "bars" payload.
 function copySelectedBars() {
-   if (!barSelection || barSelection.anchor === null) {
-      toast("Click a bar first");
+   if (!barSelection || barSelection.bars.size === 0) {
+      toast("Select at least one bar first");
       return;
    }
    const section = findSection(barSelection.sectionId);
    if (!section) return;
-   const payload = extractBars(section, barSelection.anchor, barSelection.focus);
+   const payload = extractBarsByIndices(section, [...barSelection.bars]);
    setClipboard("bars", payload, { count: payload.count });
    cancelBarSelection();
    updatePasteButtons();
@@ -2386,6 +2405,47 @@ function initDeviceHint() {
    $("#deviceHintClose")?.addEventListener("click", dismiss);
 }
 
+// ---- Touch: tap-to-reveal a bar's tools (tablets have no hover) ----
+// Reveal the per-bar tools (⧉ copy, ⎘ paste, × delete, ♪ chord-row) AND the × chord
+// badge for the bar the user just touched. The class is toggled DIRECTLY on the DOM
+// (no re-render): re-rendering here would replace the beat node the chord-editor
+// popover is anchored to. The choice is mirrored in state so it survives the next
+// render (see barHTML in render.js). Only applies to touch input (prefersTap()).
+function markActiveBar(barEl) {
+   const state = getState();
+   const sectionEl = barEl?.closest?.(".preview-section") || null;
+   const sectionId = sectionEl?.dataset?.section;
+   const bar = barEl ? Number(barEl.dataset.bar) : NaN;
+   document.querySelectorAll(".bar.is-tools-open").forEach((el) => el.classList.remove("is-tools-open"));
+   if (!sectionId || Number.isNaN(bar)) {
+      state.activeBar = null;
+      return;
+   }
+   state.activeBar = { sectionId, bar };
+   barEl.classList.add("is-tools-open");
+   // Mirror the active SECTION too (its tools reveal follows the tap), so a tap
+   // anywhere in a non-active section brings that section's controls up.
+   if (state.activeId !== sectionId) {
+      state.activeId = sectionId;
+      document.querySelectorAll(".preview-section.is-active").forEach((el) => el.classList.remove("is-active"));
+      sectionEl.classList.add("is-active");
+   }
+}
+function bindBarToolReveal() {
+   const container = $("#sectionsPreview");
+   if (!container) return;
+   // Capture phase: runs before any inner handler, even when a descendant stops
+   // propagation — the reveal must never be swallowed by a beat/chord handler.
+   container.addEventListener(
+      "pointerdown",
+      (event) => {
+         if (!prefersTap()) return;
+         markActiveBar(event.target.closest?.(".bar") || null);
+      },
+      true,
+   );
+}
+
 export function initEvents() {
    // Inject rendering hooks so render.js never needs to import this module (keeps graph acyclic).
    initRender({
@@ -2401,6 +2461,7 @@ export function initEvents() {
       isMemberReadOnly: () => memberReadOnly(),
    });
    bindControlListeners();
+   bindBarToolReveal();
    bindYoutubeChip();
    localStorage.removeItem("chordSheetPreview");
    applyTheme(activeTheme, { persist: false });

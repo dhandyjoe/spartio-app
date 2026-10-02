@@ -442,6 +442,21 @@ Firestore rules, data model, and setup checklist.
 > selection before printing — so a green selection box can never appear in the
 > exported PDF even if the user exports mid-selection.
 
+### Responsive contract
+
+The UI targets three width bands. Keep `src/dom.js` (`prefersTap` / `isPhone`)
+and the media queries in `styles/ui.css` in sync with this table:
+
+| Band    | Width      | Score canvas                                                                 |
+| ------- | ---------- | ---------------------------------------------------------------------------- |
+| Phone   | ≤ 680px    | Bars stack vertically; no horizontal scroll; roomiest tap targets            |
+| Tablet  | 681–1050px | The sheet **auto-fits its pane** (no forced horizontal scroll); the pane is a `container-type: inline-size` query container, controls get ≥40px tap targets on coarse pointers, and the My Songs toolbar collapses to one row (covers portrait iPads incl. iPad Pro 13") |
+| Desktop | ≥ 1051px   | Paper-width sheet (`min-width: 920px`) with horizontal scroll when needed    |
+
+**Print/PDF is invariant across all bands.** Every responsive rule is scoped to
+`@media screen` or a width band, so the `@media print` / `html.is-print-layout`
+geometry is untouched — `tests/unit.test.mjs` pins that print contract.
+
 ## Testing
 
 **Unit tests** (pure logic — transpose, normalization, slots; no browser needed):

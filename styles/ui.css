@@ -16,6 +16,27 @@
    --radius-lg: 22px;
 }
 
+/* ============================================================================
+   RESPONSIVE CONTRACT (documented during the tablet/UI modernization pass)
+   ----------------------------------------------------------------------------
+   The whole app keys off three width bands. Keep these in sync with src/dom.js
+   (prefersTap / isPhone) and the media queries in this file:
+     • Phone   : width <= 680px   → stacked score (bars vertical), no h-scroll
+     • Tablet  : 681px – 1050px   → sheet auto-fits its pane (no forced h-scroll);
+                                    roomier tap targets; compact My Songs toolbar
+                                    (covers portrait iPads incl. iPad Pro 13" = 1024)
+     • Desktop : width >= 1051px  → paper-width sheet (min 920px) + scroll
+   PRINT / PDF IS INVARIANT across all three bands: its geometry lives in the
+   `@media print` + `html.is-print-layout` rules and is never touched by the
+   responsive rules below (all of them are scoped to `@media screen` or a width
+   band). tests/unit.test.mjs pins that print contract, so a stray change that
+   leaked into paper would fail the suite.
+   Design-token sources (custom properties only cascade to the LAST definition):
+     • styles/styles.css   → legacy base tokens (shadowed by ui.css, loaded later)
+     • styles/preview.css  → --print-*              (PRINT geometry — PROTECTED)
+     • styles/chordpro.css → --chordpro-css-version (build marker — PROTECTED)
+   ============================================================================ */
+
 /* SoundFont Download Modal Styles */
 .download-modal-overlay {
    position: fixed;
@@ -731,7 +752,11 @@ html.is-print-layout .preview-section.is-selecting .bar.is-selected::after {
 }
 .ribbon-workspace .preview-card {
    width: 100%;
-   min-width: 920px;
+   /* Fit the pane: never smaller than 920px UNLESS the pane itself is narrower,
+      in which case the sheet fills it (so a portrait tablet needs no forced
+      horizontal scroll). Print / is-print-layout keep their own geometry via
+      `html.is-print-layout .ribbon-workspace .preview-card` (higher specificity). */
+   min-width: min(920px, 100%);
    margin: 0 auto;
    border: 1px solid #e5e5df;
    border-radius: 5px;
@@ -1952,7 +1977,7 @@ html[data-theme="dark"] .confirm-dialog-icon {
       top: 0;
    }
    .ribbon-workspace .preview-card {
-      min-width: 820px;
+      min-width: min(820px, 100%);
    }
    .preview-viewport {
       padding: 22px;
@@ -6923,3 +6948,212 @@ body[data-member-readonly="1"] .lyric-input,
 body[data-member-readonly="1"] .chord-above-input {
    cursor: text;
 }
+
+/* ============================================================================
+   TABLET LAYOUT (681–1050px) + touch targets — added for the responsive pass.
+   Goal: the score sheet fits the pane on a portrait tablet (no forced horizontal
+   scroll) and the controls are comfortably tappable. Everything here is
+   SCREEN-ONLY, so `@media print` / `html.is-print-layout` (paper geometry) is
+   untouched — the print contract asserted by tests/unit.test.mjs stays green.
+   ============================================================================ */
+
+/* Turn the score pane into a query container so the SHEET can respond to the
+   space it actually has, not just the viewport. Enabled on tablet + desktop;
+   phones (<=680px) keep their own stacked rules, and this never runs in print. */
+@media screen and (min-width: 681px) {
+   .preview-stage {
+      container-type: inline-size;
+      container-name: score;
+   }
+   /* When the pane is narrower than a full desktop sheet, let the sheet FILL it
+      instead of overflowing horizontally. (A roomy desktop keeps the 920px paper
+      width and scrolls, exactly as before.) */
+   @container score (max-width: 940px) {
+      .ribbon-workspace .preview-card {
+         min-width: 0;
+      }
+      .preview-viewport {
+         padding: 16px 18px 26px;
+      }
+   }
+}
+
+/* Tablet band (681–1050px): even out the horizontal gutters so the score gets
+   more width. Covers portrait iPads (incl. the 13" at 1024px). */
+@media (min-width: 681px) and (max-width: 1050px) {
+   main {
+      padding-right: 20px;
+      padding-left: 20px;
+   }
+}
+
+/* Touch tablets: several controls were sized for a mouse (the transpose buttons
+   are 22×20px). Give them a comfortable tap target. Scoped to `pointer: coarse`
+   so a tablet-with-trackpad or a desktop mouse keeps the compact look. */
+@media (min-width: 681px) and (max-width: 1050px) and (pointer: coarse) {
+   .transpose-buttons button {
+      width: 40px;
+      height: 40px;
+      font-size: 18px;
+   }
+   .play-btn {
+      width: 44px;
+      height: 44px;
+   }
+   .metronome-btn {
+      width: 40px;
+      height: 40px;
+   }
+   .history-btn {
+      padding: 11px 18px;
+      font-size: 14px;
+   }
+   .section-lyrics-toggle,
+   .section-chord-above-toggle,
+   .text-button,
+   .section-menu summary {
+      min-height: 40px;
+   }
+}
+/* ============================================================================
+   MY SONGS toolbar on tablet: keep every action on ONE row.
+   The header is a 3-column grid; the EQUAL-width side columns (`1fr auto 1fr`)
+   used to squeeze the labelled buttons into a second line, dropping the profile
+   button below. Two fixes:
+     1. Let the side columns take their NATURAL width (`auto … auto`) so the
+        actions are never squeezed by an equal-width rule.
+     2. Collapse the SECONDARY actions (Attach Link, Back to editor, the account
+        label) to icons — their accessible name now comes from aria-label. The
+        primary "＋ New Song" keeps its label.
+   Screen-only (the gallery never prints), so it cannot affect paper/PDF.
+   ============================================================================ */
+@media (min-width: 681px) and (max-width: 1050px) {
+   .cloud-gallery-head {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 14px;
+      padding: 14px 20px;
+   }
+   .cloud-gallery-actions {
+      flex-wrap: nowrap;
+      gap: 8px;
+   }
+   .cloud-gallery-actions #attachLinkBtn .btn-label,
+   .cloud-gallery-actions #backToEditorBtn .btn-label,
+   .cloud-gallery-actions .account-label {
+      display: none;
+   }
+   .cloud-gallery-actions #attachLinkBtn,
+   .cloud-gallery-actions #accountBtn,
+   .cloud-gallery-actions #backToEditorBtn {
+      min-width: 44px;
+      min-height: 44px;
+      padding: 8px;
+      justify-content: center;
+   }
+}
+
+/* ============================================================================
+   STICKY FOOTER — pin the site footer to the bottom of the viewport.
+   The page relies on `body { min-height: 100vh }`, so a SHORT document (a song
+   with few bars on a tall tablet viewport) left a large empty band BELOW the
+   footer. A flex-column body with a growing <main> removes that gap on every
+   screen size — the footer sits flush with the bottom instead of floating with
+   dead space under it.
+   SCREEN-ONLY: a print job has no viewport, so `@media print` keeps the plain
+   block flow and the exported PDF geometry is untouched.
+   ============================================================================ */
+@media screen {
+   body {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      /* dvh avoids the iOS address-bar overshoot; the vh line above is the fallback. */
+      min-height: 100dvh;
+   }
+   /* main grows to fill the free space, pushing the footer to the bottom.
+      IMPORTANT: `main` carries `margin: auto` (styles.css). In a flex column the
+      horizontal auto-margins would make it SHRINK-TO-FIT instead of stretching
+      (the grid then collapses to 0 → a blank editor page), so an explicit
+      `width: 100%` is required. The vertical auto-margins are pinned to 0 so the
+      item simply fills the free space (a vertical auto-margin would otherwise
+      centre it, leaving a gap under the topbar); the left/right auto-margins
+      stay, keeping the column centred up to its max-width. */
+   body > main {
+      flex: 1 0 auto;
+      width: 100%;
+      margin-top: 0;
+      margin-bottom: 0;
+   }
+   /* Never let the footer/header be squashed by the growing item. */
+   body > .site-footer,
+   body > .topbar {
+      flex-shrink: 0;
+   }
+}
+
+/* ============================================================================
+   TOUCH TABLETS — tap-to-reveal for per-bar tools (no hover).
+   A tablet has no hover, so the desktop `:hover` reveal for the per-bar tools
+   (⧉ copy, ⎘ paste, × delete, ♪ chord-row) and the × chord badge never fires.
+   Instead we reveal them for the bar the user just TOUCHED — the `.is-tools-open`
+   class that events.js sets (and render.js re-stamps so it survives a re-render).
+   Scoped to touch TABLETS only (`hover: none` + ≥681px): PHONES keep their
+   always-on layout and DESKTOP keeps its hover behaviour — both untouched.
+   Screen-only: print hides every one of these via `display:none` (preview.css /
+   ui.css), so the exported PDF is unaffected.
+   ============================================================================ */
+@media (hover: none) and (min-width: 681px) {
+   /* Hidden AND not tappable until the bar is touched. (The old `opacity: 0`
+      with no pointer-events made them invisible yet still clickable — a stray
+      tap near a bar's top-right corner could delete it.) */
+   .bar-tools,
+   .delete-bar,
+   .placed-chord .chord-remove {
+      opacity: 0;
+      pointer-events: none;
+   }
+   .bar.is-tools-open .bar-tools,
+   .bar.is-tools-open .delete-bar,
+   .bar.is-tools-open .placed-chord .chord-remove {
+      opacity: 1;
+      pointer-events: auto;
+   }
+   /* Compact, top-aligned tool cluster so it never covers the notation/chord
+      lane. The bar only has ~13px of clear space ABOVE the beats (lane measured
+      13→67px of an 80px bar), so centring a big button hid the chords. These now
+      match the desktop footprint (tucked into the bar's top-right corner). */
+   .copy-bar,
+   .paste-bar,
+   .chord-above-bar-toggle,
+   .delete-bar {
+      width: 24px;
+      height: 24px;
+   }
+   .bar.is-tools-open .bar-tools {
+      top: 2px;
+      right: 32px;
+      transform: none;
+   }
+   .delete-bar {
+      top: 2px;
+      right: 4px;
+      transform: none;
+   }
+   /* Empty-beat "+" hint for the revealed bar — the desktop version lives under
+      `@media (hover: hover)` and never shows on touch. */
+   .bar.is-tools-open .beat.drop-target:not(.has-chord)::after {
+      content: "+";
+      position: absolute;
+      z-index: 6;
+      inset: 21px 16px 3px;
+      display: grid;
+      place-items: center;
+      font:
+         700 15px/1 Inter,
+         ui-sans-serif,
+         sans-serif;
+      color: var(--green);
+      pointer-events: none;
+   }
+}
+

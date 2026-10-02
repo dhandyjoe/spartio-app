@@ -760,6 +760,37 @@ export function extractBars(section, startBar, endBar) {
    };
 }
 
+// Extract an ARBITRARY SET of bars (non-contiguous — e.g. {1, 3}) as ONE payload,
+// ordered by bar index: the k-th selected bar becomes bar k. Paste then fills
+// consecutive bars in that order (see insertBars / overwriteBars), so copying
+// {1, 3} and pasting at bar X writes the original bar 1 into X and bar 3 into X+1.
+// Reuses the (well-tested) single-bar range extractor, so slot/override rebasing
+// stays single-sourced with extractBars.
+export function extractBarsByIndices(section, indices) {
+   const ordered = [...new Set(indices)]
+      .filter((index) => Number.isInteger(index) && index >= 0)
+      .sort((a, b) => a - b);
+   const payload = { count: ordered.length, beats: {}, lyricBeats: {}, chordAboveBeats: {}, chordAboveBars: {} };
+   const rebaseSlotMap = (source, target, outIndex) => {
+      Object.entries(source || {}).forEach(([slot, value]) => {
+         const match = slot.match(/^(\d+)(-.+)$/);
+         if (!match) return;
+         target[`${outIndex}${match[2]}`] = value;
+      });
+   };
+   ordered.forEach((barIndex, outIndex) => {
+      const part = extractBars(section, barIndex, barIndex);
+      rebaseSlotMap(part.beats, payload.beats, outIndex);
+      rebaseSlotMap(part.lyricBeats, payload.lyricBeats, outIndex);
+      rebaseSlotMap(part.chordAboveBeats, payload.chordAboveBeats, outIndex);
+      // Single-bar overrides come back keyed "0"; relocate onto the output slot.
+      Object.entries(part.chordAboveBars || {}).forEach(([, value]) => {
+         payload.chordAboveBars[String(outIndex)] = value;
+      });
+   });
+   return payload;
+}
+
 // Insert a previously-extracted multi-bar payload into a section BEFORE the
 // given target bar. Existing bars at/after the target shift right by
 // payload.count; the payload (normalized to bar 0) is written at the target

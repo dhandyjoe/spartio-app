@@ -1295,13 +1295,13 @@ record(
    ),
 );
 
-// Shift-click bar 1 to extend the range to two bars.
+// Click bar 1 (no modifier needed) to extend the range to two bars.
 await evaluate(
-   "(()=>{const b=document.querySelector('.bar[data-bar=\"1\"]');if(!b)return false;b.dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}));return true})()",
+   "(()=>{const b=document.querySelector('.bar[data-bar=\"1\"]');if(!b)return false;b.dispatchEvent(new MouseEvent('click',{bubbles:true}));return true})()",
 );
 await waitFor("document.querySelector('.bar-selection-count')?.textContent.trim()==='2 bars selected'");
 record(
-   "Shift+click extends the selection range (count = 2)",
+   "Clicking a second bar extends the selection range (count = 2)",
    (await text(".bar-selection-count")) === "2 bars selected",
    await text(".bar-selection-count"),
 );

@@ -392,13 +392,12 @@ function sectionHTML(section) {
    // Transient multi-bar selection state (never persisted / part of history).
    const selection = hooks.getBarSelection();
    const selecting = !!(selection && selection.active && selection.sectionId === section.id);
-   // A range only exists once an anchor bar has been clicked.
-   const hasRange = selecting && selection.anchor !== null && selection.focus !== null;
-   const selLo = hasRange ? Math.min(selection.anchor, selection.focus) : -1;
-   const selHi = hasRange ? Math.max(selection.anchor, selection.focus) : -1;
+   // The selection is a SET of bar indices (a block becomes non-contiguous once
+   // bars are toggled off), so the highlight is a membership test, not a range.
+   const selBars = selecting && selection.bars instanceof Set ? selection.bars : null;
    const bars = Array.from({ length: section.bars }, (_, bar) => {
       const globalBarNum = cumulativeBarStart + bar + 1;
-      const inRange = selecting && bar >= selLo && bar <= selHi;
+      const inRange = !!(selBars && selBars.has(bar));
       const barSelClass = selecting ? " is-selectable" : "";
       const barSelectedClass = inRange ? " is-selected" : "";
       // Per-bar answer for the chord row: the track may be reserved section-wide
@@ -406,6 +405,12 @@ function sectionHTML(section) {
       // section default is off (see chordAboveShownForBar).
       const chordAboveShown = chordAboveTrack && chordAboveShownForBar(section, bar);
       const chordAboveOffClass = chordAboveTrack && !chordAboveShown ? " is-chord-above-off" : "";
+      // Touch tap-to-reveal: the bar whose per-bar tools are shown. Stamped from
+      // state so the revealed bar survives a re-render (set by markActiveBar in events.js).
+      const toolsOpen =
+         state.activeBar && state.activeBar.sectionId === section.id && state.activeBar.bar === bar
+            ? " is-tools-open"
+            : "";
       // Per-bar toggle (Chord Chart mode only) — lives in .bar-tools, so it is
       // hidden while selecting bars and never printed (see styles/ui.css). It is the
       // per-bar entry point of the feature: a single bar can be switched on without
@@ -413,7 +418,7 @@ function sectionHTML(section) {
       const barChordAboveToggle = chordRowAvailable
          ? `<button class="chord-above-bar-toggle ${chordAboveShown ? "active" : ""}" type="button" data-section="${section.id}" data-bar="${bar}" aria-pressed="${chordAboveShown}" title="${chordAboveShown ? "Hide" : "Show"} the chord row in bar ${globalBarNum}" aria-label="${chordAboveShown ? "Hide" : "Show"} chord row in bar ${globalBarNum}"><span aria-hidden="true">♪</span></button>`
          : "";
-      return `<div class="bar ${showLyrics ? "has-lyrics" : ""}${chordAboveTrack ? " has-chord-above" : ""}${chordAboveOffClass}${barSelClass}${barSelectedClass}" style="--beats:${beats}" data-bar="${bar}"><span class="bar-num" aria-hidden="true">${globalBarNum}</span><span class="bar-tools">${barChordAboveToggle}<button class="copy-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Copy bar ${globalBarNum}" aria-label="Copy bar ${globalBarNum}">⧉</button><button class="paste-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Paste into bar ${globalBarNum}" aria-label="Paste into bar ${globalBarNum}">⎘</button></span><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Delete bar ${globalBarNum}" aria-label="Delete bar ${globalBarNum}">×</button>${Array.from({ length: beats }, (_, beat) => beatHTML(section, bar, beat, chordAboveTrack, chordAboveShown)).join("")}</div>`;
+      return `<div class="bar ${showLyrics ? "has-lyrics" : ""}${chordAboveTrack ? " has-chord-above" : ""}${chordAboveOffClass}${barSelClass}${barSelectedClass}${toolsOpen}" style="--beats:${beats}" data-bar="${bar}"><span class="bar-num" aria-hidden="true">${globalBarNum}</span><span class="bar-tools">${barChordAboveToggle}<button class="copy-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Copy bar ${globalBarNum}" aria-label="Copy bar ${globalBarNum}">⧉</button><button class="paste-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Paste into bar ${globalBarNum}" aria-label="Paste into bar ${globalBarNum}">⎘</button></span><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Delete bar ${globalBarNum}" aria-label="Delete bar ${globalBarNum}">×</button>${Array.from({ length: beats }, (_, beat) => beatHTML(section, bar, beat, chordAboveTrack, chordAboveShown)).join("")}</div>`;
    });
    const batches = Array.from(
       { length: Math.ceil(bars.length / 4) },
@@ -437,11 +442,11 @@ function sectionHTML(section) {
    const typeClass = sectionTypeClass(section.name);
    const chip = `<span class="section-chip" aria-hidden="true"></span>`;
    // Selection action bar: shown above the grid only for the section being selected.
-   const selCount = hasRange ? selHi - selLo + 1 : 0;
+   const selCount = selBars ? selBars.size : 0;
    const selectionBar = selecting
       ? `<div class="bar-selection-bar" role="status"><span class="bar-selection-count">${
            selCount ? `${selCount} bar${selCount === 1 ? "" : "s"} selected` : "No bars selected yet"
-        }</span><span class="bar-selection-hint">Click a bar, then Shift+click another to extend</span><button class="bar-selection-copy" type="button" data-section="${section.id}" ${selCount ? "" : "disabled"}>Copy</button><button class="bar-selection-cancel" type="button">Cancel</button></div>`
+        }</span><span class="bar-selection-hint">Tap bars to build the block · tap a selected bar to remove it</span><button class="bar-selection-copy" type="button" data-section="${section.id}" ${selCount ? "" : "disabled"}>Copy</button><button class="bar-selection-cancel" type="button">Cancel</button></div>`
       : "";
    return `<section class="preview-section ${typeClass} ${section.id === state.activeId ? "is-active" : ""} ${hasLyricContent ? "has-lyric-content" : ""}${selecting ? " is-selecting" : ""}" data-section="${section.id}"><div class="section-preview-heading"><div>${chip}${title}</div><div class="section-tools">${chordAboveToggle}${lyricsToggle}<span class="bar-caption">${section.bars} ${section.bars === 1 ? "bar" : "bars"} · ${beats} beats per bar</span><button class="text-button add-bar" data-section="${section.id}">+ Add 1 bar</button>${sectionMenu}</div></div>${selectionBar}<div class="bar-grid">${batches}</div></section>`;
 }

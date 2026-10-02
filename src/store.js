@@ -24,6 +24,9 @@ function defaultState() {
       nashvilleAccidental: "",
       activeId: first.id,
       editingId: null,
+      // Touch tap-to-reveal: the bar whose per-bar tools are currently shown
+      // ({ sectionId, bar } | null). Set by events.js and stamped by render.js.
+      activeBar: null,
       editorMode: "chords", // "chords" or "numbers" - defaults to chords for backward compat
    };
 }
