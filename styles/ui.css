@@ -6301,6 +6301,7 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    width: min(320px, 100%);
    margin: 10px 0;
    padding: 4px;
+   border: 1px solid rgba(0, 0, 0, 0.16);
    border-radius: 999px;
    background: #08301f;
 }
@@ -6730,7 +6731,11 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
 }
 
 /* Dark theme tweaks for the album UI. */
-/* (The switcher uses the same dark-green track + white pill in both themes.) */
+/* (The switcher uses the same dark-green track + white pill in both themes — the
+   hairline just brightens a touch so it stays visible on a dark page.) */
+html[data-theme="dark"] .home-tabs {
+   border-color: rgba(255, 255, 255, 0.18);
+}
 html[data-theme="dark"] .album-card {
    background: #101210;
    color: #eaf2ea;
