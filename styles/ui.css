@@ -6290,9 +6290,9 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    Reuses the existing cloud tokens so light/dark stay in sync.
    ====================================================================== */
 
-/* Home tabs (My Songs | Albums) — a SEGMENTED TOGGLE (like the reference):
-   a filled #000000 track, two equal segments, the ACTIVE one is a WHITE pill
-   with black text; the inactive one is white text on the track. */
+/* Home tabs (My Songs | Albums) — a SEGMENTED TOGGLE in the app's brand green:
+   a --green track, two equal segments, the ACTIVE one is a WHITE pill with dark
+   green text; the inactive one is white text on the track. */
 .home-tabs {
    flex: 0 0 auto;
    align-self: center;
@@ -6302,7 +6302,7 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    margin: 12px 0;
    padding: 5px;
    border-radius: 999px;
-   background: #000000;
+   background: var(--green);
 }
 .home-tab {
    flex: 1 1 0;
@@ -6323,7 +6323,7 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
 }
 .home-tab.is-active,
 .home-tab[aria-selected="true"] {
-   color: #000000;
+   color: var(--dark-green);
    background: #ffffff;
 }
 .home-tab-panel {
@@ -6730,11 +6730,13 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
 }
 
 /* Dark theme tweaks for the album UI. */
-/* The switcher's active segment is a WHITE pill in both themes (the track is
-   always #000000). */
+/* Dark theme: deepen the track so the white active pill still pops. */
+html[data-theme="dark"] .home-tabs {
+   background: var(--dark-green);
+}
 html[data-theme="dark"] .home-tab.is-active,
 html[data-theme="dark"] .home-tab[aria-selected="true"] {
-   color: #000000;
+   color: var(--dark-green);
    background: #ffffff;
 }
 html[data-theme="dark"] .album-card {
