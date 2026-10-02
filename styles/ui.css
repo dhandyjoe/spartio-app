@@ -4328,7 +4328,7 @@ html[data-theme="dark"] .topbar-help-btn {
       min-height: 44px;
       padding: 8px;
    }
-   /* "Join with code" (Albums tab) is a ghost button too — same trap, same fix. */
+   /* "Join Album" (Albums tab) is a ghost button too — same trap, same fix. */
    #joinAlbumBtn.button-ghost {
       display: inline-flex !important;
       align-items: center;
@@ -6290,9 +6290,9 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    Reuses the existing cloud tokens so light/dark stay in sync.
    ====================================================================== */
 
-/* Home tabs (My Songs | Albums) — a COMPACT segmented toggle: a dark charcoal
-   track with two equal segments; the ACTIVE one is a WHITE pill with dark text,
-   the inactive one is white text on the track. */
+/* Home tabs (My Songs | Albums) — a COMPACT segmented toggle in a DEEP green:
+   a dark-green track with two equal segments; the ACTIVE one is a WHITE pill
+   with dark-green text, the inactive one is white text on the track. */
 .home-tabs {
    flex: 0 0 auto;
    align-self: center;
@@ -6302,7 +6302,7 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    margin: 10px 0;
    padding: 4px;
    border-radius: 999px;
-   background: #222222;
+   background: #08301f;
 }
 .home-tab {
    flex: 1 1 0;
@@ -6323,7 +6323,7 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
 }
 .home-tab.is-active,
 .home-tab[aria-selected="true"] {
-   color: #1f2421;
+   color: var(--dark-green);
    background: #ffffff;
 }
 .home-tab-panel {
@@ -6730,15 +6730,7 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
 }
 
 /* Dark theme tweaks for the album UI. */
-/* Dark theme: slightly lighten the charcoal track so it reads against the page. */
-html[data-theme="dark"] .home-tabs {
-   background: #2b2b2b;
-}
-html[data-theme="dark"] .home-tab.is-active,
-html[data-theme="dark"] .home-tab[aria-selected="true"] {
-   color: #1f2421;
-   background: #ffffff;
-}
+/* (The switcher uses the same dark-green track + white pill in both themes.) */
 html[data-theme="dark"] .album-card {
    background: #101210;
    color: #eaf2ea;
@@ -7198,18 +7190,14 @@ html[data-theme="dark"] #albumMembersDialog .member-row.is-manageable:active {
    width: min(420px, 100%);
    margin: 0;
 }
-/* "Join with code" sits to the LEFT of the search field, on the same row. The DOM
-   keeps the field first (it is the primary control), so `order` does the flip —
-   and it applies on every screen size. */
-.albums-searchbar #joinAlbumBtn {
-   order: -1;
-}
+/* "Join Album" sits to the RIGHT of the search field, on the same row (the DOM
+   already keeps the field first, so no `order` flip is needed). */
 /* ---------------------------------------------------------------------------
    ALBUM DETAIL + ALBUMS TOOLBAR on phones.
    Placed AFTER the album base rules above on purpose: a media query adds no
    specificity, so ORDER decides. The header stacks (back button, then the
    CENTERED album name + meta line, then the action row), and the Albums search
-   field keeps "Join with code" as an icon-only square (styles.css hides
+   field keeps "Join Album" as an icon-only square (styles.css hides
    .button-ghost at ≤560px, which used to drop the action entirely).
 --------------------------------------------------------------------------- */
 @media (max-width: 680px) {
@@ -7234,8 +7222,7 @@ html[data-theme="dark"] #albumMembersDialog .member-row.is-manageable:active {
    .albums-searchbar .btn-label {
       display: none;
    }
-   /* "Join with code" shares ONE row with the album search field, to its LEFT
-      (its `order: -1` lives with the base rule above). */
+   /* "Join Album" shares ONE row with the album search field, to its RIGHT. */
    #albumsPanel .albums-searchbar {
       flex-wrap: nowrap;
       align-items: center;
