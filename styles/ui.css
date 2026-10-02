@@ -6290,9 +6290,9 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    Reuses the existing cloud tokens so light/dark stay in sync.
    ====================================================================== */
 
-/* Home tabs (My Songs | Albums) — a COMPACT segmented toggle in a DEEP green:
-   a dark-green track with two equal segments; the ACTIVE one is a WHITE pill
-   with dark-green text, the inactive one is white text on the track. */
+/* Home tabs (My Songs | Albums) — a COMPACT segmented toggle whose TRACK matches
+   the toolbar/page surface (so it blends in); the ACTIVE segment is the dark
+   green pill with white text, the inactive one is muted text. */
 .home-tabs {
    flex: 0 0 auto;
    align-self: center;
@@ -6301,9 +6301,9 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    width: min(320px, 100%);
    margin: 10px 0;
    padding: 4px;
-   border: 1px solid rgba(0, 0, 0, 0.16);
+   border: 1px solid var(--line);
    border-radius: 999px;
-   background: #08301f;
+   background: var(--surface);
 }
 .home-tab {
    flex: 1 1 0;
@@ -6312,7 +6312,7 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    border-radius: 999px;
    padding: 8px 14px;
    font: 700 13px inherit;
-   color: #ffffff;
+   color: var(--muted);
    background: transparent;
    cursor: pointer;
    transition:
@@ -6320,12 +6320,12 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
       color 0.2s ease;
 }
 .home-tab:hover {
-   color: #ffffff;
+   color: var(--ink);
 }
 .home-tab.is-active,
 .home-tab[aria-selected="true"] {
-   color: var(--dark-green);
-   background: #ffffff;
+   color: #ffffff;
+   background: var(--dark-green);
 }
 .home-tab-panel {
    flex: 1 1 auto;
@@ -6731,10 +6731,12 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
 }
 
 /* Dark theme tweaks for the album UI. */
-/* (The switcher uses the same dark-green track + white pill in both themes — the
-   hairline just brightens a touch so it stays visible on a dark page.) */
-html[data-theme="dark"] .home-tabs {
-   border-color: rgba(255, 255, 255, 0.18);
+/* The switcher track follows the surface, so on a dark page the active pill
+   flips to white for contrast. */
+html[data-theme="dark"] .home-tab.is-active,
+html[data-theme="dark"] .home-tab[aria-selected="true"] {
+   color: #0a1a12;
+   background: #ffffff;
 }
 html[data-theme="dark"] .album-card {
    background: #101210;
