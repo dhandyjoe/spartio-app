@@ -6290,37 +6290,50 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    Reuses the existing cloud tokens so light/dark stay in sync.
    ====================================================================== */
 
-/* Home tabs (My Songs | Albums). */
+/* Home tabs (My Songs | Albums) — the "switcher": the active view is marked by
+   an UNDERLINE only. No pill, no green, no background colour. */
 .home-tabs {
    flex: 0 0 auto;
    display: flex;
    align-items: center;
    justify-content: center;
-   gap: 6px;
+   gap: 26px;
    padding: 10px clamp(20px, 4vw, 56px) 12px;
    border-bottom: 1px solid var(--line);
    background: var(--surface);
 }
 .home-tab {
+   position: relative;
    appearance: none;
    border: 0;
-   border-radius: 999px;
-   padding: 8px 22px;
-   font: 700 13.5px inherit;
+   border-radius: 0;
+   padding: 8px 2px;
+   font: 700 14px inherit;
    color: var(--muted);
    background: transparent;
    cursor: pointer;
-   transition: background 0.16s ease, color 0.16s ease;
+   transition: color 0.16s ease;
 }
 .home-tab:hover {
    color: var(--ink);
-   background: var(--soft);
+   background: transparent;
 }
 .home-tab.is-active,
 .home-tab[aria-selected="true"] {
-   color: #fff;
-   background: var(--green);
-   box-shadow: 0 5px 12px rgba(35, 122, 80, 0.16);
+   color: var(--ink);
+   background: transparent;
+   box-shadow: none;
+}
+.home-tab.is-active::after,
+.home-tab[aria-selected="true"]::after {
+   content: "";
+   position: absolute;
+   left: 2px;
+   right: 2px;
+   bottom: 0;
+   height: 2px;
+   border-radius: 2px;
+   background: currentColor;
 }
 .home-tab-panel {
    flex: 1 1 auto;
@@ -6726,10 +6739,11 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
 }
 
 /* Dark theme tweaks for the album UI. */
+/* The switcher has NO background, so the dark theme simply brightens the ink. */
 html[data-theme="dark"] .home-tab.is-active,
 html[data-theme="dark"] .home-tab[aria-selected="true"] {
-   color: #08130d;
-   background: var(--green);
+   color: #eaf2ea;
+   background: transparent;
 }
 html[data-theme="dark"] .album-card {
    background: #101210;
@@ -8075,6 +8089,7 @@ html[data-theme="dark"] .home-fab-item.is-active {
       padding: clamp(9px, 1.1vw, 13px) clamp(14px, 1.8vw, 20px) clamp(9px, 1.1vw, 13px) clamp(38px, 4.6vw, 52px);
    }
 }
+
 
 
 
