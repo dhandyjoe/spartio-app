@@ -3236,10 +3236,10 @@ test("the home keeps the title in the app bar and the switcher above the search"
    assert.ok(html.indexOf('id="songSearch"') > html.indexOf('id="songsPanel"'), "songs search inside the panel");
    assert.match(html, /class="cloud-gallery-searchbar albums-searchbar"[\s\S]{0,400}?id="joinAlbumBtn"/);
    // The My Songs / Albums switcher track matches the app surface; the active
-   // segment is the dark green pill.
+   // segment is a GREEN pill (not white).
    const css = readProjectFile("styles/ui.css");
    assert.match(css, /\.home-tabs\s*\{[\s\S]{0,280}?background:\s*var\(--surface\)/);
-   assert.match(css, /\.home-tab\.is-active,[\s\S]{0,120}?background:\s*var\(--dark-green\)/);
+   assert.match(css, /\.home-tab\.is-active,[\s\S]{0,120}?background:\s*var\(--green\)/);
    assert.ok(!css.includes(".home-tab.is-active::after"), "the underline indicator is gone");
 });
 

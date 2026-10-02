@@ -6291,8 +6291,8 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    ====================================================================== */
 
 /* Home tabs (My Songs | Albums) — a COMPACT segmented toggle whose TRACK matches
-   the toolbar/page surface (so it blends in); the ACTIVE segment is the dark
-   green pill with white text, the inactive one is muted text. */
+   the toolbar/page surface (so it blends in); the ACTIVE segment is a GREEN pill
+   with white text, the inactive one is muted text. */
 .home-tabs {
    flex: 0 0 auto;
    align-self: center;
@@ -6325,7 +6325,7 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
 .home-tab.is-active,
 .home-tab[aria-selected="true"] {
    color: #ffffff;
-   background: var(--dark-green);
+   background: var(--green);
 }
 .home-tab-panel {
    flex: 1 1 auto;
@@ -6731,12 +6731,12 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
 }
 
 /* Dark theme tweaks for the album UI. */
-/* The switcher track follows the surface, so on a dark page the active pill
-   flips to white for contrast. */
+/* Dark theme: the active pill stays GREEN (its --green token is lighter there),
+   so it needs dark text instead of white. */
 html[data-theme="dark"] .home-tab.is-active,
 html[data-theme="dark"] .home-tab[aria-selected="true"] {
    color: #0a1a12;
-   background: #ffffff;
+   background: var(--green);
 }
 html[data-theme="dark"] .album-card {
    background: #101210;
