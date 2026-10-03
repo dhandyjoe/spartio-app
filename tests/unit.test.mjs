@@ -1931,6 +1931,15 @@ test("the self-hosted Inter webfont is wired link → SW precache → file on di
    assert.match(css, /font-family: "Inter";/);
    assert.match(css, /font-weight: 100 900;/);
    assert.match(css, /inter-latin-wght-normal\.woff2\?v=__BUILD__/);
+   // Accidentals: Inter has no ♭/♯ (U+266D/266F), so they used to fall back to a
+   // platform symbol font (Segoe UI Symbol on Windows vs Hiragino on macOS). A
+   // tiny Noto Serif JP subset, registered on the SAME "Inter" family for the
+   // music range only, pins one shape on every OS.
+   assert.match(css, /noto-serif-jp-accidentals\.woff2\?v=__BUILD__/);
+   assert.match(css, /unicode-range: U\+266D-266F;/);
+   // ...and the score's accidental must ASK for Inter first, or the glyph would
+   // keep coming from the OS serif fallback.
+   assert.match(readProjectFile("styles/preview.css"), /\.chord-accidental \{[\s\S]{0,600}?font-family: Inter, Georgia/);
    // The stylesheet is linked from the page…
    assert.match(readProjectFile("index.html"), /styles\/fonts\.css\?v=/);
    // …and precached by the service worker, so the font also works offline.
@@ -1940,11 +1949,19 @@ test("the self-hosted Inter webfont is wired link → SW precache → file on di
       sw.includes("./assets/fonts/inter-latin-wght-normal.woff2"),
       "the Inter woff2 is missing from CORE_ASSETS",
    );
+   assert.ok(
+      sw.includes("./assets/fonts/noto-serif-jp-accidentals.woff2"),
+      "the accidental woff2 is missing from CORE_ASSETS",
+   );
    // The binary really exists on disk (a link to a missing file is exactly the bug
    // this guards against — the old stacks pointed at a font nobody ever shipped).
    assert.ok(
       existsSync(join(projectRoot, "assets/fonts/inter-latin-wght-normal.woff2")),
       "assets/fonts/inter-latin-wght-normal.woff2 does not exist",
+   );
+   assert.ok(
+      existsSync(join(projectRoot, "assets/fonts/noto-serif-jp-accidentals.woff2")),
+      "assets/fonts/noto-serif-jp-accidentals.woff2 does not exist",
    );
 });
 

@@ -443,9 +443,9 @@ Firestore rules, data model, and setup checklist.
 | `styles/ui.css`      | Application shell, ribbon, dark theme, responsive rules              |
 | `styles/preview.css` | Score canvas + print/PDF layout (`@media print` / `is-print-layout`) |
 | `styles/chordpro.css`| ChordPro workspace + its print layout — fully self-contained (`cp-`-prefixed selectors or `body[data-editor-mode="chordpro"]` gated, so the two original modes are untouched) |
-| `styles/fonts.css`   | Self-hosted **Inter** `@font-face` (variable `wght 100 900`, latin subset) |
+| `styles/fonts.css`   | Self-hosted **Inter** `@font-face` (variable `wght 100 900`, latin subset) **+ a Noto Serif JP subset for the ♭/♯ accidentals** |
 
-> **Why Inter is self-hosted.** Every style file asks for
+> **Why the fonts are self-hosted.** Every style file asks for
 > `font-family: Inter, ui-sans-serif, system-ui, …`, but the name `Inter` was never
 > actually loaded, so each OS substituted its own UI font. On macOS that was San
 > Francisco — a **variable** font, so the heavy chord weights (`font-weight: 850/900`
@@ -455,12 +455,19 @@ Firestore rules, data model, and setup checklist.
 > Inter as a genuine variable font, so the heavy weights are rendered — never
 > faked — identically across OSes and browsers. The `@font-face` deliberately keeps
 > the family name `"Inter"`, so no selector in the app had to change and the
-> existing fallback chain still applies if the file fails to load. The `♭`/`♯`
-> accidentals stay in Georgia by design (`.chord-accidental`); their glyphs are
-> outside the latin `unicode-range`, so that behaviour is unchanged. Font files live
-> in `assets/fonts/` and are precached by `sw.js` for offline use. Inter is licensed
-> under the **SIL Open Font License 1.1** (`assets/fonts/Inter-LICENSE.txt`);
-> source: `@fontsource-variable/inter`.
+> existing fallback chain still applies if the file fails to load.
+>
+> **Accidentals.** Inter ships no music glyphs, and `.chord-accidental`'s serif
+> stack (Georgia / Times New Roman) lacks `♭`/`♯` too — so the flat/sharp used to
+> fall through to whatever symbol font the OS supplied (**Segoe UI Symbol** on
+> Windows vs **Hiragino Mincho ProN** on macOS), i.e. a different glyph per
+> platform. A **876-byte Noto Serif JP subset** (a mincho face — the same style
+> macOS already fell back to) is registered on the *same* `"Inter"` family for
+> `U+266D-266F`, so every `♭`/`♯` in the app now resolves through one self-hosted
+> glyph on every OS. Font files live in `assets/fonts/` and are precached by
+> `sw.js` for offline use. Both fonts are **SIL Open Font License 1.1**
+> (`assets/fonts/Inter-LICENSE.txt`, `assets/fonts/NotoSerifJP-LICENSE.txt`);
+> sources: `@fontsource-variable/inter`, `@fontsource/noto-serif-jp`.
 
 > Print parity note: interactive-only chrome (the multi-bar selection ring/tint
 > and its ✓ badge) is neutralised in **both** `@media print` and

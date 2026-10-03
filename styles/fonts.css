@@ -31,3 +31,28 @@
       url("../assets/fonts/inter-latin-wght-normal.woff2?v=__BUILD__") format("woff2");
    unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
 }
+
+/* Accidentals — ♭ (U+266D), ♮ (U+266E), ♯ (U+266F).
+ *
+ * Inter ships NO music glyphs (confirmed: neither the latin subset nor the full
+ * 2849-glyph Inter has U+266D), and the score's `.chord-accidental` asks for a
+ * serif family (Georgia / Times New Roman) that ALSO lacks them. So the flat and
+ * sharp used to fall through to whatever symbol font the OS happened to supply:
+ *   • macOS   → Hiragino Mincho ProN
+ *   • Windows → Segoe UI Symbol
+ * i.e. a DIFFERENT glyph on each platform — the remaining `B♭m/F` mismatch.
+ *
+ * This tiny (876-byte) Noto Serif JP subset pins ONE shape everywhere. It is a
+ * mincho face, the same style macOS already fell back to, so the macOS look is
+ * preserved while Windows now matches it. It is registered on the SAME "Inter"
+ * family (disjoint unicode-range) so EVERY ♭/♯ in the app — chord tokens, key
+ * names, everything — resolves through it. Declared `font-weight: 100 900` so the
+ * glyph is used as-is at any weight (never faux-bolded). OFL 1.1. */
+@font-face {
+   font-family: "Inter";
+   font-style: normal;
+   font-weight: 100 900;
+   font-display: swap;
+   src: url("../assets/fonts/noto-serif-jp-accidentals.woff2?v=__BUILD__") format("woff2");
+   unicode-range: U+266D-266F;
+}

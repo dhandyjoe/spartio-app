@@ -68,6 +68,7 @@ const CORE_ASSETS = [
    `./styles/styles.css`,
    `./styles/fonts.css?v=${ASSET_VERSION}`,
    `./assets/fonts/inter-latin-wght-normal.woff2?v=${ASSET_VERSION}`,
+   `./assets/fonts/noto-serif-jp-accidentals.woff2?v=${ASSET_VERSION}`,
    `./styles/preview.css?v=${ASSET_VERSION}`,
    `./styles/ui.css?v=${ASSET_VERSION}`,
    `./styles/chordpro.css?v=${ASSET_VERSION}`,

@@ -389,7 +389,11 @@ html:not(.is-print-layout) .nashville-octave-low .nashville-octave-dot {
 }
 .chord-accidental {
    display: inline-block;
-   font-family: Georgia, "Times New Roman", serif;
+   /* "Inter" first: its accidental @font-face (styles/fonts.css) supplies ♭/♯/♮
+      with ONE self-hosted glyph on every OS, so the score no longer falls back to
+      a platform symbol font (Hiragino on macOS vs Segoe UI Symbol on Windows).
+      The serif families remain as a safety net if the webfont ever fails. */
+   font-family: Inter, Georgia, "Times New Roman", serif;
    font-size: 1.04em;
    font-weight: 700;
    line-height: 1;
@@ -399,9 +403,11 @@ html:not(.is-print-layout) .nashville-octave-low .nashville-octave-dot {
    margin-right: -0.14em;
    margin-left: -0.13em;
 }
+/* The self-hosted sharp glyph carries more right side-bearing than the old OS
+   symbol fonts, so it is pulled in a touch tighter to sit flush on its root. */
 .chord-sharp {
-   margin-right: -0.05em;
-   margin-left: -0.04em;
+   margin-right: -0.11em;
+   margin-left: -0.09em;
 }
 
 .beat-bank {
