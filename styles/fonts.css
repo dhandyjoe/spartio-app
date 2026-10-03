@@ -1,0 +1,33 @@
+/* fonts.css — self-hosted Inter (variable, latin subset).
+ *
+ * WHY: the whole app asks for `font-family: Inter, ui-sans-serif, system-ui, …`
+ * but Inter was never actually loaded, so each OS substituted its own UI font.
+ * macOS fell back to San Francisco (a VARIABLE font → the `font-weight: 850/900`
+ * chords rendered exactly), while Windows fell back to Segoe UI (STATIC weights
+ * → the browser SYNTHESISED a bold, which reads heavier and tighter). Chords
+ * like `B♭m/F` therefore looked "too bold / too cramped" on Windows only.
+ *
+ * FIX: ship Inter ourselves as a genuine VARIABLE font (wght 100–900) so the
+ * heavy chord weights are rendered — never faked — identically on every OS.
+ *
+ * The family name stays `"Inter"` (not "Inter Variable") so every existing
+ * font stack in the app picks it up without touching a single selector. If the
+ * file ever fails to load, the untouched fallback chain still applies.
+ *
+ * `unicode-range` is the exact latin coverage of this file; glyphs outside it
+ * (e.g. the ♭/♯ accidentals, which the score deliberately draws in Georgia)
+ * keep flowing to the next family in the stack, exactly as before.
+ *
+ * Source: @fontsource-variable/inter@5.3.0 — Inter by The Inter Project Authors,
+ * licensed under the SIL Open Font License 1.1 (see assets/fonts/Inter-LICENSE.txt).
+ */
+@font-face {
+   font-family: "Inter";
+   font-style: normal;
+   font-weight: 100 900;
+   font-display: swap;
+   src:
+      url("../assets/fonts/inter-latin-wght-normal.woff2?v=__BUILD__") format("woff2-variations"),
+      url("../assets/fonts/inter-latin-wght-normal.woff2?v=__BUILD__") format("woff2");
+   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}

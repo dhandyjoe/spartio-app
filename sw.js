@@ -66,6 +66,8 @@ const CORE_ASSETS = [
    "./index.html",
    "./manifest.webmanifest",
    `./styles/styles.css`,
+   `./styles/fonts.css?v=${ASSET_VERSION}`,
+   `./assets/fonts/inter-latin-wght-normal.woff2?v=${ASSET_VERSION}`,
    `./styles/preview.css?v=${ASSET_VERSION}`,
    `./styles/ui.css?v=${ASSET_VERSION}`,
    `./styles/chordpro.css?v=${ASSET_VERSION}`,

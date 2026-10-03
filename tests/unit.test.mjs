@@ -1918,6 +1918,37 @@ test("service worker precaches every new ChordPro asset", () => {
       assert.ok(sw.includes(asset), `${asset} is missing from CORE_ASSETS`);
    }
 });
+test("the self-hosted Inter webfont is wired link → SW precache → file on disk", () => {
+   // The app's font stacks ask for `Inter`, but it must be SELF-HOSTED so the heavy
+   // chord weights (850/900) render identically on every OS. Without it, macOS fell
+   // back to a variable system font (fine) while Windows fell back to Segoe UI, which
+   // SYNTHESISES a faux-bold — the "too bold / too cramped" chord bug. A variable font
+   // (wght 100 900) is what makes a real 850 possible, so the range is asserted too.
+   const css = readProjectFile("styles/fonts.css");
+   assert.match(css, /@font-face/);
+   // The family name must stay "Inter" (NOT "Inter Variable") so the untouched app
+   // stacks pick it up — no selector anywhere has to change.
+   assert.match(css, /font-family: "Inter";/);
+   assert.match(css, /font-weight: 100 900;/);
+   assert.match(css, /inter-latin-wght-normal\.woff2\?v=__BUILD__/);
+   // The stylesheet is linked from the page…
+   assert.match(readProjectFile("index.html"), /styles\/fonts\.css\?v=/);
+   // …and precached by the service worker, so the font also works offline.
+   const sw = readProjectFile("sw.js");
+   assert.ok(sw.includes("./styles/fonts.css"), "fonts.css is missing from CORE_ASSETS");
+   assert.ok(
+      sw.includes("./assets/fonts/inter-latin-wght-normal.woff2"),
+      "the Inter woff2 is missing from CORE_ASSETS",
+   );
+   // The binary really exists on disk (a link to a missing file is exactly the bug
+   // this guards against — the old stacks pointed at a font nobody ever shipped).
+   assert.ok(
+      existsSync(join(projectRoot, "assets/fonts/inter-latin-wght-normal.woff2")),
+      "assets/fonts/inter-latin-wght-normal.woff2 does not exist",
+   );
+});
+
+
 
 test("every relative ES module import resolves to a file on disk", () => {
    const files = readdirSync(join(projectRoot, "src")).filter((name) => name.endsWith(".js"));
