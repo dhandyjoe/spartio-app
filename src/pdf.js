@@ -31,8 +31,8 @@ let printClassAddedForJob = false;
 // keep their left barline so every row opens with a clean divider.
 const MID_BAR_CLASS = "pdf-mid-bar";
 
-// Paper width (mm) by id, mirroring PDF_PAPER in src/pdfOptions.js.
-const PDF_PAPER_MM = { a4: 210, letter: 215.9 };
+// Paper width (mm). Paper is locked to A4 (see PDF_PAPER in src/pdfOptions.js).
+const PDF_PAPER_MM = { a4: 210 };
 // Export-only printable-width override (SHIPPED behaviour — see the "wider chord
 // rows" PDF work). The exported .bar-grid rows are laid out at 230mm even though
 // A4 is 210mm wide, so more bars fit per printed row; the overflow past the paper
@@ -50,7 +50,6 @@ const EXPORT_WIDTH_OVERRIDE_MM = { narrow: 230 };
 const PDF_SIDE_MARGIN_MM = { narrow: 7 };
 const EXPORT_PAGE_MARGINS = { narrow: { all: "0mm 0mm 0mm", first: "0mm" } };
 const EXPORT_SIDE_MARGIN_MM = { narrow: 0 };
-const PDF_OPTIONS_KEY = "chordSheetPdfOptions";
 const PX_PER_MM = 96 / 25.4;
 
 // Original inline widths saved while we pin the score to the printed title
@@ -58,14 +57,10 @@ const PX_PER_MM = 96 / 25.4;
 const pinnedWidths = new Map(); // element -> original inline width
 
 export function printContentWidthPx({ forExport = false, allowOverride = true } = {}) {
-   let paper = "a4";
-   try {
-      const raw = JSON.parse(localStorage.getItem(PDF_OPTIONS_KEY) || "null");
-      if (raw && PDF_PAPER_MM[raw.paper]) paper = raw.paper;
-   } catch { /* keep defaults */ }
-   // Margins are locked to the "narrow" preset; only paper size is still
-   // user-selectable. The real export uses 0mm side margins (full-bleed paper),
-   // the on-screen preview keeps the 7mm narrow sides.
+   // Paper is locked to A4 (the PDF options dialog no longer offers a choice).
+   const paper = "a4";
+   // Margins are locked to the "narrow" preset. The real export uses 0mm side
+   // margins (full-bleed paper), the on-screen preview keeps the 7mm narrow sides.
    const sideMM = forExport ? EXPORT_SIDE_MARGIN_MM.narrow : PDF_SIDE_MARGIN_MM.narrow;
    // Export-only: let the .bar-grid rows widen past the paper edge (see
    // EXPORT_WIDTH_OVERRIDE_MM above). Callers that need the TRUE paper content

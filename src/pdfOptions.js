@@ -10,8 +10,9 @@
 //  • Defaults below EXACTLY match the CSS `:root` values. When the user has not
 //    customised anything we DO NOT write inline overrides at all, so the printed
 //    output is byte-identical to before (keeps the regression suite intact).
-//  • Paper size + margins can't be set inline (they live in `@page`), so we inject
-//    a tiny <style id="pdfPageStyle"> only when the user picks a non-default page.
+//  • Paper size is LOCKED to A4 and margins to "narrow" (the dialog offers no
+//    choice), so we never inject a <style id="pdfPageStyle">: the print @page in
+//    preview.css is the single source of truth for the page box.
 //  • Bar numbers ARE part of the default chart: defaultPdfOptions() ships
 //    "left", so a zero-configuration export numbers every bar (the attribute is
 //    applied at init — see the `applyPdfOptions(settings)` call at the bottom).
@@ -73,12 +74,12 @@ export const PDF_PRESETS = {
    xlarge: { chord: 5.3, lyric: 4.0, slot: 8.2 },
 };
 
-// Paper + margin geometry (consumed via injected @page rules).
-// `width`/`height` are the true physical dimensions, used to draw the live
-// preview at real paper size so it matches the generated PDF exactly.
+// Paper geometry. Paper is LOCKED to A4 (the PDF options dialog no longer offers a
+// choice), so this table has a single entry. `width`/`height` are the true physical
+// dimensions, used to draw the live preview at real paper size so it matches the
+// generated PDF exactly.
 export const PDF_PAPER = {
    a4: { size: "A4", label: "A4", width: "210mm", height: "297mm" },
-   letter: { size: "Letter", label: "Letter", width: "215.9mm", height: "279.4mm" },
 };
 export const PDF_MARGINS = {
    narrow: { all: "12mm 7mm 9mm", first: "7mm", label: "Narrow" },
@@ -127,7 +128,8 @@ export function sanitize(raw) {
       const value = Number(raw[key]);
       if (Number.isFinite(value)) base[key] = clamp(Math.round(value * 10) / 10, meta.min, meta.max);
    }
-   if (raw.paper && PDF_PAPER[raw.paper]) base.paper = raw.paper;
+   // Paper is locked to A4: a stored value (e.g. a legacy page) is ignored —
+   // base.paper is already "a4" from defaultPdfOptions().
    const stored = LEGACY_BAR_NUMBERS[raw.barNumbers] || raw.barNumbers;
    if (PDF_BAR_NUMBERS.includes(stored)) {
       const deliberate = raw[BAR_NUMBERS_CHOICE] === 1;
@@ -181,20 +183,10 @@ export function applyPdfOptions(settings = readPdfOptions()) {
    } else {
       delete root.dataset.pdfBarNumbers;
    }
-   // Paper size via injected @page (only when non-default); margins are locked
-   // to the "narrow" preset.
-   const existing = document.getElementById("pdfPageStyle");
-   const isDefaultPage = settings.paper === "a4" && settings.margin === "narrow";
-   if (isDefaultPage) {
-      existing?.remove();
-   } else {
-      const paper = PDF_PAPER[settings.paper] || PDF_PAPER.a4;
-      const margin = PDF_MARGINS[settings.margin] || PDF_MARGINS.narrow;
-      const css = `@page { size: ${paper.size}; margin: ${margin.all}; }\n@page :first { margin-top: ${margin.first}; }`;
-      const style = existing || Object.assign(document.createElement("style"), { id: "pdfPageStyle" });
-      style.textContent = css;
-      if (!existing) document.head.appendChild(style);
-   }
+   // Paper is locked to A4 and margins to "narrow" — the exact geometry the print
+   // @page in preview.css already declares — so there is never a page override to
+   // inject. Drop a stale one an older build may have left (a saved non-A4 page).
+   document.getElementById("pdfPageStyle")?.remove();
    return settings;
 }
 
@@ -234,7 +226,6 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport, getCard, bar
    const resetBtn = $("#pdfOptionsReset");
    const exportBtn = $("#pdfOptionsExport");
    const presetWrap = $("#pdfPresetGroup");
-   const paperWrap = $("#pdfPaperGroup");
    // Numbered bars on paper (Off / Line starts / Every bar).
    const barNumWrap = $("#pdfBarNumGroup");
    // The divider + field around that group, so the whole "Bars" section disappears in
@@ -359,11 +350,6 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport, getCard, bar
          btn.classList.toggle("is-active", btn.dataset.preset === activePreset);
          btn.setAttribute("aria-pressed", String(btn.dataset.preset === activePreset));
       });
-      paperWrap?.querySelectorAll("[data-paper]").forEach((btn) => {
-         const on = btn.dataset.paper === settings.paper;
-         btn.classList.toggle("is-active", on);
-         btn.setAttribute("aria-pressed", String(on));
-      });
       barNumWrap?.querySelectorAll("[data-barnum]").forEach((btn) => {
          const on = btn.dataset.barnum === settings.barNumbers;
          btn.classList.toggle("is-active", on);
@@ -475,13 +461,6 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport, getCard, bar
       const preset = PDF_PRESETS[btn.dataset.preset];
       if (!preset) return;
       Object.assign(settings, preset);
-      commit();
-   });
-
-   paperWrap?.addEventListener("click", (event) => {
-      const btn = event.target.closest("[data-paper]");
-      if (!btn || !PDF_PAPER[btn.dataset.paper]) return;
-      settings.paper = btn.dataset.paper;
       commit();
    });
 
