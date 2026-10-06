@@ -11,7 +11,7 @@
 //  • One-shot playback (no loop), stop at end.
 //  • Supports both Synthesis (instant) and SoundFont (real samples) modes.
 
-import { notePitches, isNashvilleChord, beatValue, chordAboveValue, durationMeta } from "./notation.js?v=__BUILD__";
+import { notePitches, isNashvilleChord, beatValue, chordAboveValue, fermataValue, durationMeta } from "./notation.js?v=__BUILD__";
 import { normalizeQuality } from "./chordBank.js?v=__BUILD__";
 import { getState } from "./store.js?v=__BUILD__";
 import { initAudioContext, closeAudioContext, playSoundFontChord, checkSoundFontSize, downloadSoundFont, getDownloadState, askForDownload, loadSamplesFromCache } from "./synth.js?v=__BUILD__";
@@ -206,7 +206,7 @@ let audioCtx = null;
 let isPlaying = false;
 let schedulerTimer = null;
 let currentBeatIndex = 0;
-let playbackQueue = []; // [{ slot, sectionId, chord, beatUnit }]
+let playbackQueue = []; // [{ slot, sectionId, chord, chordAbove, beatUnit, fermata? }]
 let nextNoteTime = 0;
 let onBeatCallback = null; // called with { slot, sectionId } for visual highlight
 let onEndCallback = null; // called when playback stops (incl. natural completion)
@@ -256,6 +256,7 @@ function collectBeat(section, slot, queue, level = 0, unit = 1, parentChordAbove
       //   level 0→1 uses ":" (e.g. "0-0:0"), level 1→2 uses "." (e.g. "0-0:0.0").
       const sep = level === 0 ? ":" : ".";
 
+      const firstIndex = queue.length;
       for (let i = 0; i < count; i++) {
          const subSlot = `${slot}${sep}${i}`;
          const subValue = beatValue(section, subSlot);
@@ -274,6 +275,16 @@ function collectBeat(section, slot, queue, level = 0, unit = 1, parentChordAbove
                chordAbove: chordAboveValue(section, subSlot) || chordAbove || null,
                beatUnit: childUnit, // fraction of ONE whole beat this entry occupies
             });
+            attachFermata(section, subSlot, queue[queue.length - 1]);
+         }
+      }
+      // A fermata written on the SUBDIVIDED beat itself holds at the END of the beat,
+      // so it rides the LAST entry the subdivision produced (once — never per child).
+      if (queue.length > firstIndex) {
+         const hold = fermataValue(section, slot);
+         if (hold > 0) {
+            const last = queue[queue.length - 1];
+            last.fermata = Math.max(last.fermata || 0, hold);
          }
       }
    } else {
@@ -285,7 +296,47 @@ function collectBeat(section, slot, queue, level = 0, unit = 1, parentChordAbove
          chordAbove,
          beatUnit: unit, // fraction of ONE whole beat (1 for a plain beat)
       });
+      attachFermata(section, slot, queue[queue.length - 1]);
    }
+}
+
+/**
+ * Copy a slot's fermata hold onto a freshly-queued entry (no-op when the beat has
+ * no fermata). The hold is the number of EXTRA beats the note is sustained before
+ * the next entry starts — see entryDuration().
+ */
+function attachFermata(section, slot, entry) {
+   const hold = fermataValue(section, slot);
+   if (hold > 0) entry.fermata = hold;
+}
+
+/**
+ * How long one queue entry occupies, in seconds: its written length (a fraction of
+ * one beat, `beatUnit`) PLUS any fermata hold. A fermata stores the number of EXTRA
+ * beats the note is held, so the whole timeline shifts — later notes simply start
+ * later, which is the audible "pause" the player wrote. Shared by BOTH schedulers
+ * (synthesis + samples) so their timing can never drift apart.
+ */
+export function entryDuration(beat, bpm = 120) {
+   const beatSeconds = 60 / (bpm || 120);
+   const written = (beat?.beatUnit ?? 1) * beatSeconds;
+   const hold = beat?.fermata > 0 ? beat.fermata * beatSeconds : 0;
+   return written + hold;
+}
+
+/**
+ * Offsets (seconds, relative to the entry's onset) of the metronome clicks that
+ * mark each EXTRA beat of a fermata hold, e.g. fermata 2 at 120 bpm → [0.5, 1.0].
+ * They land exactly on the held-beat boundaries (one beat apart from both the note
+ * onset and the following entry), so the hold is heard IN TEMPO instead of as a
+ * silent gap. Returns [] when the beat has no fermata. Pure — safe to unit test.
+ */
+export function fermataPulseTimes(beat, bpm = 120) {
+   const hold = beat?.fermata > 0 ? Math.trunc(beat.fermata) : 0;
+   if (!hold) return [];
+   const beatSeconds = 60 / (bpm || 120);
+   const written = (beat?.beatUnit ?? 1) * beatSeconds;
+   return Array.from({ length: hold }, (_, k) => written + k * beatSeconds);
 }
 
 /**
@@ -336,6 +387,16 @@ function scheduleClick(time) {
 }
 
 /**
+ * Sound a click on each HELD beat of a fermata so the pause keeps time with the
+ * BPM (the written note is still sustained underneath). No-op when the beat has no
+ * fermata or when the metronome is off. Shared by BOTH schedulers.
+ */
+function scheduleFermataClicks(beat, bpm, startTime) {
+   if (!metronomeEnabled) return;
+   fermataPulseTimes(beat, bpm).forEach((offset) => scheduleClick(startTime + offset));
+}
+
+/**
  * The scheduler loop: runs every `lookahead` ms, scheduling notes that fall
  * within the next `scheduleAheadTime` window. Calculates correct timing based on beat duration.
  */
@@ -347,19 +408,23 @@ function scheduler() {
       }
       const beat = playbackQueue[currentBeatIndex];
       const bpm = getState().bpm || 120;
-      
-      // Duration = fraction of ONE whole beat (beatUnit), regardless of nesting depth.
-      const mainBeatDuration = 60 / bpm;
-      const subBeatDuration = (beat.beatUnit ?? 1) * mainBeatDuration;
+
+      // Duration = written length (a fraction of one whole beat, beatUnit) PLUS any
+      // fermata hold, regardless of nesting depth. The hold extends BOTH the note's
+      // sustain and the gap before the next entry.
+      const entrySeconds = entryDuration(beat, bpm);
 
       // A slot sounds when EITHER row has something to play — the chord row above
       // the numbers counts, so it must not fall through to the metronome click.
       const freqs = resolveEntryFrequencies(beat, getState().key);
       if (freqs.length) {
-         scheduleNote(freqs, nextNoteTime, subBeatDuration * 0.9);
+         scheduleNote(freqs, nextNoteTime, entrySeconds * 0.9);
       } else if (metronomeEnabled) {
          scheduleClick(nextNoteTime);
       }
+
+      // A fermata keeps ticking on each held beat so the pause stays in tempo.
+      scheduleFermataClicks(beat, bpm, nextNoteTime);
 
       // Schedule visual highlight callback
       const highlightTime = nextNoteTime - audioCtx.currentTime;
@@ -371,8 +436,8 @@ function scheduler() {
          Math.max(highlightTime * 1000, 0),
       );
 
-      // Advance time by ONE sub-beat, not one whole beat
-      nextNoteTime += subBeatDuration;
+      // Advance time by this entry's full length (written + fermata hold).
+      nextNoteTime += entrySeconds;
       currentBeatIndex++;
    }
    schedulerTimer = setTimeout(scheduler, lookahead);
@@ -391,8 +456,10 @@ function schedulerWithSamples() {
       
       const beat = playbackQueue[currentBeatIndex];
       const bpm = getState().bpm || 120;
-      const subBeatDuration = (beat.beatUnit ?? 1) * (60 / bpm);
-      
+      // Written length PLUS any fermata hold: the sample is sustained through the
+      // hold and the next entry is pushed back by the same amount (the "pause").
+      const entrySeconds = entryDuration(beat, bpm);
+
       // Both rows (beat + the chord row above it) are voiced together through the
       // shared resolver, scheduled at the SWING time so notes stay in sync with
       // the metronome/BPM (previously ignored time).
@@ -400,13 +467,16 @@ function schedulerWithSamples() {
       if (freqs.length) {
          playSoundFontChord(freqs, {
             time: nextNoteTime,
-            duration: subBeatDuration,
+            duration: entrySeconds,
          });
       } else if (metronomeEnabled) {
          // Still use synthesis click for metronome (too small to load sample for each click)
          scheduleClick(nextNoteTime);
       }
-      
+
+      // A fermata keeps ticking on each held beat so the pause stays in tempo.
+      scheduleFermataClicks(beat, bpm, nextNoteTime);
+
       // Schedule visual highlight callback
       const highlightTime = nextNoteTime - audioCtx.currentTime;
       const beatInfo = { slot: beat.slot, sectionId: beat.sectionId };
@@ -417,9 +487,8 @@ function schedulerWithSamples() {
          Math.max(highlightTime * 1000, 0),
       );
       
-      // Advance time by ONE sub-beat (note: subBeatDuration computed above)
-      
-      nextNoteTime += subBeatDuration;
+      // Advance time by this entry's full length (written + fermata hold).
+      nextNoteTime += entrySeconds;
       currentBeatIndex++;
    }
    

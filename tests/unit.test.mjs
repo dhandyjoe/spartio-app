@@ -33,6 +33,12 @@ import {
    splitSyllables,
    syllabifyLyrics,
    MAX_BARS,
+   fermataValue,
+   setFermata,
+   clearFermata,
+   restoreCollapsedBeat,
+   sectionHasFermata,
+   MAX_FERMATA,
    editorModeMeta,
    normalizeEditorMode,
 } from "../src/notation.js";
@@ -51,6 +57,7 @@ import { beatHTML, chordProSectionHTML } from "../src/render.js";
 import { isValidChordSpelling, withTypedSpelling } from "../src/chordEditor.js";
 import {
    PDF_BAR_NUMBERS,
+   PDF_PAPER,
    defaultPdfOptions,
    sanitize,
    applyPdfOptions,
@@ -70,6 +77,7 @@ import {
    chordProMeta,
    chordProFromFile,
 } from "../src/chordPro.js";
+import { buildPlaybackQueue, entryDuration, fermataPulseTimes } from "../src/playback.js";
 
 test("transposeNote wraps around 12 notes and spells for the target key", () => {
    assert.equal(transposeNote("B", 1), "C");
@@ -2794,6 +2802,30 @@ test("bar numbers default to the line-starts density, and only a deliberate Off 
    }
 });
 
+// ---- Paper size is locked to A4 ---------------------------------------------
+// The PDF options dialog no longer offers a paper choice: the exported PDF is
+// always A4 (the geometry preview.css already declares). A stored value — e.g. a
+// legacy page — is ignored so an old song keeps printing on A4.
+test("paper size is locked to A4 (no A4/Letter choice anymore)", () => {
+   assert.deepEqual(Object.keys(PDF_PAPER), ["a4"], "only A4 remains in the paper table");
+   assert.equal(PDF_PAPER.a4.width, "210mm");
+   assert.equal(defaultPdfOptions().paper, "a4");
+   // A stored value can never change the page (a legacy "letter" included).
+   assert.equal(sanitize({ paper: "letter" }).paper, "a4");
+   assert.equal(sanitize({ paper: "bogus" }).paper, "a4");
+   // The dialog markup carries no paper control at all.
+   const html = readProjectFile("index.html");
+   assert.ok(!html.includes('id="pdfPaperGroup"'), "the Paper size group is gone");
+   assert.ok(!html.includes("data-paper="), "no paper-choice buttons remain");
+   // ...and the module keeps no paper geometry / lookup / click handler.
+   const options = readProjectFile("src/pdfOptions.js");
+   assert.ok(!/letter\s*:/.test(options), "no Letter geometry left in PDF_PAPER");
+   assert.ok(!options.includes('$("#pdfPaperGroup")'), "no paperWrap lookup");
+   assert.ok(!options.includes("data-paper"), "no paper click handler");
+   // applyPdfOptions never injects a page override anymore (A4 is the CSS default).
+   assert.match(options, /document\.getElementById\("pdfPageStyle"\)\?\.remove\(\);/);
+});
+
 // ---- chordEditor: typing a chord in your OWN spelling ----------------------
 // `Bm7♭5` (the reported case) is canonicalised by the bank to `Bø7`; the editor now
 // echoes the typed spelling as the first suggestion so a player can keep their
@@ -3289,5 +3321,194 @@ test("the home keeps the title in the app bar and the switcher above the search"
    assert.match(css, /\.home-tabs\s*\{[\s\S]{0,280}?background:\s*var\(--surface\)/);
    assert.match(css, /\.home-tab\.is-active,[\s\S]{0,120}?background:\s*var\(--green\)/);
    assert.ok(!css.includes(".home-tab.is-active::after"), "the underline indicator is gone");
+});
+
+// ---- Fermata (hold): data model, playback queue, and the glyph ---------------
+// A fermata stores the number of EXTRA beats a note is held before the next beat
+// plays. It rides ON the beat value object (section.beats[slot].fermata) so it
+// survives copy/paste, clone, transpose and import; it affects PLAYBACK only — the
+// score (and the PDF) just draws a glyph.
+
+test("setFermata/fermataValue store a positive extra-beat count and clear cleanly", () => {
+   const section = { beats: {} };
+   // A fermata on an otherwise-empty beat creates the cell.
+   assert.equal(setFermata(section, "0-0", 2), 2);
+   assert.equal(fermataValue(section, "0-0"), 2);
+   // It clamps to the allowed range and never stores a non-positive value.
+   assert.equal(setFermata(section, "0-0", 999), MAX_FERMATA);
+   assert.equal(fermataValue(section, "0-0"), MAX_FERMATA);
+   // Clearing drops the field AND removes the now-empty cell.
+   assert.equal(clearFermata(section, "0-0"), 0);
+   assert.equal(fermataValue(section, "0-0"), 0);
+   assert.ok(!("0-0" in section.beats), "an empty beat is removed when its fermata is cleared");
+   // A beat that still holds a chord survives the clear, minus the fermata.
+   section.beats["0-1"] = { chord: "C", duration: null, fermata: 3 };
+   clearFermata(section, "0-1");
+   assert.deepEqual(section.beats["0-1"], { chord: "C", duration: null });
+});
+
+test("normalizeSection keeps and sanitizes the fermata hold", () => {
+   const out = normalizeSection(
+      {
+         name: "Verse",
+         bars: 1,
+         beats: {
+            "0-0": { chord: "1", duration: null, fermata: 2 },
+            "0-1": { chord: "4", duration: null, fermata: true }, // true folds to 1
+            "0-2": { chord: "5", duration: null, fermata: 0 }, // dropped
+            "0-3": { chord: "6", duration: null, fermata: 999 }, // clamped
+         },
+      },
+      "4/4",
+   );
+   assert.equal(out.beats["0-0"].fermata, 2);
+   assert.equal(out.beats["0-1"].fermata, 1);
+   assert.ok(!("fermata" in out.beats["0-2"]));
+   assert.equal(out.beats["0-3"].fermata, MAX_FERMATA);
+});
+
+test("transposeBeats keeps the fermata on the transposed beat", () => {
+   const beats = { "0-0": { chord: "C", duration: null, fermata: 3 } };
+   const changed = transposeBeats(beats, 2, { key: "D" });
+   assert.equal(changed, 1);
+   assert.equal(beats["0-0"].chord, "D");
+   assert.equal(beats["0-0"].fermata, 3, "the hold rides along with the chord");
+});
+
+test("restoreCollapsedBeat keeps a fermata when a rhythm marker is removed", () => {
+   const section = { beats: {} };
+   restoreCollapsedBeat(section, "0-0", "C", 2);
+   assert.deepEqual(section.beats["0-0"], { chord: "C", duration: null, fermata: 2 });
+   // A chord-only collapse carries no fermata field.
+   restoreCollapsedBeat(section, "0-1", "G", 0);
+   assert.deepEqual(section.beats["0-1"], { chord: "G", duration: null });
+   // Nothing to keep → the cell is removed.
+   restoreCollapsedBeat(section, "0-2", null, 0);
+   assert.ok(!("0-2" in section.beats));
+   // A fermata with no chord still yields a cell (so the glyph survives).
+   restoreCollapsedBeat(section, "0-3", null, 1);
+   assert.deepEqual(section.beats["0-3"], { chord: null, duration: null, fermata: 1 });
+});
+
+test("beatHTML draws the fermata glyph and its has-fermata hook", () => {
+   const section = {
+      id: "s1",
+      name: "Intro",
+      bars: 1,
+      lyricsEnabled: false,
+      beats: { "0-0": { chord: "C", duration: null, fermata: 2 } },
+   };
+   const html = beatHTML(section, 0, 0, false, false);
+   assert.match(html, /has-fermata/);
+   assert.match(html, /class="beat-fermata"/);
+   // A plain beat with no fermata carries neither.
+   const plain = beatHTML(section, 0, 1, false, false);
+   assert.ok(!plain.includes("has-fermata"));
+   assert.ok(!plain.includes("beat-fermata"));
+});
+
+test("beatHTML draws the fermata glyph on a NESTED ½ leaf", () => {
+   const section = {
+      id: "s1",
+      name: "Intro",
+      bars: 1,
+      lyricsEnabled: false,
+      beats: {
+         "0-0": { chord: "5", duration: "half" },
+         "0-0:0": { chord: "5", duration: "half" },
+         "0-0:0.0": { chord: "5", duration: null, fermata: 1 },
+         "0-0:0.1": { chord: "5", duration: null },
+         "0-0:1": { chord: "6", duration: null },
+      },
+   };
+   const html = beatHTML(section, 0, 0, false, false);
+   // The nested leaf that carries the fermata must render the glyph + hook it was
+   // missing before (only the plain/sub beats used to get one).
+   assert.match(html, /nested-sub-beat[^"]*has-fermata/);
+   assert.equal((html.match(/class="beat-fermata"/g) || []).length, 1);
+});
+
+test("the nested ½ fermata is anchored to match the rhythm-½ height (screen + print)", () => {
+   const css = readProjectFile("styles/preview.css").replace(/\/\*[\s\S]*?\*\//g, "");
+   // The base glyph is anchored just above the OWNER's top, so a ½/⅓/¼ sub-beat and
+   // a subdivided group (which FILL the lane) lift their fermata to the lane top.
+   const base = css.match(/\.beat-fermata \{[\s\S]*?\n\}/)[0];
+   assert.match(base, /bottom:\s*calc\(100% \+ 1px\);/);
+   // A nested ½ leaf is a SHORT box hugging the lane bottom, so it gets its own
+   // lane-height anchor to land at the SAME height as a rhythm-½ fermata.
+   assert.match(css, /\.nested-sub-beat\.has-fermata > \.beat-fermata \{\s*bottom:\s*calc\(54px \+ 1px\);/);
+   // ...mirrored in BOTH print contexts with the print lane-height token.
+   assert.equal((css.match(/var\(--print-notation-h\) \+ 1px/g) || []).length, 2);
+});
+
+test("sectionHasFermata detects a fermata anywhere in the section", () => {
+   assert.equal(sectionHasFermata({ beats: {} }), false);
+   assert.equal(sectionHasFermata({ beats: { "0-0": { chord: "1", duration: null } } }), false);
+   assert.equal(sectionHasFermata({ beats: { "0-0": { chord: "1", duration: null, fermata: 0 } } }), false);
+   assert.equal(sectionHasFermata({ beats: { "0-0": { chord: "1", duration: null, fermata: 2 } } }), true);
+   assert.equal(sectionHasFermata({ beats: { "0-1:0.0": { chord: "5", duration: null, fermata: 1 } } }), true);
+});
+
+test("a fermata section that shows its chord row gets extra top room (screen + print)", () => {
+   // render.js tags the section so the CSS can add the clearance.
+   const render = readProjectFile("src/render.js");
+   assert.match(render, /sectionFermata = sectionHasFermata\(section\)/);
+   assert.match(render, /sectionFermata \? " has-fermata" : ""/);
+   const css = readProjectFile("styles/preview.css").replace(/\/\*[\s\S]*?\*\//g, "");
+   // Screen: a bigger chord-row gap for fermata sections.
+   assert.match(
+      css,
+      /\.preview-section\.has-fermata \.beat-column\.with-chord-above \{\s*row-gap:\s*calc\(var\(--chord-above-gap, 24px\) \+ 16px\);/,
+   );
+   // Print (both contexts): push the printed line down AND lift the chord row by the
+   // SAME amount, so only the gap between the chord row and the lane grows.
+   assert.equal((css.match(/margin-top:\s*calc\(var\(--print-chord-above-line-gap\) \+ 6mm\)/g) || []).length, 2);
+   assert.equal((css.match(/top:\s*calc\(-1 \* var\(--print-chord-above-row\) - 6mm\)/g) || []).length, 2);
+});
+
+test("buildPlaybackQueue attaches the fermata hold (once, on a subdivided beat's last leaf)", () => {
+   const section = {
+      id: "s1",
+      bars: 1,
+      beats: {
+         "0-0": { chord: "1", duration: null, fermata: 2 },
+         "0-2": { chord: "5", duration: "quarter", fermata: 3 },
+         "0-2:0": { chord: "5", duration: null },
+         "0-2:1": { chord: "5", duration: null },
+         "0-2:2": { chord: "5", duration: null },
+         "0-2:3": { chord: "5", duration: null },
+      },
+   };
+   const queue = buildPlaybackQueue([section], 4);
+   assert.equal(queue.find((entry) => entry.slot === "0-0").fermata, 2);
+   // The subdivided beat holds ONCE, on its last leaf (0-2:3), never per child.
+   assert.equal(queue.find((e) => e.slot === "0-2:0").fermata, undefined);
+   assert.equal(queue.find((e) => e.slot === "0-2:3").fermata, 3);
+   // A beat with no fermata stays clean.
+   assert.equal(queue.find((e) => e.slot === "0-1").fermata, undefined);
+});
+
+test("entryDuration adds the fermata hold on top of the written length", () => {
+   // 120 bpm → one beat = 0.5s. A plain beat without a fermata is 0.5s.
+   assert.equal(entryDuration({ beatUnit: 1 }, 120), 0.5);
+   // A fermata of 2 extra beats → 0.5 + 2*0.5 = 1.5s.
+   assert.equal(entryDuration({ beatUnit: 1, fermata: 2 }, 120), 1.5);
+   // A half-beat subdivision (beatUnit 0.5) with a 1-beat hold → 0.25 + 0.5 = 0.75s.
+   assert.equal(entryDuration({ beatUnit: 0.5, fermata: 1 }, 120), 0.75);
+   // Default bpm (120) when none is given.
+   assert.equal(entryDuration({ fermata: 1 }), 1.0);
+});
+
+test("fermataPulseTimes marks every held beat so the pause keeps time", () => {
+   // No fermata → no pulses.
+   assert.deepEqual(fermataPulseTimes({ beatUnit: 1 }, 120), []);
+   // One held beat on a plain beat: the click lands one beat after the onset.
+   assert.deepEqual(fermataPulseTimes({ beatUnit: 1, fermata: 1 }, 120), [0.5]);
+   // Two held beats → a click on each held-beat boundary (still 1 beat from the next entry).
+   assert.deepEqual(fermataPulseTimes({ beatUnit: 1, fermata: 2 }, 120), [0.5, 1.0]);
+   // A subdivided beat keeps the hold relative to its own (shorter) written length.
+   assert.deepEqual(fermataPulseTimes({ beatUnit: 0.5, fermata: 1 }, 120), [0.25]);
+   // bpm drives the spacing: 60 bpm → one beat = 1s.
+   assert.deepEqual(fermataPulseTimes({ beatUnit: 1, fermata: 1 }, 60), [1]);
 });
 

@@ -5637,6 +5637,196 @@ html[data-theme="dark"] .beat-menu-item.is-danger:hover {
    background: rgba(255, 100, 85, 0.12);
 }
 
+/* ============================================================
+   Fermata popover (how many extra beats to hold). Mirrors the
+   chord popover's surface, arrow and pop-in so the two read as
+   one family.
+   ============================================================ */
+.fermata-popover {
+   position: fixed;
+   z-index: 1400;
+   width: max-content;
+   min-width: 234px;
+   max-width: min(92vw, 272px);
+   padding: 12px;
+   background: var(--surface);
+   border: 1px solid var(--line);
+   border-radius: var(--radius-md);
+   box-shadow: var(--shadow-md);
+   animation: chord-pop-in 0.13s ease-out both;
+}
+.fermata-popover::after {
+   content: "";
+   position: absolute;
+   left: var(--arrow-x, 50%);
+   bottom: -6px;
+   width: 12px;
+   height: 12px;
+   background: var(--surface);
+   border-right: 1px solid var(--line);
+   border-bottom: 1px solid var(--line);
+   transform: translateX(-50%) rotate(45deg);
+}
+.fermata-popover.is-below::after {
+   bottom: auto;
+   top: -6px;
+   border: 0;
+   border-left: 1px solid var(--line);
+   border-top: 1px solid var(--line);
+}
+.fermata-popover-head {
+   display: flex;
+   align-items: center;
+   gap: 10px;
+   margin-bottom: 12px;
+}
+.fermata-popover-badge {
+   flex: none;
+   display: grid;
+   place-items: center;
+   width: 30px;
+   height: 30px;
+   border-radius: 9px;
+   background: var(--soft);
+   color: var(--green);
+}
+.fermata-popover-badge svg {
+   width: 18px;
+   height: 16px;
+}
+.fermata-popover-title {
+   margin: 0;
+   color: var(--ink);
+   font:
+      800 14px/1.15 Inter,
+      ui-sans-serif,
+      sans-serif;
+}
+.fermata-popover-sub {
+   margin: 2px 0 0;
+   color: var(--muted);
+   font:
+      600 11px/1.2 Inter,
+      ui-sans-serif,
+      sans-serif;
+}
+.fermata-popover-row {
+   display: flex;
+   align-items: center;
+   gap: 8px;
+}
+.fermata-step {
+   width: 36px;
+   height: 40px;
+   border: 1px solid var(--line);
+   border-radius: var(--radius-sm);
+   background: var(--surface);
+   color: var(--green);
+   font:
+      800 20px/1 Inter,
+      ui-sans-serif,
+      sans-serif;
+   cursor: pointer;
+   transition:
+      background 0.12s,
+      border-color 0.12s;
+}
+.fermata-step:hover {
+   background: var(--soft);
+   border-color: var(--green);
+}
+.fermata-popover-input {
+   width: 74px;
+   height: 40px;
+   box-sizing: border-box;
+   border: 1.5px solid var(--green);
+   border-radius: var(--radius-sm);
+   padding: 0 8px;
+   background: var(--surface);
+   color: var(--ink);
+   font:
+      800 18px/1 Inter,
+      ui-sans-serif,
+      sans-serif;
+   text-align: center;
+   outline: 0;
+   appearance: textfield;
+   -moz-appearance: textfield;
+   transition: box-shadow 0.15s;
+}
+.fermata-popover-input::-webkit-outer-spin-button,
+.fermata-popover-input::-webkit-inner-spin-button {
+   -webkit-appearance: none;
+   margin: 0;
+}
+.fermata-popover-input:focus {
+   box-shadow: 0 0 0 3px rgba(35, 122, 80, 0.18);
+}
+.fermata-popover-unit {
+   color: var(--muted);
+   font:
+      700 12px/1 Inter,
+      ui-sans-serif,
+      sans-serif;
+}
+.fermata-popover-hint {
+   margin: 10px 0 0;
+   color: var(--muted);
+   font:
+      600 12px/1.35 Inter,
+      ui-sans-serif,
+      sans-serif;
+}
+.fermata-popover-actions {
+   display: flex;
+   justify-content: flex-end;
+   gap: 8px;
+   margin-top: 14px;
+}
+.fermata-popover-cancel,
+.fermata-popover-apply {
+   height: 38px;
+   padding: 0 16px;
+   border-radius: var(--radius-sm);
+   font:
+      800 13px/1 Inter,
+      ui-sans-serif,
+      sans-serif;
+   cursor: pointer;
+   transition:
+      filter 0.12s,
+      background 0.12s,
+      border-color 0.12s;
+}
+.fermata-popover-cancel {
+   border: 1px solid var(--line);
+   background: var(--surface);
+   color: var(--ink);
+}
+.fermata-popover-cancel:hover {
+   background: var(--soft);
+}
+.fermata-popover-apply {
+   border: 0;
+   background: var(--green);
+   color: #fff;
+}
+.fermata-popover-apply:hover {
+   filter: brightness(0.96);
+}
+html[data-theme="dark"] .fermata-step,
+html[data-theme="dark"] .fermata-popover-cancel {
+   background: var(--surface);
+   color: #d9f5e3;
+}
+@media (hover: none) and (pointer: coarse) {
+   .fermata-step,
+   .fermata-popover-cancel,
+   .fermata-popover-apply {
+      min-height: 44px;
+   }
+}
+
 /* ==================== MODE PICKER DIALOG (New Song) ==================== */
 .mode-picker-card {
    width: min(90vw, 520px);

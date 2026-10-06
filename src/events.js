@@ -26,6 +26,10 @@ import {
    beatValue,
    lyricValue,
    setLyric,
+   fermataValue,
+   setFermata,
+   clearFermata,
+   restoreCollapsedBeat,
    prepareLyricsForDuration,
    prepareChordAboveForDuration,
    collapseChordAbove,
@@ -67,6 +71,7 @@ import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=
 import { initCloudUI, syncYoutubePreview } from "./cloudUI.js?v=__BUILD__";
 import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=__BUILD__";
 import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=__BUILD__";
+import { openFermataEditor, closeFermataEditor } from "./fermataEditor.js?v=__BUILD__";
 import { initChordProEditor, syncChordProWorkspace } from "./chordProEditor.js?v=__BUILD__";
 import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback.js?v=__BUILD__";
 import { youtubeFields } from "./youtube.js?v=__BUILD__";
@@ -413,6 +418,8 @@ function blockedForEdit() {
 // Open the editor on a beat element, wiring commit + Tab navigation callbacks.
 function openBeatEditor(beat, { selectQuery = true } = {}) {
    if (blockedForEdit()) return;
+   // The chord editor and the fermata popover are mutually exclusive.
+   closeFermataEditor();
    const sectionId = beat.dataset.section;
    const slot = beat.dataset.slot;
    const section = findSection(sectionId);
@@ -503,6 +510,8 @@ function removeDurationAt(beat) {
       .filter((slot) => slot === baseSlot || slot.startsWith(`${baseSlot}.`) || slot.startsWith(`${baseSlot}:`))
       .sort();
    const firstChord = descendantSlots.map((slot) => beatValue(section, slot).chord).find(Boolean) || null;
+   // Preserve any fermata (on the beat or one of its children) across the collapse.
+   const baseHold = Math.max(0, ...descendantSlots.map((slot) => fermataValue(section, slot)));
    const lyricSlots = Object.keys(section.lyricBeats || {})
       .filter((slot) => slot.startsWith(`${baseSlot}.`) || slot.startsWith(`${baseSlot}:`))
       .sort();
@@ -512,8 +521,7 @@ function removeDurationAt(beat) {
       .join(" ");
    descendantSlots.forEach((slot) => delete section.beats[slot]);
    lyricSlots.forEach((slot) => delete section.lyricBeats[slot]);
-   if (firstChord) section.beats[baseSlot] = { chord: firstChord, duration: null };
-   else delete section.beats[baseSlot];
+   restoreCollapsedBeat(section, baseSlot, firstChord, baseHold);
    setLyric(section, baseSlot, mergedLyrics);
    // Pull the chord row back onto the beat (first cell wins) so a removed rhythm
    // marker can't leave a chord stranded on a slot that is no longer rendered.
@@ -523,6 +531,44 @@ function removeDurationAt(beat) {
    save();
    toast("Rhythm marker removed");
 }
+// ---- Fermata (hold) ---------------------------------------------------------
+// A fermata pauses for N EXTRA beats before the next beat plays (PLAYBACK only; the
+// score just shows the glyph). The mark is stored on the beat's own slot, so it rides
+// along with the chord/number through copy/paste, clone, transpose and undo/redo.
+function applyFermata(beat, count) {
+   if (blockedForEdit()) return;
+   if (isSelectionActiveFor(beat.dataset.section)) return;
+   const section = findSection(beat.dataset.section);
+   if (!section) return;
+   const slot = beat.dataset.slot;
+   const stored = setFermata(section, slot, count);
+   renderPreview();
+   save();
+   flashDropTarget(section.id, slot);
+   toast(`Fermata · holds ${stored} extra beat${stored === 1 ? "" : "s"} before the next beat`);
+}
+function removeFermataAt(beat) {
+   if (blockedForEdit()) return;
+   if (isSelectionActiveFor(beat.dataset.section)) return;
+   const section = findSection(beat.dataset.section);
+   if (!section) return;
+   clearFermata(section, beat.dataset.slot);
+   renderPreview();
+   save();
+   toast("Fermata removed");
+}
+// Open the fermata popover for a beat, prefilled with its current hold (default 1).
+function openFermataFor(beat) {
+   if (blockedForEdit()) return;
+   if (isSelectionActiveFor(beat.dataset.section)) return;
+   const section = findSection(beat.dataset.section);
+   if (!section) return;
+   openFermataEditor({
+      anchor: beat,
+      initialValue: fermataValue(section, beat.dataset.slot) || 1,
+      onCommit: (count) => applyFermata(beat, count),
+   });
+}
 // Open the rhythm menu for a beat at the given viewport point.
 function openRhythmMenu(beat, x, y) {
    // Rhythm subdivisions are an arrangement edit — refused for members.
@@ -530,12 +576,14 @@ function openRhythmMenu(beat, x, y) {
    // Block the rhythm menu entirely while in bar-selection mode.
    if (isSelectionActiveFor(beat.dataset.section)) return;
    closeChordEditor();
+   closeFermataEditor();
    const section = findSection(beat.dataset.section);
    if (!section) return;
    const level = Number(beat.dataset.level || 0);
    const baseSlot = beat.dataset.baseSlot || beat.dataset.slot;
    const hasDuration = !!beatValue(section, baseSlot).duration;
    const nested = level >= 1;
+   const hold = fermataValue(section, beat.dataset.slot);
    const items = [
       {
          label: "½ — Half beat",
@@ -561,7 +609,14 @@ function openRhythmMenu(beat, x, y) {
          disabled: !hasDuration || nested,
          action: () => removeDurationAt(beat),
       },
+      {
+         label: hold ? `Fermata · ${hold} beat${hold === 1 ? "" : "s"}…` : "Fermata (hold)…",
+         hint: "hold",
+         action: () => openFermataFor(beat),
+      },
    ];
+   // The destructive "remove" is only offered once a fermata actually exists.
+   if (hold > 0) items.push({ label: "Remove fermata", danger: true, action: () => removeFermataAt(beat) });
    openBeatMenu({ x, y, items });
 }
 
@@ -828,6 +883,11 @@ function bindPreview() {
                .filter((slot) => slot.startsWith(`${splitSlot}.`))
                .sort();
             const firstChord = childSlots.map((slot) => beatValue(section, slot).chord).find(Boolean) || null;
+            const splitHold = Math.max(
+               fermataValue(section, splitSlot),
+               0,
+               ...childSlots.map((slot) => fermataValue(section, slot)),
+            );
             const lyricSlots = Object.keys(section.lyricBeats || {})
                .filter((slot) => slot.startsWith(`${splitSlot}.`))
                .sort();
@@ -837,8 +897,7 @@ function bindPreview() {
                .join(" ");
             childSlots.forEach((slot) => delete section.beats[slot]);
             lyricSlots.forEach((slot) => delete section.lyricBeats[slot]);
-            if (firstChord) section.beats[splitSlot] = { chord: firstChord, duration: null };
-            else delete section.beats[splitSlot];
+            restoreCollapsedBeat(section, splitSlot, firstChord, splitHold);
             setLyric(section, splitSlot, mergedLyrics);
             // Same rule for the chord row of the nested split's children.
             collapseChordAbove(section, splitSlot);
@@ -864,6 +923,11 @@ function bindPreview() {
             .filter((slot) => slot.startsWith(`${baseSlot}:`))
             .sort();
          const firstChord = descendantSlots.map((slot) => beatValue(section, slot).chord).find(Boolean) || null;
+         const baseHold = Math.max(
+            fermataValue(section, baseSlot),
+            0,
+            ...descendantSlots.map((slot) => fermataValue(section, slot)),
+         );
          const lyricSlots = Object.keys(section.lyricBeats || {})
             .filter((slot) => slot.startsWith(`${baseSlot}:`))
             .sort();
@@ -873,8 +937,7 @@ function bindPreview() {
             .join(" ");
          descendantSlots.forEach((slot) => delete section.beats[slot]);
          lyricSlots.forEach((slot) => delete section.lyricBeats[slot]);
-         if (firstChord) section.beats[baseSlot] = { chord: firstChord, duration: null };
-         else delete section.beats[baseSlot];
+         restoreCollapsedBeat(section, baseSlot, firstChord, baseHold);
          setLyric(section, baseSlot, mergedLyrics);
          // ...and for the chord row of the subdivisions being merged away.
          collapseChordAbove(section, baseSlot);

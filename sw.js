@@ -83,6 +83,7 @@ const CORE_ASSETS = [
    `./src/chordBank.js?v=${ASSET_VERSION}`,
    `./src/chordEditor.js?v=${ASSET_VERSION}`,
    `./src/beatMenu.js?v=${ASSET_VERSION}`,
+   `./src/fermataEditor.js?v=${ASSET_VERSION}`,
    `./src/pdf.js?v=${ASSET_VERSION}`,
    `./src/pdfOptions.js?v=${ASSET_VERSION}`,
    `./src/cloud.js?v=${ASSET_VERSION}`,

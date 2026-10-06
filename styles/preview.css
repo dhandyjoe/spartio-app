@@ -1695,6 +1695,64 @@ html[data-theme="dark"] .sub-beat.has-chord .placed-chord {
    color: #6b7d72;
    transform: none;
 }
+/* ---- Fermata (hold) ------------------------------------------------------
+   A fermata glyph drawn just above the chord/number it belongs to. It is a SCORE
+   MARK only — the hold itself is a playback feature — so the SAME glyph is shown in
+   the live editor, the PDF-layout preview and the exported PDF (the print blocks
+   below mirror this rule). */
+.beat.has-fermata,
+.sub-beat.has-fermata,
+.beat-group.has-fermata,
+.nested-beat-group.has-fermata {
+   position: relative;
+}
+.beat-fermata {
+   position: absolute;
+   left: 50%;
+   transform: translateX(-50%);
+   display: inline-flex;
+   color: var(--dark-green);
+   line-height: 0;
+   pointer-events: none;
+   /* Above the rhythm beams (5) and the chord-above cells (chords+), so the mark
+      is never hidden. */
+   z-index: 6;
+   /* Anchor just above the OWNER's top. A ½/⅓/¼ sub-beat and a subdivided group fill
+      the whole notation lane, so their fermata lifts to the lane's top — the
+      "rhythm ½" height. Kept owner-relative so it always tracks the lane height. */
+   bottom: calc(100% + 1px);
+   top: auto;
+}
+/*
+   A nested ½ leaf is a SHORT box hugging the lane bottom (it does NOT fill the
+   lane), so the owner-relative anchor above would drop its fermata well BELOW a ½
+   sub-beat's. Measure from the LANE height instead (54px = the .notation-cell
+   height) so a nested ½ fermata sits at EXACTLY the same height as a rhythm-½ one.
+*/
+.nested-sub-beat.has-fermata > .beat-fermata {
+   bottom: calc(54px + 1px);
+}
+/*
+   A section that shows its chord row (Chords+) AND carries a fermata needs extra
+   clearance above the notation lane: a rhythm-½ fermata lifts ~19px above the lane
+   top, which would otherwise collide with the chord row. The extra gap is uniform
+   across the section, so barlines and beats stay aligned.
+*/
+.preview-section.has-fermata .beat-column.with-chord-above {
+   row-gap: calc(var(--chord-above-gap, 24px) + 16px);
+}
+.beat-fermata svg {
+   display: block;
+   width: 20px;
+   height: 18px;
+}
+.beat-fermata svg path {
+   /* Bolder than the glyph's built-in 2 — a clear, heavy fermata on screen. */
+   stroke-width: 2.7;
+}
+html[data-theme="dark"] .beat-fermata {
+   color: #cdeedb;
+}
 .bar-num {
    position: absolute;
    top: 2px;
@@ -2333,6 +2391,20 @@ html[data-theme="dark"] .placing-cancel:hover {
    .bar-grid > .bar-batch:first-child .bar.has-chord-above {
       margin-top: calc(var(--print-chord-above-line-gap) + 0.4mm);
    }
+   /*
+      A section that ALSO carries a fermata needs more headroom: the fermata glyph
+      lifts above the notation lane, so push the whole line down AND lift the chord row
+      by the SAME amount — only the gap between the chord row and the lane grows, the
+      printed chords stay put, and the fermata never touches them.
+   */
+   .preview-section.has-fermata .bar-batch .bar.has-chord-above,
+   .preview-section.has-fermata .bar-grid > .bar-batch:first-child .bar.has-chord-above {
+      margin-top: calc(var(--print-chord-above-line-gap) + 6mm);
+   }
+   .preview-section.has-fermata .beat-column.with-chord-above > .chord-above-editor,
+   .preview-section.has-fermata .beat-column.with-chord-above > .sub-chord-above {
+      top: calc(-1 * var(--print-chord-above-row) - 6mm);
+   }
    .section-title {
       color: #000;
       font-size: 13px;
@@ -2624,6 +2696,19 @@ html[data-theme="dark"] .placing-cancel:hover {
       color: #7d8f84;
       /* Screen "receded dots" must not dim the printed page. */
       opacity: 1;
+   }
+   .beat-fermata {
+      color: #155c3c;
+   }
+   .nested-sub-beat.has-fermata > .beat-fermata {
+      bottom: calc(var(--print-notation-h) + 1px);
+   }
+   .beat-fermata svg {
+      width: 4.8mm;
+      height: 4.3mm;
+   }
+   .beat-fermata svg path {
+      stroke-width: 3.4;
    }
    .beat .placed-chord,
    .sub-beat .placed-chord {
@@ -3159,6 +3244,17 @@ html.is-print-layout #previewCard .beat-column.with-chord-above > .sub-chord-abo
 html.is-print-layout #previewCard .beat-column.with-chord-above .sub-chord-above .chord-above-editor {
    height: var(--print-chord-above-row);
 }
+/* A fermata section gets extra headroom above its printed line (see the @media print
+   note): the line is pushed down and the chord row lifted by the same amount, so the
+   fermata clears the chords and the chords keep their position. */
+html.is-print-layout #previewCard .preview-section.has-fermata .bar-batch .bar.has-chord-above,
+html.is-print-layout #previewCard .preview-section.has-fermata .bar-grid > .bar-batch:first-child .bar.has-chord-above {
+   margin-top: calc(var(--print-chord-above-line-gap) + 6mm);
+}
+html.is-print-layout #previewCard .preview-section.has-fermata .beat-column.with-chord-above > .chord-above-editor,
+html.is-print-layout #previewCard .preview-section.has-fermata .beat-column.with-chord-above > .sub-chord-above {
+   top: calc(-1 * var(--print-chord-above-row) - 6mm);
+}
 html.is-print-layout #previewCard .chord-above-input {
    display: none;
 }
@@ -3261,6 +3357,19 @@ html.is-print-layout #previewCard .beat-dot {
    font-size: calc(var(--print-chord-size) + 0.8mm);
    color: #7d8f84;
    opacity: 1;
+}
+html.is-print-layout #previewCard .beat-fermata {
+   color: #155c3c;
+}
+html.is-print-layout #previewCard .nested-sub-beat.has-fermata > .beat-fermata {
+   bottom: calc(var(--print-notation-h) + 1px);
+}
+html.is-print-layout #previewCard .beat-fermata svg {
+   width: 4.8mm;
+   height: 4.3mm;
+}
+html.is-print-layout #previewCard .beat-fermata svg path {
+   stroke-width: 3.4;
 }
 html.is-print-layout #previewCard .beat .placed-chord,
 html.is-print-layout #previewCard .sub-beat .placed-chord {

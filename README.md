@@ -23,6 +23,12 @@ Chord & Number Score Builder — arrange chords and number (Nashville) notation,
   transposes with the key, follows rhythm splits, and prints with the score — bars with the row
   switched off keep the same height, so the barlines always line up.
 - 🥁 Rhythm subdivisions ½ / ⅓ / ¼ per beat (nested up to two levels)
+- 🎼 **Fermata (hold)** — right-click a beat (long-press on touch) → *Fermata (hold)…* and type how
+  many **extra beats** to hold before the next beat plays. It is a **playback-only** mark: the note
+  is sustained and the **metronome keeps ticking on each held beat**, so the pause still counts in
+  tempo. The score and the **PDF** simply print the fermata glyph above the chord/number. It rides
+  with the beat through copy/paste, transpose and undo/redo, and works in **Chord Chart** and
+  **Numeric Notation** (not ChordPro).
 - ✍️ **Custom chords** — type a chord the palette doesn't list (`Bmaj9`, `B6/9`, `Bm7♭5`): a valid
   spelling is offered back as the first suggestion (your notation first, the canonical `Bø7` right
   below), and when nothing matches the popover offers **Use custom chord** (or just Enter). Custom
@@ -324,7 +330,7 @@ unaffected: the audio engine resolves notes by pitch class, so `F♯`/`G♭` sou
 ***Line starts*** density: the FIRST bar of every printed line carries a bold (3 mm, weight 800)
 number directly above its barline — exactly the spot a player scans when rehearsal says "from bar 9".
 The alternatives are ***Every bar*** (the dense variant: a small 2.6 mm number above every barline) and
-***Off***. The choice is **stored per song**, like paper size and the size sliders.
+***Off***. The choice is **stored per song**, like the size sliders (paper is fixed at A4).
 
 Why line starts as the default: within a section the printed rows are stacked with **no vertical
 gap** (`row-gap: 0`), so a number above *every* bar sits squeezed between two rows of music and reads
@@ -423,7 +429,7 @@ renders as `C Am7 Dm7 G7 Cmaj7` with breathing room — not the collided `CAm7Dm
 like this*, and that is literally true: the ChordPro page reuses the Chord Chart print
 geometry (same page padding, title margin, `KEY`/`TIME` row and section-label box), only
 the lyrics are printed at score size (chord ≈ 5.4 mm, lyric ≈ 4.3 mm, both derived from the
-PDF-options sliders). Chord size, lyric size, paper and margins are stored **per song**, and
+PDF-options sliders). Chord size and lyric size are stored **per song** (paper and margins are fixed at A4 / narrow), and
 the label above the preview lines up with the preview's own content column.
 
 ### Cloud sync (optional)

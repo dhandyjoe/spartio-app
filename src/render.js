@@ -14,10 +14,12 @@ import {
    escapeHTML,
    beatValue,
    lyricValue,
+   fermataValue,
    chordAboveValue,
    chordAboveShownForBar,
    moveChordAbove,
    sectionShowsChordAbove,
+   sectionHasFermata,
    editorModeMeta,
    normalizeEditorMode,
 } from "./notation.js?v=__BUILD__";
@@ -289,6 +291,25 @@ function chordAboveInputHTML(section, slot) {
 // jumping up by one row. This is what fills that reserved track.
 const CHORD_ABOVE_TRACK_PLACEHOLDER =
    '<span class="chord-above-editor is-chord-above-off" aria-hidden="true"></span>';
+// ---- Fermata glyph -----------------------------------------------------------
+// A fermata is drawn as an inline SVG (a dot under a semicircle arc) instead of the
+// Unicode char 𝄐 (U+1D110): neither Inter nor the bundled Noto Serif JP subset
+// carries the Musical Symbols block, so the char would fall back to a different OS
+// symbol font (the exact problem the ♭/♯ subset solved). The SVG renders identically
+// on every OS and prints crisply. It is purely a SCORE MARK — playback owns the
+// timing, the PDF just shows this glyph.
+const FERMATA_GLYPH =
+   '<span class="beat-fermata" role="img" aria-label="Fermata" title="Fermata">' +
+   '<svg viewBox="0 0 20 18" aria-hidden="true" focusable="false">' +
+   '<path d="M2.5 7 A 8 6 0 0 1 17.5 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+   '<circle cx="10" cy="12.4" r="2.6" fill="currentColor"/>' +
+   "</svg></span>";
+function fermataGlyphHTML(section, slot) {
+   return fermataValue(section, slot) > 0 ? FERMATA_GLYPH : "";
+}
+function fermataClass(section, slot) {
+   return fermataValue(section, slot) > 0 ? " has-fermata" : "";
+}
 function subdivisionTargetHTML(section, baseSlot, index, parentDuration) {
    const subSlot = `${baseSlot}:${index}`,
       subValue = beatValue(section, subSlot);
@@ -304,11 +325,11 @@ function subdivisionTargetHTML(section, baseSlot, index, parentDuration) {
       const children = Array.from({ length: 2 }, (_, childIndex) => {
          const childSlot = `${subSlot}.${childIndex}`,
             childValue = beatValue(section, childSlot);
-         return `<span class="sub-beat nested-sub-beat drop-target ${childValue.chord ? "has-chord" : ""}" data-section="${section.id}" data-slot="${childSlot}" data-base-slot="${baseSlot}" data-parent-slot="${subSlot}" data-parent-duration="half" data-level="2">${chordOrDot(section, childSlot)}</span>`;
+         return `<span class="sub-beat nested-sub-beat drop-target ${childValue.chord ? "has-chord" : ""}${fermataClass(section, childSlot)}" data-section="${section.id}" data-slot="${childSlot}" data-base-slot="${baseSlot}" data-parent-slot="${subSlot}" data-parent-duration="half" data-level="2">${chordOrDot(section, childSlot)}${fermataGlyphHTML(section, childSlot)}</span>`;
       }).join("");
-      return `<span class="nested-beat-group" data-section="${section.id}" data-base-slot="${baseSlot}" data-split-slot="${subSlot}"><span class="nested-duration-line" data-section="${section.id}" data-split-slots="${subSlot}" title="Click to remove nested half-beat" aria-label="Remove nested half-beat"></span><span class="nested-sub-beats">${children}</span></span>`;
+      return `<span class="nested-beat-group${fermataClass(section, subSlot)}" data-section="${section.id}" data-base-slot="${baseSlot}" data-split-slot="${subSlot}"><span class="nested-duration-line" data-section="${section.id}" data-split-slots="${subSlot}" title="Click to remove nested half-beat" aria-label="Remove nested half-beat"></span><span class="nested-sub-beats">${children}</span>${fermataGlyphHTML(section, subSlot)}</span>`;
    }
-   return `<span class="sub-beat drop-target ${subValue.chord ? "has-chord" : ""}" data-section="${section.id}" data-slot="${subSlot}" data-base-slot="${baseSlot}" data-parent-duration="${parentDuration}" data-level="1">${chordOrDot(section, subSlot)}</span>`;
+   return `<span class="sub-beat drop-target ${subValue.chord ? "has-chord" : ""}${fermataClass(section, subSlot)}" data-section="${section.id}" data-slot="${subSlot}" data-base-slot="${baseSlot}" data-parent-duration="${parentDuration}" data-level="1">${chordOrDot(section, subSlot)}${fermataGlyphHTML(section, subSlot)}</span>`;
 }
 export function beatHTML(section, bar, beat, chordAboveTrack = false, chordAboveShown = false) {
    const state = getState();
@@ -327,7 +348,7 @@ export function beatHTML(section, bar, beat, chordAboveTrack = false, chordAbove
       chordAboveShown ? chordAboveInputHTML(section, cellSlot) : CHORD_ABOVE_TRACK_PLACEHOLDER;
    const chordAboveLead = chordAboveTrack ? chordAboveCell(slot) : "";
    if (!value.duration) {
-      const notation = `<span class="beat drop-target ${value.chord ? "has-chord" : ""}" data-section="${section.id}" data-slot="${slot}" data-base-slot="${slot}" data-level="0">${chordOrDot(section, slot)}</span>`;
+      const notation = `<span class="beat drop-target ${value.chord ? "has-chord" : ""}${fermataClass(section, slot)}" data-section="${section.id}" data-slot="${slot}" data-base-slot="${slot}" data-level="0">${chordOrDot(section, slot)}${fermataGlyphHTML(section, slot)}</span>`;
       const columnClasses = `beat-column ${chordAboveTrack ? "with-chord-above" : ""} ${showLyrics ? "with-lyrics" : ""}`;
       return `<span class="${columnClasses}">${chordAboveLead}<span class="notation-cell">${notation}</span>${showLyrics ? lyricInputHTML(section, slot) : ""}</span>`;
    }
@@ -360,7 +381,7 @@ export function beatHTML(section, bar, beat, chordAboveTrack = false, chordAbove
       ? `<span class="sub-chord-above" style="--lyric-leaves:${lyricSlots.length}">${lyricSlots.map((chordSlot) => chordAboveCell(chordSlot)).join("")}</span>`
       : "";
    const columnClasses = `beat-column duration-column duration-${value.duration} ${chordAboveTrack ? "with-chord-above" : ""} ${showLyrics ? "with-lyrics" : ""}`;
-   return `<span class="${columnClasses}">${subChordAbove}<span class="notation-cell"><span class="beat-group duration-${value.duration} ${nestedSplitSlots.length ? "has-nested-duration" : ""}" data-section="${section.id}" data-base-slot="${slot}"><span class="duration-line" title="Click to remove rhythm marker"></span>${quarterPrintLine}<span class="sub-beats">${subBeats}</span></span></span>${subLyrics}</span>`;
+   return `<span class="${columnClasses}">${subChordAbove}<span class="notation-cell"><span class="beat-group duration-${value.duration} ${nestedSplitSlots.length ? "has-nested-duration" : ""}${fermataClass(section, slot)}" data-section="${section.id}" data-base-slot="${slot}"><span class="duration-line" title="Click to remove rhythm marker"></span>${quarterPrintLine}<span class="sub-beats">${subBeats}</span>${fermataGlyphHTML(section, slot)}</span></span>${subLyrics}</span>`;
 }
 function sectionTypeClass(name) {
    const n = name.toLowerCase().trim();
@@ -384,7 +405,10 @@ function sectionHTML(section) {
       // reserves the track for ALL of them, so the notation lane and the printed
       // barlines stay aligned instead of jumping up by one row.
       chordAboveTrack = chordRowAvailable && sectionShowsChordAbove(section),
-      hasLyricContent = Object.values(section.lyricBeats || {}).some((text) => String(text).trim());
+      hasLyricContent = Object.values(section.lyricBeats || {}).some((text) => String(text).trim()),
+      // A section that carries a fermata AND shows its chord row (Chords+) needs extra
+      // clearance above the notation lane — the fermata glyph lifts above the lane top.
+      sectionFermata = sectionHasFermata(section);
    // Track cumulative bar count across sections
    if (!renderPreview._cumulativeBarCount) renderPreview._cumulativeBarCount = 0;
    const cumulativeBarStart = renderPreview._cumulativeBarCount;
@@ -443,7 +467,7 @@ function sectionHTML(section) {
            selCount ? `${selCount} bar${selCount === 1 ? "" : "s"} selected` : "No bars selected yet"
         }</span><span class="bar-selection-hint">Tap bars to build the block · tap a selected bar to remove it</span><button class="bar-selection-copy" type="button" data-section="${section.id}" ${selCount ? "" : "disabled"}>Copy</button><button class="bar-selection-cancel" type="button">Cancel</button></div>`
       : "";
-   return `<section class="preview-section ${typeClass} ${section.id === state.activeId ? "is-active" : ""} ${hasLyricContent ? "has-lyric-content" : ""}${selecting ? " is-selecting" : ""}" data-section="${section.id}"><div class="section-preview-heading"><div>${chip}${title}</div><div class="section-tools">${chordAboveToggle}${lyricsToggle}<span class="bar-caption">${section.bars} ${section.bars === 1 ? "bar" : "bars"} · ${beats} beats per bar</span><button class="text-button add-bar" data-section="${section.id}">+ Add 1 bar</button>${sectionMenu}</div></div>${selectionBar}<div class="bar-grid">${batches}</div></section>`;
+   return `<section class="preview-section ${typeClass} ${section.id === state.activeId ? "is-active" : ""} ${hasLyricContent ? "has-lyric-content" : ""}${sectionFermata ? " has-fermata" : ""}${selecting ? " is-selecting" : ""}" data-section="${section.id}"><div class="section-preview-heading"><div>${chip}${title}</div><div class="section-tools">${chordAboveToggle}${lyricsToggle}<span class="bar-caption">${section.bars} ${section.bars === 1 ? "bar" : "bars"} · ${beats} beats per bar</span><button class="text-button add-bar" data-section="${section.id}">+ Add 1 bar</button>${sectionMenu}</div></div>${selectionBar}<div class="bar-grid">${batches}</div></section>`;
 }
 // ---- ChordPro rendering ----
 // Lyrics with a chord printed directly above the syllable it precedes. The layout

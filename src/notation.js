@@ -111,6 +111,9 @@ export const nashvilleAccidentals = ["", "♭", "#"];
 // Import hardening limits (guard against oversized/hostile project files).
 export const MAX_BARS = 96;
 export const MAX_SECTIONS = 40;
+// Fermata (hold) bounds: an extra-beats pause of 1..32 per beat. Shared by the
+// editor popover, the import sanitizer and the playback timeline.
+export const MAX_FERMATA = 32;
 
 // ---- Editor modes ----
 // Single source of truth for the three writing modes. `dataset` drives the
@@ -483,6 +486,54 @@ export function syllabifyLyrics(text) {
 export function beatValue(section, slot) {
    const value = section.beats[slot];
    return typeof value === "string" ? { chord: value, duration: null } : value || { chord: null, duration: null };
+}
+// ---- Fermata (hold) --------------------------------------------------------
+// A fermata adds a pause of N EXTRA beats before the NEXT beat plays. It is a
+// per-beat performance mark stored ON the beat value (`section.beats[slot].fermata`)
+// so copy/paste, clone, transpose and undo/redo carry it with the chord/number for
+// free (all of those copy the value object wholesale). It affects PLAYBACK only —
+// the printed/PDF score merely draws the glyph.
+export function fermataValue(section, slot) {
+   const count = Number(section?.beats?.[slot]?.fermata);
+   return Number.isInteger(count) && count > 0 ? Math.min(count, MAX_FERMATA) : 0;
+}
+/**
+ * Set (or clear, with count <= 0) the fermata hold on a beat. Returns the stored
+ * extra-beat count (0 when cleared). The beat cell survives as long as it still
+ * carries a chord, a rhythm marker or a fermata, so clearing a fermata on an
+ * otherwise-empty beat leaves no stray cell behind.
+ */
+export function setFermata(section, slot, count) {
+   const value = { ...beatValue(section, slot) };
+   const next = Math.min(MAX_FERMATA, Math.max(0, Math.trunc(Number(count) || 0)));
+   if (next > 0) value.fermata = next;
+   else delete value.fermata;
+   if (value.chord || value.duration || value.fermata) section.beats[slot] = value;
+   else delete section.beats[slot];
+   return value.fermata || 0;
+}
+export function clearFermata(section, slot) {
+   return setFermata(section, slot, 0);
+}
+/** True when ANY beat in the section carries a fermata hold. */
+export function sectionHasFermata(section) {
+   const beats = section?.beats || {};
+   return Object.keys(beats).some((slot) => fermataValue(section, slot) > 0);
+}
+/**
+ * Re-create a beat after its subdivisions were collapsed back onto it, KEEPING any
+ * fermata the beat (or one of its children) carried — the pause is independent of
+ * the rhythm marker, so removing a ½/⅓/¼ split must not silently drop it. Mutates.
+ */
+export function restoreCollapsedBeat(section, slot, chord, fermata = 0) {
+   const hold = Math.min(MAX_FERMATA, Math.max(0, Math.trunc(fermata) || 0));
+   if (chord || hold > 0) {
+      const value = { chord: chord || null, duration: null };
+      if (hold > 0) value.fermata = hold;
+      section.beats[slot] = value;
+   } else {
+      delete section.beats[slot];
+   }
 }
 export function lyricValue(section, slot) {
    return typeof section.lyricBeats?.[slot] === "string" ? section.lyricBeats[slot] : "";
@@ -899,11 +950,18 @@ export function normalizeSection(section, meter = "4/4") {
    if (section.beats && typeof section.beats === "object")
       Object.entries(section.beats).forEach(([slot, value]) => {
          if (typeof value === "string") beats[slot] = value;
-         else if (value && typeof value === "object")
-            beats[slot] = {
+         else if (value && typeof value === "object") {
+            const entry = {
                chord: typeof value.chord === "string" ? value.chord : null,
                duration: ["half", "triplet", "quarter"].includes(value.duration) ? value.duration : null,
             };
+            // Fermata hold: a positive integer of extra beats survives the import
+            // (`true` folds to 1); anything else is dropped so a hostile file can
+            // never inject an absurd pause.
+            const hold = Number(value.fermata);
+            if (Number.isInteger(hold) && hold > 0) entry.fermata = Math.min(hold, MAX_FERMATA);
+            beats[slot] = entry;
+         }
       });
    const lyricBeats = {};
    if (section.lyricBeats && typeof section.lyricBeats === "object")
