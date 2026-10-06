@@ -1,8 +1,8 @@
-# WorshipNotationScore
+# Spartio.app
 
 Chord & Number Score Builder — arrange chords and number (Nashville) notation, ready to play and export to PDF.
 
-**Live demo:** https://dhandyjoe.github.io/worship-notation-score-app/
+**Live demo:** https://dhandyjoe.github.io/spartio-app/
 
 ## Features
 
@@ -94,7 +94,7 @@ This is a fully static site (no build step for development). It is deployed via
 **Settings → Pages → Source → "GitHub Actions"**, built by
 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
 
-- All asset paths are **relative**, so the app works under the `/worship-notation-score-app/` subpath.
+- All asset paths are **relative**, so the app works under the `/spartio-app/` subpath.
 - A `.nojekyll` file at the repo root is kept for the branch-based fallback (Actions deployments do not run Jekyll).
 - **To publish changes: commit and `git push origin master`.** The workflow runs the unit
   tests, stamps the build version automatically and deploys — there is nothing else to do.

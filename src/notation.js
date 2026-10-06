@@ -1009,9 +1009,9 @@ export function normalizeSection(section, meter = "4/4") {
 
 export function safeFileName(value) {
    return (
-      (value || "worship-notation-score")
+      (value || "spartio")
          .trim()
          .replace(/[^a-z0-9-_]+/gi, "-")
-         .replace(/^-|-$/g, "") || "worship-notation-score"
+         .replace(/^-|-$/g, "") || "spartio"
    );
 }

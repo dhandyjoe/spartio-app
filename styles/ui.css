@@ -8213,7 +8213,7 @@ html[data-theme="dark"] .home-fab-item.is-active {
       --dock-shift: clamp(42px, 5vw, 54px);
    }
    /* ---- Header + search bar also scale with the viewport (tablet) ----
-      The brand lockup ("WorshipNotationScore"), the page title, the profile
+      The brand lockup ("Spartio.app"), the page title, the profile
       button, the help bubble and the search field all grow with the screen
       instead of staying pinned to their desktop sizes. */
    .home-brand-icon {

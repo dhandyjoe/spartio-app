@@ -1,6 +1,6 @@
 {
-   "name": "WorshipNotationScore — Chord & Number Score Builder",
-   "short_name": "NotationScore",
+   "name": "Spartio.app — Chord & Number Score Builder",
+   "short_name": "Spartio.app",
    "description": "Build, edit, and export chord charts and Nashville number scores for worship — works offline.",
    "id": ".",
    "start_url": ".",
@@ -26,8 +26,20 @@
          "purpose": "any"
       },
       {
+         "src": "assets/icon-1024.png",
+         "sizes": "1024x1024",
+         "type": "image/png",
+         "purpose": "any"
+      },
+      {
          "src": "assets/icon-maskable-512.png",
          "sizes": "512x512",
+         "type": "image/png",
+         "purpose": "maskable"
+      },
+      {
+         "src": "assets/icon-maskable-1024.png",
+         "sizes": "1024x1024",
          "type": "image/png",
          "purpose": "maskable"
       },

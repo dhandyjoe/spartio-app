@@ -1,4 +1,4 @@
-# Firestore Security Rules — WorshipNotationScore cloud sync
+# Firestore Security Rules — Spartio.app cloud sync
 
 Paste the rules in the Firebase Console → **Firestore Database → Rules → Publish**.
 

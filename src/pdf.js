@@ -195,7 +195,7 @@ export function buildPdfDocumentTitle() {
    const cleanArtist = artist && artist !== "Artist / Composer" ? artist : "";
    if (cleanTitle && cleanArtist) return `${cleanTitle} — ${cleanArtist}`;
    if (cleanTitle) return cleanTitle;
-   return "WorshipNotationScore";
+   return "Spartio.app";
 }
 
 /**

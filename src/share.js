@@ -13,7 +13,8 @@
 //     never sent to any server.
 
 // One-character magic marker + scheme code prefixed to every payload.
-//   "w" = our marker (WorshipNotationScore)
+//   "w" = the shared-link marker. It is deliberately FROZEN (it dates from the app's
+//         original brand) so links shared before the Spartio.app rename keep decoding.
 //   scheme: "g" = gzip-compressed, "p" = plain (uncompressed)
 const MAGIC = "w";
 const SCHEME_GZIP = "g";

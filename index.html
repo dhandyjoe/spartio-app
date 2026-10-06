@@ -3,17 +3,17 @@
    <head>
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>WorshipNotationScore — Chord &amp; Number Score Builder</title>
+      <title>Spartio.app — Chord &amp; Number Score Builder</title>
       <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
       <meta name="theme-color" content="#1f704a" />
       <!-- PWA: installable + offline. Manifest + icons use RELATIVE paths so they
-           resolve under the GitHub Pages /worship-notation-score-app/ subpath. -->
+           resolve under the GitHub Pages /spartio-app/ subpath. -->
       <link rel="manifest" href="manifest.webmanifest" />
       <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
       <meta name="apple-mobile-web-app-capable" content="yes" />
       <meta name="mobile-web-app-capable" content="yes" />
       <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-      <meta name="apple-mobile-web-app-title" content="NotationScore" />
+      <meta name="apple-mobile-web-app-title" content="Spartio.app" />
       <script>
          (() => {
             const saved = localStorage.getItem("chordSheetTheme");
@@ -507,7 +507,7 @@
                            ><button class="button button-ghost button-small" id="addSectionBtn">+ Add section</button>
                         </div>
                      </div>
-                     <div class="pdf-signature" aria-hidden="true">Generated with WorshipNotationScore</div>
+                     <div class="pdf-signature" aria-hidden="true">Generated with Spartio.app</div>
                   </section>
                </div>
                <div class="scroll-affordance" id="scrollAffordance" aria-hidden="true">
@@ -590,7 +590,7 @@
                      </header>
                      <div class="cp-card-rule" aria-hidden="true"></div>
                      <div class="cp-score" id="cpSectionsPreview"></div>
-                     <div class="cp-signature" aria-hidden="true">Generated with WorshipNotationScore</div>
+                     <div class="cp-signature" aria-hidden="true">Generated with Spartio.app</div>
                   </section>
                </div>
             </div>
@@ -601,7 +601,7 @@
             <div class="footer-identity">
                <span class="footer-mark" aria-hidden="true"><img src="assets/favicon.svg" alt="" /></span>
                <div>
-                  <strong>WorshipNotationScore</strong>
+                  <strong>Spartio.app</strong>
                   <p>Built with care by <b>dhandyjoenathan</b> for worship musicians and teams.</p>
                </div>
             </div>
@@ -1217,7 +1217,7 @@
             <div class="login-aside-inner">
                <span class="home-brand login-aside-brand">
                   <span class="home-brand-icon"><img src="assets/favicon.svg" alt="" /></span>
-                  <span class="home-brand-text">WorshipNotationScore<small>Chord &amp; Number Score Builder</small></span>
+                  <span class="home-brand-text">Spartio.app<small>Chord &amp; Number Score Builder</small></span>
                </span>
                <h1 class="login-aside-title">Arrange chords and number notation, ready to play.</h1>
                <p class="login-aside-tag">Sign in to open your cloud library and pick up any song right where you left it.</p>
@@ -1234,7 +1234,7 @@
                <div class="login-card-head">
                   <span class="home-brand login-card-brand">
                      <span class="home-brand-icon"><img src="assets/favicon.svg" alt="" /></span>
-                     <span class="home-brand-text">WorshipNotationScore</span>
+                     <span class="home-brand-text">Spartio.app</span>
                   </span>
                   <h2 class="login-card-title" id="loginTitle">Welcome back</h2>
                   <p class="login-card-sub">Sign in to open your song library.</p>
@@ -1285,7 +1285,7 @@
                <div class="cloud-gallery-heading">
                   <span class="home-brand">
                      <span class="home-brand-icon" aria-hidden="true"><img src="assets/favicon.svg" alt="" /></span>
-                     <span class="home-brand-text">WorshipNotationScore<small>Chord &amp; Number Score Builder</small></span>
+                     <span class="home-brand-text">Spartio.app<small>Chord &amp; Number Score Builder</small></span>
                   </span>
                </div>
                <!-- Compact, centred page title in the header's middle column. -->
@@ -1792,7 +1792,7 @@
 
             if (!("serviceWorker" in navigator)) return;
             // Registered relative to this page so the scope covers the GitHub
-            // Pages /worship-notation-score-app/ subpath.
+            // Pages /spartio-app/ subpath.
             // updateViaCache:"none" → the worker SCRIPT itself is always read
             // from the network, so a deploy is detected without a hard refresh.
             const hadController = Boolean(navigator.serviceWorker.controller);

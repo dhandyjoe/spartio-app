@@ -1697,7 +1697,7 @@ function downloadProject() {
    link.click();
    link.remove();
    URL.revokeObjectURL(url);
-   toast("WorshipNotationScore file exported");
+   toast("Spartio.app file exported");
 }
 function applyProject(project) {
    if (!project || project.format !== "chord-sheet" || !Array.isArray(project.sections))
@@ -2299,7 +2299,7 @@ function bindControlListeners() {
          applyProject(JSON.parse(await file.text()));
          toast("Score loaded and ready to edit");
       } catch (error) {
-         toast("Invalid file or not a WorshipNotationScore project");
+         toast("Invalid file or not a Spartio.app project");
       } finally {
          event.target.value = "";
       }

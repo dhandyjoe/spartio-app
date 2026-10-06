@@ -544,8 +544,48 @@ test("beatHTML emits no chord-row cell while the row is switched off", () => {
 
 test("safeFileName produces a filesystem-safe slug", () => {
    assert.equal(safeFileName("My Song! (v2)"), "My-Song-v2");
-   assert.equal(safeFileName(""), "worship-notation-score");
-   assert.equal(safeFileName("///"), "worship-notation-score");
+   assert.equal(safeFileName(""), "spartio");
+   assert.equal(safeFileName("///"), "spartio");
+});
+
+// ---- App identity: the branded name must ship everywhere it is shown ---------
+test("the app is branded Spartio.app everywhere it shows", () => {
+   const html = readProjectFile("index.html");
+   const manifest = readProjectFile("manifest.webmanifest");
+   // Tab title, the two print signatures (PDF + ChordPro) and the footer credit.
+   assert.match(html, /<title>Spartio\.app — Chord &amp; Number Score Builder<\/title>/);
+   assert.equal(
+      (html.match(/Generated with Spartio\.app/g) || []).length,
+      2,
+      "both print signatures must carry the brand",
+   );
+   assert.match(html, /<strong>Spartio\.app<\/strong>/);
+   // The three brand lockups: login aside, login card, My Songs header.
+   assert.equal(
+      (html.match(/class="home-brand-text">Spartio\.app/g) || []).length,
+      3,
+      "every brand lockup must read Spartio.app",
+   );
+   // Home-screen label + install name.
+   assert.match(html, /<meta name="apple-mobile-web-app-title" content="Spartio\.app" \/>/);
+   assert.match(manifest, /"name": "Spartio\.app — Chord & Number Score Builder"/);
+   assert.match(manifest, /"short_name": "Spartio\.app"/);
+   // The old name must be gone from every file a user can read or download
+   // (src/pdf.js is the "Save as PDF" filename fallback).
+   for (const file of [
+      "index.html",
+      "manifest.webmanifest",
+      "README.md",
+      "docs/FIREBASE-SETUP.md",
+      "assets/favicon.svg",
+      "assets/icon-maskable.svg",
+      "src/pdf.js",
+      "src/events.js",
+   ]) {
+      assert.ok(!readProjectFile(file).includes("WorshipNotationScore"), `${file} still ships the old name`);
+   }
+   // The brand slug is also the fallback file name for exports / PDF.
+   assert.equal(safeFileName(""), "spartio");
 });
 
 test("splitSyllables keeps short words and single-nucleus words intact", () => {

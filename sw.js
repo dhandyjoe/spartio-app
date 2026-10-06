@@ -1,10 +1,10 @@
-// sw.js — service worker for WorshipNotationScore (PWA offline shell).
+// sw.js — service worker for Spartio.app (PWA offline shell).
 //
 // Deploy target is GitHub Pages under a SUBPATH:
-//   https://dhandyjoe.github.io/worship-notation-score-app/
+//   https://dhandyjoe.github.io/spartio-app/
 // so EVERYTHING here uses RELATIVE URLs resolved against the SW's own scope
 // (registration.scope). Never use root-absolute "/..." paths or the cache keys
-// break under the /worship-notation-score-app/ prefix.
+// break under the /spartio-app/ prefix.
 //
 // Strategy (DEPLOY-SAFE: a new deploy must be visible on the FIRST refresh):
 //   • Navigations + the un-versioned shell entry points (index.html,
@@ -59,7 +59,7 @@ const isUnbuiltAsset = (url) => url.searchParams.get("v") === ASSET_VERSION;
 // itself, the base stylesheet and the manifest). These must be network-first:
 // there is no version in the URL, so only a revalidated network read guarantees
 // the deploy is picked up. Matched by pathname so both the GitHub Pages subpath
-// (/worship-notation-score-app/) and a local http.server behave the same.
+// (/spartio-app/) and a local http.server behave the same.
 const NETWORK_FIRST_PATHS = ["/", "/index.html", "/styles/styles.css", "/manifest.webmanifest"];
 const CORE_ASSETS = [
    "./",
@@ -98,7 +98,9 @@ const CORE_ASSETS = [
    "./assets/favicon.svg",
    "./assets/icon-192.png",
    "./assets/icon-512.png",
+   "./assets/icon-1024.png",
    "./assets/icon-maskable-512.png",
+   "./assets/icon-maskable-1024.png",
    "./assets/apple-touch-icon.png",
 ];
 
