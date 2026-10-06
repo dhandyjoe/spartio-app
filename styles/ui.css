@@ -2394,8 +2394,15 @@ html[data-theme="dark"] .confirm-dialog-icon {
       height: 1.5px;
       border-radius: 1px;
    }
+   /*
+     Nested 1/2: hang its second bar the SAME 5px under the primary beam as the 1/4's
+     second bar sits under its first (8px → 13px inside the .duration-line box), instead
+     of dropping the beam to the lane top. The primary line lands at -32px + 8px = -24px,
+     so the nested line belongs at -19px; this box draws its own bar 4px in (see the
+     ::before rule below) ⇒ top: -23px. (Was 8px, which left a 36px gap instead of 5px.)
+   */
    .nested-duration-line {
-      top: 8px;
+      top: -23px;
       height: 28px;
       background: transparent !important;
       box-shadow: none !important;

@@ -2510,6 +2510,41 @@ test("the chord row clears the rhythm beams drawn under it", () => {
    assert.match(css, /\.duration-line \{\s*top: var\(--print-beam-top\);/);
 });
 
+test("a nested ½ beam lines up with the parent beam on the edge they share", () => {
+   const css = readProjectFile("styles/preview.css").replace(/\/\*[\s\S]*?\*\//g, "");
+   // The parent half beam sits 7px inside the padding-free .beat-group...
+   assert.match(css, /\.duration-line \{\s*position: absolute;\s*top: 1px;\s*left: 7px;\s*right: 7px;/);
+   // ...while .sub-beats carries a 2px horizontal affordance padding, so a nested host
+   // hugging one side of that grid sits 2px further in. 7px − 2px = 5px leaves the
+   // nested bar FLUSH with the parent bar — the way the 1/4's two bars stack, and
+   // exactly how the printed/PDF beam already looks.
+   assert.match(css, /\.sub-beats \{\s*display: grid;\s*height: 34px;\s*gap: 0;\s*padding: 0 2px;/);
+   assert.match(css, /\.nested-duration-line \{\s*top: -19px;\s*right: 5px;\s*left: 5px;/);
+   // Both printed markers keep the single shared print inset token (which is why the
+   // PDF already lined up before this change — the print geometry stays untouched).
+   assert.match(
+      css,
+      /\.duration-line,\s*\.nested-duration-line \{\s*display: block !important;\s*right: var\(--print-duration-inset\);\s*left: var\(--print-duration-inset\);/,
+   );
+});
+
+test("the phone layout keeps the nested ½ beam 5px under the primary beam", () => {
+   const ui = readProjectFile("styles/ui.css").replace(/\/\*[\s\S]*?\*\//g, "");
+   const phone = ui.slice(ui.indexOf("@media (max-width: 680px)"), ui.indexOf("@media (max-width: 340px)"));
+   assert.ok(phone.length > 0, "the touch beam block must exist");
+   // The touch layout draws both beams higher above the notes: the primary bar lands
+   // 8px into its box, the 1/4's second bar 13px in — a 5px row gap.
+   assert.match(phone, /\.duration-line \{\s*top: -32px;\s*height: 38px;/);
+   assert.match(phone, /\.duration-line::before \{\s*top: 8px;\s*height: 1\.5px;/);
+   assert.match(phone, /\.duration-quarter \.duration-line::after \{\s*top: 13px;\s*height: 1\.5px;/);
+   // The nested ½'s second bar must hang those same 5px under the primary beam line
+   // (-32px + 8px = -24px, so -19px) while its own ::before draws 4px into the box,
+   // hence top: -23px. The phone block used to say 8px, which dropped the bar to the
+   // lane top and left a 36px gap instead of 5px.
+   assert.match(phone, /\.nested-duration-line \{\s*top: -23px;\s*height: 28px;/);
+   assert.match(phone, /\.nested-duration-line::before \{[\s\S]*?top: 4px;/);
+});
+
 test("the help dialog and README document the chord row above the numbers", () => {
    const html = readProjectFile("index.html");
    const dialog = html.match(/id="howToDialog"[\s\S]*?<\/ul>/);

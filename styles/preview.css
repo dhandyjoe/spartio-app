@@ -845,8 +845,17 @@ html:not(.is-print-layout) .nashville-octave-low .nashville-octave-dot {
 */
 .nested-duration-line {
    top: -19px;
-   right: 3px;
-   left: 3px;
+   /*
+     Keep the SAME optical inset as the parent half beam so the two bars of a nested
+     1/2 line up on the edge they share — exactly how the 1/4's two bars stack and how
+     the printed/PDF beam already looks (see the is-print-layout rules below, which
+     drop the .sub-beats padding instead).
+     The parent .duration-line sits 7px inside the padding-free .beat-group, while
+     .sub-beats carries a 2px horizontal padding, so a nested host hugging one side of
+     that grid is 2px further in: 7px − 2px = 5px.
+   */
+   right: 5px;
+   left: 5px;
    height: 14px;
    z-index: 6;
    background: transparent;
