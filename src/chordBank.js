@@ -11,6 +11,16 @@
 //  - Slash chords are generated on demand once the query contains "/".
 //  - Nashville octave variants (high 1̇ / low 1̣) are offered AS SUGGESTIONS
 //    (no ^/v typing grammar) so the un-typeable combining dots are reachable.
+//  - A BARE number query (a single degree, optionally with an accidental) gets a
+//    SHORT curated family instead of the quality colours, and the accidental acts as a
+//    FILTER — the list never mixes plain and crossed forms:
+//       1 → 1, 1̇, 1̣     ·  #1 (or the ♯ chip) → #1, #1̇, #1̣     ·  ♭1/b1 → ♭1, ♭1̇, ♭1̣
+//    Quality colours (`1m`, `17`, `1°`) stay reachable by TYPING them (`1m`, `1dim`) or
+//    from the ribbon palette, but they no longer crowd the numeric dropdown.
+//  - `b` is a TYPING alias for ♭ (`b1` → ♭1); it is never a stored value (see
+//    foldNashvilleKey) so a lowercase letter chord like `b7` stays a chord.
+
+import { nashvilleAccidentalOf } from "./notation.js?v=__BUILD__";
 
 // ---- Vocabulary ---------------------------------------------------------
 
@@ -88,6 +98,10 @@ export function foldNashvilleKey(value) {
       .replace(new RegExp(`[${OCTAVE_UP}${OCTAVE_DOWN}]`, "gu"), "")
       .toLowerCase()
       .replace(/♯/g, "#")
+      // `b` is the typable stand-in for ♭, so a typed `b1` matches the `♭1` candidate.
+      // Folding BOTH sides keeps the alias a query-only convenience — what gets stored
+      // is always the bank's canonical `♭1`.
+      .replace(/♭/g, "b")
       .replace(/\s+/g, "");
 }
 
@@ -166,6 +180,66 @@ function allNashvilleCandidates() {
    for (const accidental of NASHVILLE_ACCIDENTALS)
       for (const degree of NASHVILLE_DEGREES) out.push(...nashvilleCandidatesForDegree(accidental, degree));
    return out;
+}
+
+// ---- Curated family for a bare number query ------------------------------
+// A query holding ONE degree (optionally with an accidental and/or an octave dot) is a
+// numeric-notation writer asking "what can I write on this beat?" — not a chord search.
+// Those queries get a SHORT family instead of the quality colours, and the accidental
+// FILTERS it: no accidental lists only the three plain forms, an accidental lists only its
+// own three — so `#1` / `♭1` (naik ½ / turun ½) are one chip tap away without ever crowding
+// the list. Quality colours stay reachable by typing them (`1m`, `1dim`, `1ø7`).
+const BARE_NUMBER_RE = /^([♭#♯b]?)([1-7])([̣̇]?)$/u;
+// In Numbers mode an accidental on its own ("#", or "♭"/"b") asks the same question for
+// every degree. Chord Chart keeps its sharp-chord browsing for a bare "#", so this arm is
+// Numbers-mode only.
+const BARE_ACCIDENTAL_RE = /^[♯#]$/u;
+const BARE_FLAT_ALIAS_RE = /^[♭b]$/u;
+
+const accidentalWithOctaves = (accidental, degree) => [
+   `${accidental}${degree}`,
+   `${accidental}${degree}${OCTAVE_UP}`,
+   `${accidental}${degree}${OCTAVE_DOWN}`,
+];
+
+/**
+ * The curated family for a bare number query, or null when the query is not one (then the
+ * ranked candidates take over). The accidental acts as a FILTER over the family, so the list
+ * always shows exactly what the user is about to commit:
+ *   "1"  → 1, 1̇, 1̣                                     (no accidental: the three plain forms)
+ *   "#1" → #1, #1̇, #1̣   · "♭1"/"b1" → ♭1, ♭1̇, ♭1̣      (one chip tap / typed accidental away)
+ *   "#"  → #1, #1̇, #1̣, #2, …  (Numbers mode only, still no quality colours)
+ */
+function bareNumberSuggestions(input, limit, mode) {
+   if (BARE_ACCIDENTAL_RE.test(input) || (mode === "numbers" && BARE_FLAT_ALIAS_RE.test(input))) {
+      const accidental = nashvilleAccidentalOf(input);
+      const family = [];
+      for (const degree of NASHVILLE_DEGREES) family.push(...accidentalWithOctaves(accidental, degree));
+      return family.slice(0, limit);
+   }
+   const match = input.match(BARE_NUMBER_RE);
+   if (!match) return null;
+   const accidental = nashvilleAccidentalOf(match[1]);
+   const degree = match[2];
+   // No accidental → only the plain forms are listed (`1`, `1̇`, `1̣`); the crossed ones are
+   // never mixed in. Pressing ♯/♭ (or typing `#`/`b`) swaps the list to that family alone,
+   // which keeps the dropdown short and the value about to be committed unambiguous.
+   const family = accidentalWithOctaves(accidental, degree);
+   // An already-complete query (`#1̇` — reachable when a placed note is retyped) keeps its
+   // exact form first, so Enter commits exactly what the user is looking at.
+   const exact = `${accidental}${degree}${match[3]}`;
+   const index = family.indexOf(exact);
+   if (match[3] && index > 0) family.unshift(...family.splice(index, 1));
+   return family.slice(0, limit);
+}
+
+// Nashville suggestions = the curated family when the query is a bare number, otherwise the
+// full ranked candidate set (so `1m`, `1aug`, `1m7b5`, `♭7maj7` … keep working).
+function nashvilleSuggestions(input, limit, mode) {
+   return (
+      bareNumberSuggestions(input, limit, mode) ??
+      rankAndSlice(allNashvilleCandidates(), foldNashvilleKey(input), nashvilleFoldKeys, limit)
+   );
 }
 
 // ---- Ranking ------------------------------------------------------------
@@ -268,7 +342,7 @@ export function suggestChords(rawInput, options = {}) {
 
    // Numbers mode: always Nashville, ignore chord candidates entirely.
    if (mode === "numbers") {
-      return rankAndSlice(allNashvilleCandidates(), foldNashvilleKey(input), nashvilleFoldKeys, limit);
+      return nashvilleSuggestions(input, limit, mode);
    }
 
    // Chords mode (Chord Chart): primarily letter chords, but a numeric query
@@ -278,15 +352,13 @@ export function suggestChords(rawInput, options = {}) {
    // chords first.
    if (mode === "chords") {
       if (input.includes("/")) return slashSuggestions(input, limit);
-      if (detectMode(input) === "nashville") {
-         return rankAndSlice(allNashvilleCandidates(), foldNashvilleKey(input), nashvilleFoldKeys, limit);
-      }
+      if (detectMode(input) === "nashville") return nashvilleSuggestions(input, limit, mode);
       return rankAndSlice(chordCandidates(), foldChordKey(input), chordFoldKeys, limit);
    }
 
    // Auto-detect (legacy behavior when no mode specified).
    if (detectMode(input) === "nashville") {
-      return rankAndSlice(allNashvilleCandidates(), foldNashvilleKey(input), nashvilleFoldKeys, limit);
+      return nashvilleSuggestions(input, limit, mode);
    }
 
    if (input.includes("/")) return slashSuggestions(input, limit);

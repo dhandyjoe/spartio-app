@@ -28,6 +28,7 @@ let listEl = null;
 let msgEl = null;
 let customBtn = null;
 let customValueEl = null;
+let chipsEl = null; // the ♮ ♯ ♭ row (Nashville numbers only)
 let activeIndex = -1;
 let suggestions = [];
 let ctx = null; // { anchor, onCommit, advanceTo }
@@ -35,6 +36,14 @@ let outsideHandlersBound = false;
 let openedAt = 0; // timestamp of the last open (mobile keyboard grace window)
 
 const MAX_SUGGESTIONS = 10;
+
+// Half-step chips for a NUMBER query: tap to add/change/remove the accidental without
+// typing `#`/`b` (painful on a touch keyboard). The value notation is the stored spelling.
+const ACCIDENTAL_CHIPS = [
+   { value: "", label: "♮", title: "No accidental" },
+   { value: "#", label: "♯", title: "Raise a half step (naik ½)" },
+   { value: "♭", label: "♭", title: "Lower a half step (turun ½)" },
+];
 
 export function isChordEditorOpen() {
    return !!popover && !popover.hidden;
@@ -53,6 +62,12 @@ function ensurePopover() {
                 spellcheck="false" aria-label="Chord" aria-autocomplete="list"
                 placeholder="Type a chord…" />
       </div>
+      <div class="chord-popover-accidentals" role="group" aria-label="Accidental" hidden>
+         ${ACCIDENTAL_CHIPS.map(
+            ({ value, label, title }) =>
+               `<button class="chord-popover-acc" type="button" data-accidental="${value}" title="${title}" aria-pressed="false">${label}</button>`,
+         ).join("")}
+      </div>
       <ul class="chord-popover-list" role="listbox"></ul>
       <p class="chord-popover-msg" hidden></p>
       <button class="chord-popover-custom" type="button" hidden>
@@ -65,6 +80,9 @@ function ensurePopover() {
    msgEl = popover.querySelector(".chord-popover-msg");
    customBtn = popover.querySelector(".chord-popover-custom");
    customValueEl = popover.querySelector(".chord-popover-custom-value");
+   chipsEl = popover.querySelector(".chord-popover-accidentals");
+   // mousedown (not click) so the input never loses focus before we rewrite its value.
+   chipsEl.addEventListener("mousedown", onAccidentalChip);
 
    inputEl.addEventListener("input", () => refreshSuggestions());
    inputEl.addEventListener("keydown", onKeydown);
@@ -142,7 +160,69 @@ function refreshSuggestions() {
    // editing mode; when absent we fall back to auto-detect (legacy behavior).
    if (ctx?.mode === "chords" || ctx?.mode === "numbers") opts.mode = ctx.mode;
    suggestions = withTypedSpelling(suggestChords(query, opts), query, ctx?.mode);
+   const chipsToggled = syncAccidentalChips();
    renderList();
+   // The chip row appearing/disappearing changes the popover's height: re-anchor it so it
+   // keeps pointing at the beat instead of growing over it.
+   if (chipsToggled && !popover.hidden) position();
+}
+
+// ---- Half-step chips (Nashville numbers) --------------------------------
+// Typing `#`/`b` is fine on a hardware keyboard but hidden behind a symbol layer on a touch
+// one, so a number query also offers the accidental as three small chips. The stored
+// spelling is unchanged (`#`/`♭`); the chips only rewrite the query text.
+
+// The accidental a query already carries, in stored notation ("" / "#" / "♭"). `♯`/`b` are
+// accepted as typed aliases so a chip press is a no-op when the value already matches.
+function queryAccidental(value) {
+   const raw = String(value ?? "").trim();
+   if (/^[♯#]/u.test(raw)) return "#";
+   if (/^[♭b]/u.test(raw)) return "♭";
+   return "";
+}
+
+// True for a NUMBER query — the only place the chips are useful: `1`, `♭3`, `#1̇`, and (in
+// Numbers mode) a bare accidental, which is a valid start there (`#` → pick a degree).
+// Chord Chart letter queries never show them, so that popover stays exactly as it was.
+function isNumberQuery(value) {
+   const raw = String(value ?? "").trim();
+   if (/^[♯#♭b]?[0-7]/u.test(raw)) return true;
+   return ctx?.mode === "numbers" && /^[♯#♭b]?$/u.test(raw);
+}
+
+function syncAccidentalChips() {
+   if (!chipsEl) return false;
+   const show = isNumberQuery(inputEl.value);
+   // Report a visibility CHANGE (the caller re-anchors the popover when the row toggles).
+   const toggled = chipsEl.hidden === show;
+   if (toggled) chipsEl.hidden = !show;
+   if (!show) return toggled;
+   const current = queryAccidental(inputEl.value);
+   chipsEl.querySelectorAll(".chord-popover-acc").forEach((button) => {
+      const on = button.dataset.accidental === current;
+      button.classList.toggle("is-active", on);
+      button.setAttribute("aria-pressed", on ? "true" : "false");
+   });
+   return toggled;
+}
+
+// Rewrite the query with the chosen accidental, keeping the degree (and any octave dot)
+// untouched: `1` + ♯ → `#1`, `#1̇` + ♮ → `1̇`, `♭3` + ♯ → `#3`.
+function applyAccidental(value) {
+   const rest = inputEl.value.trim().replace(/^[♯#♭b]/u, "");
+   inputEl.value = value ? `${value}${rest}` : rest;
+   refreshSuggestions();
+   inputEl.focus();
+   const end = inputEl.value.length;
+   inputEl.setSelectionRange(end, end);
+}
+
+function onAccidentalChip(event) {
+   const button = event.target.closest(".chord-popover-acc");
+   if (!button) return;
+   // Keep focus in the input: the popover must not blur/re-layout while tapping chips.
+   event.preventDefault();
+   applyAccidental(button.dataset.accidental);
 }
 
 // A spelling the user wrote themselves — `Bm7♭5` (canonical: `Bø7`), `Bmaj9`, `B6/9`.
@@ -311,6 +391,11 @@ export function openChordEditor(opts) {
    ensurePopover();
    ctx = opts;
    openedAt = Date.now();
+   // The same popover serves letters and numbers, so label it for the mode the song is in:
+   // "Type a number…" in Numeric Notation, "Type a chord…" everywhere else.
+   const numbers = opts.mode === "numbers";
+   inputEl.placeholder = numbers ? "Type a number…" : "Type a chord…";
+   inputEl.setAttribute("aria-label", numbers ? "Number" : "Chord");
    ctx.anchor.classList.add("chord-editing");
    inputEl.value = opts.initialValue || "";
    refreshSuggestions();

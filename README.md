@@ -9,7 +9,8 @@ Chord & Number Score Builder — arrange chords and number (Nashville) notation,
 - 🎸 Chord palette, slash-chord builder, and full Nashville Number System (with upper/lower octave dots)
 - 📝 **Three writing modes** — chosen in the **New Song** dialog, where each mode gets its
   own animated preview card: **Chord Chart** (beat grid + chords), **Numeric Notation + Lyrics**
-  (degrees 1–7 with high/low octaves, plus an optional lyrics row under each beat) and **ChordPro**
+  (degrees 1–7 with high/low octaves and half-step ♯/♭, plus an optional lyrics row under each
+  beat) and **ChordPro**
   (lyrics with chords in `[brackets]` — the simplest one, no rhythm notation at all). A new ChordPro
   song opens with two ready-to-type sections, **Intro** and **Verse**.
 - 🎹 **Instrumental playback** — chords & Nashville numbers are resolved to real piano audio
@@ -17,6 +18,17 @@ Chord & Number Score Builder — arrange chords and number (Nashville) notation,
   chords play as a chord, Nashville numbers as a single note; empty beats can click as a metronome.
   When a beat has a number **and** a chord above it, both sound together — the number as the
   melodic line one octave up, the chord as the harmony underneath.
+- ♯ **Half-step numbers — naik ½ / turun ½.** A degree can be raised or lowered a semitone, with
+  the octave dots on top of it. Type the accidental *first* (`#1`, `b1`/`♭1`) or tap one of the
+  popover's `♮ ♯ ♭` chips — the chip is a **filter** on the suggestion list, so it always shows
+  exactly what you are about to place: `♮` → `1`, `1̇`, `1̣`; `♯` → `#1`, `#1̇`, `#1̣`; `♭` → `♭1`,
+  `♭1̇`, `♭1̣`. The crossed forms are therefore never mixed into the plain list, and the quality
+  colours (`1m`, `1maj7`, `2sus2`) no longer crowd it out either — they stay reachable by typing
+  them (`1m`, `1dim`) or from the ribbon palette. On the score a raised degree prints as the number
+  **crossed by a slash rising to the right** (`/`) and a lowered one as a slash **falling to the
+  right** (`\`) — the Indonesian not-angka convention, drawn as thick as the score's own stems and
+  slightly longer than the digit so the mark is unmistakable — and playback follows the notation:
+  `♭1` in C sounds B3 *below* the tonic, `#1̇` sounds a semitone above `1̇`, never a drifting octave.
 - 🔢 **Chord row above the numbers (Chord Chart mode)** — write the Nashville number on the beat
   and its chord above it, so a musician reads (and hears) the melody and the harmony at once.
   It is **per section**: every section has its own *Chords On/Off* button. The row
@@ -323,6 +335,33 @@ The key itself moves with the same delta and the same rules (`transposeKeyName()
 and the chords can never end up on opposite sides of the circle — that was the reported bug where
 `C` +1 looked right but `Em` inside a D-major chart came out `G♭m` instead of `F♯m`. Playback is
 unaffected: the audio engine resolves notes by pitch class, so `F♯`/`G♭` sound identical.
+
+### Numbers: one shared Nashville token grammar
+
+A number on a beat is `[accidental]degree[octave][quality]` — `1`, `#1`, `♭1`, `1̇`, `♭7̣`, `1m`, `0`.
+That shape lives in **one** regex, `NASHVILLE_TOKEN_RE` (`src/notation.js`), and the three layers that
+must agree all read it:
+
+| Layer | What it does with the token |
+|---|---|
+| `src/chordBank.js` | **offers** it — and, because a bare degree is a *number* query, offers the curated family instead of the quality colours |
+| `src/render.js` | **draws** it — the accidental as the "coret" slash, the octave as the dot |
+| `src/playback.js` | **sounds** it — key + degree + octave + accidental |
+
+Because the gate (`isNashvilleChord`) and the parser are one grammar, a token can never be *recognised
+but silent*. Two deliberate asymmetries are worth knowing:
+
+- The ASCII `b` is a **typing alias** for ♭ only (`foldNashvilleKey` folds both sides); it is never a
+  stored value. The bank canonicalises `b1` → `♭1`, so a lowercase letter chord like `b7` stays a chord.
+- `0` is a **rest**: recognised as a number (never mistaken for a chord) and deliberately silent.
+
+An accidental is applied to the **final** MIDI note, *after* the octave is placed: normalising the pitch
+class first (`(key + degree + accidental + 12) % 12`) wrapped a lowered tonic back up an octave, so `♭1`
+in C sounded B4 instead of B3 and `♭1̇` drifted a full octave. The mark itself is CSS
+(`.nashville-slash`), **absolutely positioned**, so it adds no width to the chord token: `pdf.js`
+decides which printed barlines to drop and how the paper paginates by *measuring* the rendered bars
+(`markMidRowBars`), so a wider token would mean a wrong PDF. The stored ♯/♭ glyph stays in the DOM
+(inside `.nashville-sign`, hidden) so the value is still selectable and announced to screen readers.
 
 ### Bar numbers on paper (PDF option)
 

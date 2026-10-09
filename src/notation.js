@@ -108,6 +108,36 @@ export const durationMeta = {
 export const meters = ["2/4", "3/4", "4/4", "6/8"];
 export const nashvilleAccidentals = ["", "♭", "#"];
 
+// ---- Nashville token grammar (ONE source of truth) --------------------------
+// A Nashville number written on a beat is `[accidental]degree[octave][quality]`:
+//   "#1", "♭3", "1̇", "♭7̣", "1m", "5", "0".
+// This regex is shared by the suggestion bank, the renderer (src/render.js) and the audio
+// parser (src/playback.js) so the three can never disagree — a token the renderer draws is
+// always a token playback can sound (the "recognized but silent" hole).
+//
+// Accidental: unicode ♭/♯ or the ASCII `#` the bank stores for numbers.
+// NOTE: the ASCII `b` is deliberately NOT accepted here. It is only a TYPING alias for ♭
+// (see chordBank.foldNashvilleKey) because a stored `b7` must stay what it is today: a
+// (lowercase) letter chord, not a flat 7. The bank canonicalises the alias to ♭ on commit.
+// Degree: 0–7 (0 is the palette's "Number 0"). Octave: combining dot ABOVE (U+0307, high)
+// or BELOW (U+0323, low). Quality: whatever follows (`m`, `7`, `°`, …) — verbatim.
+export const NASHVILLE_TOKEN_RE = /^([♭#♯]?)([0-7])([̣̇]?)(.*)$/u;
+
+/** Combining dot ABOVE → one octave up (1̇). Shared by parser and renderer. */
+export const NASHVILLE_OCTAVE_UP = "\u0307";
+/** Combining dot BELOW → one octave down (1̣). */
+export const NASHVILLE_OCTAVE_DOWN = "\u0323";
+
+/**
+ * Normalise the accidental glyph of a Nashville token to the STORED spelling:
+ * `♯` (unicode) and `#` (as stored) → `#`; `♭` → `♭`; nothing → `""`.
+ * Lets the renderer/parser accept either symbol while the project file keeps one.
+ */
+export function nashvilleAccidentalOf(raw) {
+   if (!raw) return "";
+   return raw === "#" || raw === "♯" ? "#" : "♭";
+}
+
 // Import hardening limits (guard against oversized/hostile project files).
 export const MAX_BARS = 96;
 export const MAX_SECTIONS = 40;
@@ -236,7 +266,7 @@ export function transposeNote(note, semitones, ctx) {
    return pitch === undefined ? note : spellPitch(pitch + semitones, ctx?.key);
 }
 export function isNashvilleChord(value) {
-   return /^[♭#]?[0-7][̣̇]?/u.test(String(value));
+   return NASHVILLE_TOKEN_RE.test(String(value));
 }
 export function validChordSuffix(suffix) {
    return /^(?:(?:maj|min|sus|add|dim|aug|omit|no)|[mM0-9#♯b♭/()+\-°ø])*$/i.test(suffix);

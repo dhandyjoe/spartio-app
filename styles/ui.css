@@ -5448,6 +5448,44 @@ html[data-theme="dark"] .song-card-action.is-delete:hover {
    color: var(--muted);
    font-weight: 500;
 }
+/* Half-step chips (♮ ♯ ♭) — shown only while the query is a Nashville NUMBER, so a touch
+   user can raise/lower the degree without hunting for `#`/`b` on the symbol keyboard.
+   Laid out as a compact segmented control, matching the ribbon's accidental picker. */
+.chord-popover-accidentals {
+   display: flex;
+   justify-content: center;
+   gap: 4px;
+   margin-top: 8px;
+}
+.chord-popover-accidentals[hidden] {
+   display: none;
+}
+.chord-popover-acc {
+   width: 30px;
+   height: 26px;
+   padding: 0;
+   border: 1px solid var(--line);
+   border-radius: var(--radius-sm);
+   background: var(--surface);
+   color: var(--ink);
+   font:
+      700 15px/1 Inter,
+      ui-sans-serif,
+      sans-serif;
+   cursor: pointer;
+   transition:
+      background 0.12s,
+      border-color 0.12s,
+      color 0.12s;
+}
+.chord-popover-acc:hover {
+   border-color: var(--green);
+}
+.chord-popover-acc.is-active {
+   border-color: var(--green);
+   background: var(--green);
+   color: #fff;
+}
 .chord-popover-list {
    list-style: none;
    margin: 8px 0 0;

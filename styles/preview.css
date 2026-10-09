@@ -228,6 +228,56 @@
    bottom: auto;
    transform: translate(-50%, -100%);
 }
+/*
+  ---- Accidental "coret" (slash-through) ------------------------------------
+  A half-step alteration is drawn as the degree CROSSED by a slash — the notation
+  Indonesian not-angka books use — instead of a ♯/♭ sign in front of it:
+    • sharp / naik ½ → the slash leans UP to the right    (/)
+    • flat  / turun ½ → the slash leans DOWN to the right (\)
+  Two wrappers share the one mark, so a bare degree keeps the markup it always had:
+    • .nashville-altered            — a degree with an accidental, no octave dot
+    • .nashville-octave.nashville-alt-* — a degree that also carries the dot
+  The mark is ABSOLUTELY positioned, so it adds no width to the chord token: the printed
+  score's bar wrapping and pagination (measured with getBoundingClientRect in pdf.js) can
+  never shift because of it. The digit's optical centre sits exactly at 50% of the wrapper's
+  line box (Inter's cap height equals ascent − descent), so one `top: 50%` centres the slash
+  in every context: pill, sub-beat, ribbon palette and paper.
+*/
+.nashville-altered {
+   position: relative;
+   display: inline-block;
+}
+.nashville-slash {
+   position: absolute;
+   z-index: 2;
+   top: 50%;
+   left: 50%;
+   /* Slightly longer than the digit's advance width, so the mark clearly overshoots the
+      number (a player must never wonder whether the slash is a decoration). */
+   width: 1.15em;
+   /* As thick as the score's own 900-weight stems (and never a hairline on small sub-beat
+      fonts or phone screens), so the coret reads as decisive without smearing the digit. */
+   height: max(0.1em, 1.8px);
+   border-radius: 999px;
+   background: currentColor;
+   transform: translate(-50%, -50%) rotate(-58deg); /* sharp: rises to the right */
+   -webkit-print-color-adjust: exact;
+   print-color-adjust: exact;
+   pointer-events: none;
+}
+/* Flat: the mirror image — the slash falls to the right (\). */
+.nashville-alt-flat .nashville-slash {
+   transform: translate(-50%, -50%) rotate(58deg);
+}
+/*
+  The stored ♯/♭ glyph stays in the DOM (so the value is still selectable, searchable and
+  read by screen readers via the wrapper's aria-label) but is NOT drawn: on every surface
+  the coret carries the meaning, which keeps the dropdown, the palette and the paper
+  showing the same thing. To also print/see the glyph, change this to `inline-block`.
+*/
+.nashville-sign {
+   display: none;
+}
 /* --- Live editor / preview only: neat, precisely-centered octave dots ---------
    Print & PDF keep the original bold "●" glyph rendering above (frozen baseline).
    On screen we (1) shrink-wrap the octave box to the degree so the dot centers

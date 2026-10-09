@@ -53,7 +53,7 @@ import {
 } from "../src/cloud.js";
 import { friendlyName } from "../src/identity.js";
 import { parseYoutubeUrl, canonicalUrl, thumbnailUrl, youtubeFields, parseStartTime, formatStartTime, youtubeChipMeta } from "../src/youtube.js";
-import { beatHTML, chordProSectionHTML } from "../src/render.js";
+import { beatHTML, chordProSectionHTML, chordLabel } from "../src/render.js";
 import { isValidChordSpelling, withTypedSpelling } from "../src/chordEditor.js";
 import {
    PDF_BAR_NUMBERS,
@@ -77,7 +77,7 @@ import {
    chordProMeta,
    chordProFromFile,
 } from "../src/chordPro.js";
-import { buildPlaybackQueue, entryDuration, fermataPulseTimes } from "../src/playback.js";
+import { buildPlaybackQueue, entryDuration, fermataPulseTimes, chordToMidiNotes } from "../src/playback.js";
 
 test("transposeNote wraps around 12 notes and spells for the target key", () => {
    assert.equal(transposeNote("B", 1), "C");
@@ -686,12 +686,193 @@ test("suggestChords generates slash chords on demand after '/'", () => {
    assert.ok(out.every((value) => value.startsWith("G/")));
 });
 
-test("suggestChords offers Nashville octave variants for a bare degree", () => {
-   const out = suggestChords("1");
-   assert.equal(out[0], "1"); // base degree first
-   assert.ok(out.includes("1\u0307")); // octave-high 1̇
-   assert.ok(out.includes("1\u0323")); // octave-low 1̣
-   assert.ok(out.some((value) => value === "1°" || value === "1m")); // quality colours present
+test("suggestChords offers the curated family for a bare degree (no quality colours)", () => {
+   // The numeric dropdown is a notation writer's palette: the degree plus its two octaves —
+   // NOT the quality colours (`1m`, `1maj7`, `2sus2`, …), which used to fill the whole list and
+   // bury `#1` / `♭1` out of reach. The accidental is a FILTER (tested below): the crossed forms
+   // are never mixed into the plain list, they swap it in one chip tap.
+   assert.deepEqual(suggestChords("1"), ["1", "1\u0307", "1\u0323"]);
+   assert.deepEqual(suggestChords("4", { mode: "numbers" }), ["4", "4\u0307", "4\u0323"]);
+   // Neither a quality colour nor a crossed form may appear while no accidental is chosen.
+   assert.ok(!suggestChords("1").some((value) => /[^\u0307\u03230-9]/u.test(value)));
+});
+
+test("suggestChords gives the sharp/flat family once the accidental is typed", () => {
+   assert.deepEqual(suggestChords("#1"), ["#1", "#1\u0307", "#1\u0323"]);
+   assert.deepEqual(suggestChords("♭1"), ["♭1", "♭1\u0307", "♭1\u0323"]);
+   // `b` is only the TYPABLE alias for ♭; it canonicalises to the stored symbol.
+   assert.deepEqual(suggestChords("b1"), ["♭1", "♭1\u0307", "♭1\u0323"]);
+   assert.deepEqual(suggestChords("b3", { mode: "numbers" }), ["♭3", "♭3\u0307", "♭3\u0323"]);
+   // Re-typing a placed note keeps its exact form first, so Enter commits what you see.
+   assert.equal(suggestChords("#1\u0307")[0], "#1\u0307");
+   assert.equal(suggestChords("1\u0323")[0], "1\u0323");
+});
+
+test("suggestChords: a bare accidental lists every degree without quality colours", () => {
+   const out = suggestChords("#", { mode: "numbers" });
+   assert.deepEqual(out.slice(0, 6), ["#1", "#1\u0307", "#1\u0323", "#2", "#2\u0307", "#2\u0323"]);
+   assert.ok(!out.some((value) => /[^\u0307\u0323#♭0-9]/u.test(value)));
+   // Chord Chart keeps its sharp-CHORD browsing for a bare "#" (the numbers arm is Numbers-mode only).
+   assert.ok(suggestChords("#").every((value) => /^[A-G]/.test(value)));
+});
+
+test("suggestChords: quality colours stay reachable by typing them", () => {
+   assert.ok(!suggestChords("1", { mode: "numbers" }).includes("1m"));
+   assert.equal(suggestChords("1m", { mode: "numbers" })[0], "1m");
+   assert.equal(suggestChords("1aug", { mode: "numbers" })[0], "1+");
+   assert.equal(suggestChords("1m7b5", { mode: "numbers" })[0], "1ø7");
+});
+
+test("isNashvilleChord accepts the whole shared token grammar (and nothing more)", () => {
+   for (const value of ["1", "0", "#1", "♯1", "♭7", "1\u0307", "♭3\u0307", "#5\u0323", "1m", "1maj7", "5", "1ø7"]) {
+      assert.ok(isNashvilleChord(value), `${value} should be a Nashville token`);
+   }
+   // A lowercase letter chord is NOT swallowed by the number grammar: the bank stores a flat
+   // seventh as `♭7`, so a `b7` value stays the chord the user typed.
+   assert.equal(isNashvilleChord("b7"), false);
+   assert.equal(isNashvilleChord("Am7"), false);
+   assert.equal(isNashvilleChord("N.C."), false);
+});
+
+test("foldNashvilleKey drops combining octave dots for matching", () => {
+   assert.equal(foldNashvilleKey("1\u0307"), "1");
+   assert.equal(foldNashvilleKey("1\u0323"), "1");
+   // The ♭ ↔ `b` fold is what makes the alias a QUERY convenience only.
+   assert.equal(foldNashvilleKey("♭1"), foldNashvilleKey("b1"));
+});
+
+// ---- Half-step alterations: playback and the score -------------------------
+// A raised degree must SOUND a semitone higher and a lowered one a semitone lower, in the
+// register that degree sits in. The lowered tonic used to be broken: normalising the pitch
+// class before the octave made `♭1` in C sound B4 (an octave + a semitone ABOVE the tonic)
+// instead of B3, and `♭1̇` drifted a full octave away.
+test("chordToMidiNotes moves an accidentalled degree exactly one semitone", () => {
+   const KEY = "C";
+   for (const degree of [1, 2, 3, 4, 5, 6, 7]) {
+      const plain = chordToMidiNotes(String(degree), KEY)[0];
+      const high = chordToMidiNotes(`${degree}\u0307`, KEY)[0];
+      const low = chordToMidiNotes(`${degree}\u0323`, KEY)[0];
+      assert.equal(chordToMidiNotes(`#${degree}`, KEY)[0], plain + 1, `#${degree} rises ½`);
+      assert.equal(chordToMidiNotes(`\u266d${degree}`, KEY)[0], plain - 1, `\u266d${degree} falls ½`);
+      // The same rule with each octave marker on top of the accidental.
+      assert.equal(chordToMidiNotes(`#${degree}\u0307`, KEY)[0], high + 1, `#${degree}\u0307`);
+      assert.equal(chordToMidiNotes(`\u266d${degree}\u0307`, KEY)[0], high - 1, `\u266d${degree}\u0307`);
+      assert.equal(chordToMidiNotes(`#${degree}\u0323`, KEY)[0], low + 1, `#${degree}\u0323`);
+      assert.equal(chordToMidiNotes(`\u266d${degree}\u0323`, KEY)[0], low - 1, `\u266d${degree}\u0323`);
+   }
+});
+
+test("chordToMidiNotes keeps the documented registers for accidentals (key of C)", () => {
+   assert.deepEqual(chordToMidiNotes("1", "C"), [60]);
+   assert.deepEqual(chordToMidiNotes("#1", "C"), [61]); // C♯4
+   assert.deepEqual(chordToMidiNotes("\u266d1", "C"), [59]); // B3 — BELOW the tonic, not B4
+   assert.deepEqual(chordToMidiNotes("#1\u0307", "C"), [73]);
+   assert.deepEqual(chordToMidiNotes("\u266d1\u0307", "C"), [71]);
+   assert.deepEqual(chordToMidiNotes("\u266d1\u0323", "C"), [47]);
+   // Pre-existing contracts that must not move — the regression net for this fix.
+   assert.deepEqual(chordToMidiNotes("\u266d3\u0307", "C"), [75]);
+   assert.deepEqual(chordToMidiNotes("#5\u0323", "C"), [56]);
+   assert.deepEqual(chordToMidiNotes("\u266d7", "C"), [70]);
+   // "0" is a REST and a typed `b` is only an alias: neither is ever stored, neither sounds.
+   assert.deepEqual(chordToMidiNotes("0", "C"), []);
+   assert.deepEqual(chordToMidiNotes("b1", "C"), []);
+});
+
+test("every suggested number is one playback can sound (no silent tokens)", () => {
+   for (const query of ["1", "#1", "b1", "#", "\u266d3", "7"]) {
+      for (const value of suggestChords(query, { mode: "numbers" })) {
+         assert.ok(isNashvilleChord(value), `${value} (from "${query}") is not a Nashville token`);
+         assert.ok(chordToMidiNotes(value, "C").length > 0, `${value} (from "${query}") would be silent`);
+      }
+   }
+});
+
+test("chordLabel draws the coret slash for a half-step alteration", () => {
+   // Sharp → the slash rises to the right; flat → it falls to the right. The stored ♯/♭ glyph
+   // stays in the DOM (hidden in the score) so the value is still selectable and announced.
+   const sharp = chordLabel("#1");
+   assert.match(sharp, /nashville-altered nashville-alt-sharp/);
+   assert.match(sharp, /class="nashville-slash"/);
+   assert.match(sharp, /aria-label="♯1"/);
+   assert.match(sharp, /class="nashville-sign"/);
+   const flat = chordLabel("\u266d1");
+   assert.match(flat, /nashville-altered nashville-alt-flat/);
+   assert.match(flat, /aria-label="♭1"/);
+   // With an octave dot the wrapper every existing dot rule targets is kept, plus the mark.
+   const high = chordLabel("#1\u0307");
+   assert.match(high, /nashville-octave nashville-octave-high nashville-alt-sharp/);
+   assert.match(high, /nashville-octave-dot/);
+   assert.match(high, /nashville-slash/);
+});
+
+test("chordLabel output for plain values is byte-identical to before the feature", () => {
+   assert.equal(chordLabel("1"), '<span class="chord-token">1</span>');
+   assert.equal(chordLabel("1m7"), '<span class="chord-token">1m7</span>');
+   assert.equal(chordLabel("Am7"), '<span class="chord-token">Am7</span>');
+   assert.equal(chordLabel("G/B"), '<span class="chord-token">G/B</span>');
+   assert.equal(
+      chordLabel("1\u0307"),
+      '<span class="chord-token"><span class="nashville-octave nashville-octave-high"><span class="nashville-degree">1</span><span class="nashville-octave-dot" aria-hidden="true">●</span></span></span>',
+   );
+});
+
+test("beatHTML marks an accidentalled beat for the coret", () => {
+   const section = {
+      id: "sec-altered",
+      name: "Intro",
+      bars: 1,
+      beats: { "0-0": { chord: "#1\u0307", duration: null }, "0-1": { chord: "\u266d3", duration: null } },
+      lyricBeats: {},
+      chordAboveBeats: {},
+      chordAboveBars: {},
+   };
+   const before = getState();
+   setState({ ...before, editorMode: "numbers", lyricsEnabled: false, sections: [section], activeId: section.id });
+   try {
+      const high = beatHTML(section, 0, 0);
+      assert.match(high, /nashville-alt-sharp/);
+      assert.match(high, /nashville-slash/);
+      assert.match(high, /nashville-octave-high/);
+      const flat = beatHTML(section, 0, 1);
+      assert.match(flat, /nashville-alt-flat/);
+      assert.match(flat, /nashville-slash/);
+   } finally {
+      setState(before);
+   }
+});
+
+test("the coret slash cannot change the printed layout (score geometry is measured)", () => {
+   const css = readProjectFile("styles/preview.css");
+   const block = (selector) => {
+      const start = css.indexOf(`${selector} {`);
+      return start === -1 ? "" : css.slice(start, css.indexOf("\n}", start) + 2);
+   };
+   const slash = block(".nashville-slash");
+   assert.ok(slash, "the .nashville-slash rule is missing");
+   assert.ok(slash.includes("position: absolute"), "the mark must stay out of flow");
+   // pdf.js decides which printed barlines to drop (markMidRowBars) and how the paper
+   // paginates by MEASURING the rendered bars, so the mark may add no width to the token.
+   assert.ok(!/padding|letter-spacing|min-width|margin/.test(slash), `the slash widens the token: ${slash}`);
+   assert.ok(slash.includes("print-color-adjust: exact"), "the stroke must survive printing");
+   const wrapper = block(".nashville-altered");
+   assert.ok(!/width|padding|letter-spacing/.test(wrapper), `the wrapper widens the token: ${wrapper}`);
+   // Print geometry that other features are pinned to stays untouched.
+   assert.ok(css.includes("--print-notation-h: 11.5mm;"));
+   const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+   assert.equal((stripped.match(/var\(--print-notation-h\) \+ 1px/g) || []).length, 2);
+});
+
+test("the popover offers the half-step chips to number queries only", () => {
+   const editor = readProjectFile("src/chordEditor.js");
+   assert.ok(editor.includes("chord-popover-accidentals"), "the chip row is missing");
+   assert.ok(editor.includes('data-accidental="${value}"'), "the chips carry no value");
+   assert.ok(editor.includes('{ value: "", label: "♮"'), "the natural chip is missing");
+   assert.ok(editor.includes('{ value: "#", label: "♯"'), "the sharp chip is missing");
+   assert.ok(editor.includes('{ value: "♭", label: "♭"'), "the flat chip is missing");
+   // The chips appear for a NUMBER query (and a bare accidental in Numbers mode) — never for a
+   // Chord Chart letter query, whose popover must stay exactly as it was.
+   assert.ok(editor.includes('/^[♯#♭b]?[0-7]/u.test(raw)'), "the number-query gate is missing");
+   assert.ok(editor.includes('ctx?.mode === "numbers" && /^[♯#♭b]?$/u.test(raw)'), "the numbers-mode gate is missing");
 });
 
 test("suggestChords keeps Nashville accidental in results", () => {
@@ -752,6 +933,8 @@ test("suggestChords in chords mode surfaces Nashville octave variants for numeri
    assert.equal(out[0], "1"); // base degree first
    assert.ok(out.includes("1\u0307")); // octave-high 1̇
    assert.ok(out.includes("1\u0323")); // octave-low 1̣
+   // Chord Chart gets the same curated family as Numbers mode.
+   assert.deepEqual(out, ["1", "1\u0307", "1\u0323"]);
 });
 
 test("suggestChords in chords mode keeps letter chords for letter queries", () => {

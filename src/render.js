@@ -22,6 +22,10 @@ import {
    sectionHasFermata,
    editorModeMeta,
    normalizeEditorMode,
+   NASHVILLE_TOKEN_RE,
+   NASHVILLE_OCTAVE_UP,
+   NASHVILLE_OCTAVE_DOWN,
+   nashvilleAccidentalOf,
 } from "./notation.js?v=__BUILD__";
 import { parseChordPro } from "./chordPro.js?v=__BUILD__";
 import { youtubeChipMeta } from "./youtube.js?v=__BUILD__";
@@ -62,14 +66,36 @@ function nashvilleName(quality) {
 export function nashvilleNumberLabel(number) {
    const match = String(number).match(/^([1-7])([̣̇])$/u);
    if (!match) return number;
-   const position = match[2] === "̣" ? "low" : "high";
-   return `<span class="nashville-octave nashville-octave-${position}"><span class="nashville-degree">${match[1]}</span><span class="nashville-octave-dot" aria-hidden="true">●</span></span>`;
+   return nashvilleNoteHTML("", match[1], match[2] === NASHVILLE_OCTAVE_DOWN ? "low" : "high");
+}
+// The accidental glyph + modifier class for a Nashville number. The glyph stays in the DOM
+// (inside `.nashville-sign`, hidden in the score — see styles/preview.css) so the value is
+// still readable to screen readers, text selection and the tests, while on paper the player
+// reads the "coret": a slash leaning up to the right for a raise (♯) and down to the right
+// for a lower (♭). Both are drawn by CSS from `.nashville-slash`, which adds NO width to the
+// token, so printed bar wrapping/pagination (measured in pdf.js) can never shift.
+const ACCIDENTAL_CLASS = { "#": "nashville-alt-sharp", "♭": "nashville-alt-flat" };
+const ACCIDENTAL_GLYPH = { "#": "♯", "♭": "♭" };
+function nashvilleNoteHTML(accidental, degree, octave) {
+   const dot = octave === "high" ? NASHVILLE_OCTAVE_UP : octave === "low" ? NASHVILLE_OCTAVE_DOWN : "";
+   // A bare degree prints as plain text, exactly as it did before this feature.
+   if (!accidental && !dot) return degree;
+   const slash = accidental
+      ? '<span class="nashville-slash" aria-hidden="true"></span>' +
+        `<span class="nashville-sign" aria-hidden="true">${ACCIDENTAL_GLYPH[accidental]}</span>`
+      : "";
+   const octaveDot = dot ? '<span class="nashville-octave-dot" aria-hidden="true">●</span>' : "";
+   const wrapper = octave ? `nashville-octave nashville-octave-${octave}` : "nashville-altered";
+   const alt = accidental ? ` ${ACCIDENTAL_CLASS[accidental]}` : "";
+   const label = accidental ? ` role="img" aria-label="${ACCIDENTAL_GLYPH[accidental]}${degree}"` : "";
+   return `<span class="${wrapper}${alt}"${label}><span class="nashville-degree">${degree}</span>${slash}${octaveDot}</span>`;
 }
 export function chordLabel(chord) {
-   const match = String(chord).match(/^([♭#]?)([1-7][̣̇])(.*)$/u);
-   if (match) {
-      const accidental = match[1] === "♭" ? '<span class="chord-accidental chord-flat">♭</span>' : escapeHTML(match[1]);
-      return `<span class="chord-token">${accidental}${nashvilleNumberLabel(match[2])}${escapeHTML(match[3])}</span>`;
+   const nashville = String(chord).match(NASHVILLE_TOKEN_RE);
+   if (nashville) {
+      const accidental = nashvilleAccidentalOf(nashville[1]);
+      const octave = nashville[3] === NASHVILLE_OCTAVE_UP ? "high" : nashville[3] === NASHVILLE_OCTAVE_DOWN ? "low" : "";
+      return `<span class="chord-token">${nashvilleNoteHTML(accidental, nashville[2], octave)}${escapeHTML(nashville[4])}</span>`;
    }
    const label = escapeHTML(chord)
       .replaceAll("♭", '<span class="chord-accidental chord-flat">♭</span>')

@@ -11,7 +11,18 @@
 //  • One-shot playback (no loop), stop at end.
 //  • Supports both Synthesis (instant) and SoundFont (real samples) modes.
 
-import { notePitches, isNashvilleChord, beatValue, chordAboveValue, fermataValue, durationMeta } from "./notation.js?v=__BUILD__";
+import {
+   notePitches,
+   isNashvilleChord,
+   NASHVILLE_TOKEN_RE,
+   NASHVILLE_OCTAVE_UP,
+   NASHVILLE_OCTAVE_DOWN,
+   nashvilleAccidentalOf,
+   beatValue,
+   chordAboveValue,
+   fermataValue,
+   durationMeta,
+} from "./notation.js?v=__BUILD__";
 import { normalizeQuality } from "./chordBank.js?v=__BUILD__";
 import { getState } from "./store.js?v=__BUILD__";
 import { initAudioContext, closeAudioContext, playSoundFontChord, checkSoundFontSize, downloadSoundFont, getDownloadState, askForDownload, loadSamplesFromCache } from "./synth.js?v=__BUILD__";
@@ -98,19 +109,24 @@ function parseLetterChord(chord) {
 }
 
 /**
- * Parse a Nashville number (e.g. "1", "2m", "1̇", "2̣") into
+ * Parse a Nashville number (e.g. "1", "2m", "1̇", "2̣", "#1̇", "♭7", "♯4") into
  * { degree: 0-6, accidental: -1|0|1, octaveShift: -1|0|1 } or null.
+ * Uses the SHARED token regex from notation.js, so anything the renderer draws (or the
+ * suggestion bank offers) is something this parser understands — no silent notes.
  */
 function parseNashville(chord) {
-   const match = chord.match(/^([♭#]?)([0-7])([̣̇]?)(.*)$/u);
+   const match = String(chord).match(NASHVILLE_TOKEN_RE);
    if (!match) return null;
 
-   const accidental = match[1] === "♭" ? -1 : match[1] === "#" ? 1 : 0;
+   const sign = nashvilleAccidentalOf(match[1]);
+   const accidental = sign === "#" ? 1 : sign === "♭" ? -1 : 0;
    const degree = Number(match[2]) - 1;
+   // "0" is a REST in the number system, not a pitch: recognised as a Nashville token
+   // (so it is never mistaken for a chord) but silent here.
    if (degree < 0 || degree > 6) return null;
 
    const dot = match[3];
-   const octaveShift = dot === "\u0307" ? 1 : dot === "\u0323" ? -1 : 0;
+   const octaveShift = dot === NASHVILLE_OCTAVE_UP ? 1 : dot === NASHVILLE_OCTAVE_DOWN ? -1 : 0;
 
    return { degree, accidental, octaveShift };
 }
@@ -134,9 +150,14 @@ export function chordToMidiNotes(chord, songKey) {
       if (!parsed) return [];
 
       const keyPitch = notePitches[songKey] ?? 0;
-      const semitoneOffset = NASHVILLE_SEMITONES[parsed.degree] + parsed.accidental;
-      const pitchClass = (keyPitch + semitoneOffset + 12) % 12;
-      const midiNote = MIDI_C0 + pitchClass + (BASE_OCTAVE + parsed.octaveShift) * 12;
+      // The accidental is applied to the FINAL midi note — AFTER the octave is placed.
+      // Normalising the pitch class first (`(key + degree + accidental + 12) % 12`) wrapped a
+      // LOWERED tonic back up an octave, so `♭1` in C sounded B4 (an octave + a semitone ABOVE
+      // the tonic) instead of B3, and `♭1̇` drifted a full octave away. Sharp/low degrees and
+      // every existing chart are unaffected (♭7 → B♭4, ♭3̇ → E♭5, #5̣ → G♯3 as before).
+      const degreePitch = (keyPitch + NASHVILLE_SEMITONES[parsed.degree]) % 12;
+      const midiNote =
+         MIDI_C0 + degreePitch + (BASE_OCTAVE + parsed.octaveShift) * 12 + parsed.accidental;
 
       return [midiNote];
    }
