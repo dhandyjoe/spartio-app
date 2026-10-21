@@ -56,3 +56,23 @@
    src: url("../assets/fonts/noto-serif-jp-accidentals.woff2?v=__BUILD__") format("woff2");
    unicode-range: U+266D-266F;
 }
+
+/* Sora — geometric display face for headings & primary actions.
+ *
+ * Adopted in the auth refresh as the DISPLAY voice of the app (aside headline,
+ * card titles, primary buttons) while Inter remains the BODY voice. Registered
+ * as its own family — "Sora" — so it is opt-in per selector and never silently
+ * changes existing text. Weights used: 600–700 for headings, 600 for buttons.
+ *
+ * Source: Google Fonts / @fontsource-variable/sora — Sora by The Sora Project
+ * Authors (sora-xor), licensed under the SIL Open Font License 1.1
+ * (see assets/fonts/Sora-LICENSE.txt).
+ */
+@font-face {
+   font-family: "Sora";
+   font-style: normal;
+   font-weight: 100 800;
+   font-display: swap;
+   src: url("../assets/fonts/sora-latin-wght-normal.woff2?v=__BUILD__") format("woff2");
+   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}

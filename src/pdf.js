@@ -31,6 +31,14 @@ let printClassAddedForJob = false;
 // keep their left barline so every row opens with a clean divider.
 const MID_BAR_CLASS = "pdf-mid-bar";
 
+// The two EDGES of a printed row, tagged explicitly: the bar that starts the row
+// and the bar that ends it. A `1/4` score is ONE growing bar, so it draws its
+// bar line at those two edges only (no line between the beats) — the CSS needs to
+// know exactly where a row begins and ends, which only the measured layout can
+// tell (the bars wrap freely at the paper width).
+const ROW_START_CLASS = "pdf-row-start";
+const ROW_END_CLASS = "pdf-row-end";
+
 // Paper width (mm). Paper is locked to A4 (see PDF_PAPER in src/pdfOptions.js).
 const PDF_PAPER_MM = { a4: 210 };
 // Export-only printable-width override (SHIPPED behaviour — see the "wider chord
@@ -104,22 +112,41 @@ export function markMidRowBars({ forExport = false } = {}) {
       // previous behaviour (freeze at the grid's rendered width) exactly.
       grid.style.width = gridWidth !== cardWidth ? `${gridWidth}px` : `${grid.clientWidth}px`;
 
-      const gridLeft = grid.getBoundingClientRect().left;
-      grid.querySelectorAll(".bar").forEach((bar) => {
-         const left = bar.getBoundingClientRect().left;
-         // row start = left edge glued to the grid's edge.
-         if (Math.abs(left - gridLeft) <= 1) {
-            bar.classList.remove(MID_BAR_CLASS);
-         } else {
-            bar.classList.add(MID_BAR_CLASS);
-         }
+      // Measure once: the row edges are read from the same boxes.
+      const measured = [...grid.querySelectorAll(".bar")].map((bar) => ({
+         bar,
+         rect: bar.getBoundingClientRect(),
+      }));
+      // Group the bars into printed rows: the bars of one row share a top offset.
+      const rows = new Map();
+      measured.forEach(({ bar, rect }) => {
+         const key = Math.round(rect.top);
+         const row = rows.get(key) || [];
+         row.push({ bar, rect });
+         rows.set(key, row);
+      });
+      rows.forEach((row) => {
+         // The row starts at its LEFT-most bar and ends at its RIGHT-most one.
+         // Measured against the row itself — never against the grid's padding: the
+         // PDF dialog renders the page through a CSS transform, so the grid's
+         // padding (unscaled) and the bar boxes (scaled) are not comparable.
+         const first = row.reduce((a, b) => (b.rect.left < a.rect.left ? b : a));
+         const last = row.reduce((a, b) => (b.rect.right > a.rect.right ? b : a));
+         row.forEach(({ bar }) => {
+            const rowStart = bar === first.bar;
+            bar.classList.toggle(MID_BAR_CLASS, !rowStart);
+            bar.classList.toggle(ROW_START_CLASS, rowStart);
+         });
+         last.bar.classList.add(ROW_END_CLASS);
       });
    });
 }
 
-/** Remove MID tags AND restore widths pinned by markMidRowBars(). */
+/** Remove the row tags AND restore widths pinned by markMidRowBars(). */
 export function clearMidRowBars() {
-   document.querySelectorAll(`.${MID_BAR_CLASS}`).forEach((b) => b.classList.remove(MID_BAR_CLASS));
+   document
+      .querySelectorAll(`.${MID_BAR_CLASS}, .${ROW_START_CLASS}, .${ROW_END_CLASS}`)
+      .forEach((b) => b.classList.remove(MID_BAR_CLASS, ROW_START_CLASS, ROW_END_CLASS));
    pinnedWidths.forEach((originalWidth, el) => {
       el.style.width = originalWidth;
    });

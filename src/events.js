@@ -43,6 +43,8 @@ import {
    syllabifyLyrics,
    MAX_SECTIONS,
    normalizeEditorMode,
+   isSingleBeatMeter,
+   barUnitWord,
 } from "./notation.js?v=__BUILD__";
 import {
    carryChordProSections,
@@ -1109,7 +1111,7 @@ function bindPreview() {
          syncEditor();
          renderPreview();
          save();
-         toast(`1 bar added to ${section.name}`);
+         toast(`1 ${scoreUnit().unit} added to ${section.name}`);
       }),
    );
    document.querySelectorAll(".delete-bar").forEach((button) =>
@@ -1120,20 +1122,21 @@ function bindPreview() {
          const section = findSection(button.dataset.section),
             bar = Number(button.dataset.bar);
          if (!section) return;
+         const { unit, Unit } = scoreUnit();
          if (section.bars <= 1) {
-            toast("At least one bar must remain");
+            toast(`At least one ${unit} must remain`);
             return;
          }
          if (
             barHasContent(section, bar) &&
-            !window.confirm(`Bar ${bar + 1} contains chords or lyrics. Delete this bar?`)
+            !window.confirm(`${Unit} ${bar + 1} contains chords or lyrics. Delete this ${unit}?`)
          )
             return;
          removeBar(section, bar);
          state.activeId = section.id;
          renderPreview();
          save();
-         toast(`Bar ${bar + 1} deleted`);
+         toast(`${Unit} ${bar + 1} deleted`);
       }),
    );
    // Long-press on mobile must not trigger selection/callout or accidental hover reflow around the bar.
@@ -1513,7 +1516,7 @@ function copyBar(sectionId, bar) {
    const payload = extractBar(section, bar);
    setClipboard("bar", payload, { sourceBar: bar });
    updatePasteButtons();
-   toast(`Bar ${bar + 1} copied`);
+   toast(`${scoreUnit().Unit} ${bar + 1} copied`);
 }
 
 // Paste the clipboard's bar content over the target bar (overwrites it).
@@ -1525,7 +1528,7 @@ function pasteBar(sectionId, bar) {
       return;
    }
    if (!clip || clip.kind !== "bar") {
-      toast("No bar copied");
+      toast(`No ${scoreUnit().unit} copied`);
       return;
    }
    const section = findSection(sectionId);
@@ -1534,7 +1537,7 @@ function pasteBar(sectionId, bar) {
    getState().activeId = section.id;
    renderPreview();
    save();
-   toast(`Pasted into bar ${bar + 1}`);
+   toast(`Pasted into ${scoreUnit().unit} ${bar + 1}`);
 }
 
 // ---- Multi-bar selection (transient UI state; NOT part of undo history) ----
@@ -1555,12 +1558,21 @@ function isSelectionActiveFor(sectionId) {
    return !!(barSelection && barSelection.active && barSelection.sectionId === sectionId);
 }
 
-// Enter selection mode for a section. `bars` is the SET of selected bar indices
-// (a block can become non-contiguous by toggling bars off).
+// ---- Score unit ("bar" vs "beat") ------------------------------------------
+// In a `1/4` meter the bar IS a beat: the score is one growing bar with no bar
+// line, so every user-facing "bar" word becomes "beat". The word comes from
+// notation.js so the renderer (src/render.js) and these handlers can never
+// disagree about what the unit of the score is.
+function scoreUnit() {
+   const unit = barUnitWord(getState().meter);
+   return { unit, Unit: unit === "beat" ? "Beat" : "Bar" };
+}
+
+// Enter selection mode for a section. The selection is a SET of bar indices (a block can become non-contiguous once bars are toggled off).
 function beginBarSelection(sectionId) {
    barSelection = { active: true, sectionId, anchor: null, bars: new Set() };
    renderPreview();
-   toast("Copy bars: tap bars to build the block (tap a selected bar to remove it)");
+   toast(`Copy ${scoreUnit().unit}s: tap ${scoreUnit().unit}s to build the block (tap a selected ${scoreUnit().unit} to remove it)`);
 }
 
 function cancelBarSelection() {
@@ -1604,7 +1616,7 @@ function handleBarSelectionClick(sectionId, bar) {
 // Copy the currently-selected bar range into the clipboard as a "bars" payload.
 function copySelectedBars() {
    if (!barSelection || barSelection.bars.size === 0) {
-      toast("Select at least one bar first");
+      toast(`Select at least one ${scoreUnit().unit} first`);
       return;
    }
    const section = findSection(barSelection.sectionId);
@@ -1613,7 +1625,7 @@ function copySelectedBars() {
    setClipboard("bars", payload, { count: payload.count });
    cancelBarSelection();
    updatePasteButtons();
-   toast(`${payload.count} bar${payload.count === 1 ? "" : "s"} copied`);
+   toast(`${payload.count} ${scoreUnit().unit}${payload.count === 1 ? "" : "s"} copied`);
 }
 
 // Works across sections since the clipboard is global.
@@ -1622,20 +1634,20 @@ function copySelectedBars() {
 function pasteBars(sectionId, bar) {
    const clip = getClipboard();
    if (!clip || clip.kind !== "bars") {
-      toast("No bars copied");
+      toast(`No ${scoreUnit().unit}s copied`);
       return;
    }
    const section = findSection(sectionId);
    if (!section) return;
    const ok = overwriteBars(section, bar, clip.payload);
    if (!ok) {
-      toast("Not enough room — bar limit reached");
+      toast(`Not enough room — ${scoreUnit().unit} limit reached`);
       return;
    }
    getState().activeId = section.id;
    renderPreview();
    save();
-   toast(`${clip.payload.count} bar${clip.payload.count === 1 ? "" : "s"} pasted`);
+   toast(`${clip.payload.count} ${scoreUnit().unit}${clip.payload.count === 1 ? "" : "s"} pasted`);
 }
 
 // Enable/disable any paste affordances based on clipboard contents.
@@ -2318,8 +2330,11 @@ function bindControlListeners() {
       isPreviewOn: () => printLayoutPreview,
       // Bar numbers only make sense on the Chord Chart beat grid: Numbers mode prints
       // the numbers as the notation itself and ChordPro has no bars, so the option is
-      // taken out of the dialog there (the print CSS enforces the same rule).
-      barNumbersAvailable: () => normalizeEditorMode(getState().editorMode) === "chords",
+      // taken out of the dialog there (the print CSS enforces the same rule). A `1/4`
+      // score has no bars either — it is ONE growing bar without a bar line — so the
+      // stamp is taken out there too (the print CSS hides it in 1/4 as well).
+      barNumbersAvailable: () =>
+         normalizeEditorMode(getState().editorMode) === "chords" && !isSingleBeatMeter(getState().meter),
       // ChordPro mode prints its own card; every other mode keeps using the original
       // #previewCard (the default), so existing behaviour is untouched.
       getCard: () =>

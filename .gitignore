@@ -4,12 +4,20 @@
 # Test & tooling artifacts
 .playwright-mcp/
 
+# Installed agent skills (third-party; reinstall via the `skills` CLI.
+# skills-lock.json stays tracked so the pinned versions are recorded).
+.agents/skills/
+
+# Design-skill scratch (screenshots + reports; local only)
+.taste-skill/
+
 # Deploy staging (produced by .github/workflows/deploy.yml)
 _site/
 
 # Screenshot / debug artifacts (never commit these)
 *.png
 !assets/**/*.png
+*.jpg
 pdf-layout-check.png
 tests/Pasted*
 

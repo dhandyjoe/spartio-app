@@ -60,7 +60,7 @@ jobs:
               mkdir _site
               # Faithful copy of the repo, minus VCS/CI metadata, OS cruft and the
               # staging directory itself (rsync would otherwise copy it into itself).
-              rsync -a --exclude='.git' --exclude='.github' --exclude='.DS_Store' --exclude='.playwright-mcp' --exclude='_site' ./ _site/
+              rsync -a --exclude='.git' --exclude='.github' --exclude='.DS_Store' --exclude='.playwright-mcp' --exclude='.agents' --exclude='.taste-skill' --exclude='_site' ./ _site/
               # One token, one pass: every __BUILD__ becomes this build's id.
               FILES="$(grep -rl '__BUILD__' _site || true)"
               if [ -z "$FILES" ]; then

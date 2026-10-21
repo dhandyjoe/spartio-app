@@ -14,6 +14,13 @@
    --radius-sm: 9px;
    --radius-md: 14px;
    --radius-lg: 22px;
+   /* LOBBY — shared accents for the always-dark cloud gallery (the dark theme
+      itself lives on .cloud-gallery / .cloud-album further down). */
+   --spark: #b8e85c; /* lime — accent only, never a large surface */
+   --spark-ink: #0b140e; /* text sitting ON a spark/lime fill */
+   --lobby-glow: rgba(184, 232, 92, 0.14);
+   --lobby-shade: rgba(4, 10, 6, 0.55);
+   --lobby-ease: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 /* ============================================================================
@@ -328,6 +335,18 @@ label,
 .button span[aria-hidden="true"] {
    margin-right: 5px;
    font-size: 14px;
+}
+/* Inline stroke glyphs inside labelled buttons — sized from the button's own
+   line box so emoji-size spans and SVG spans align the same way. */
+.button .btn-icon {
+   display: inline-grid;
+   place-items: center;
+   margin-right: 5px;
+}
+.button .btn-icon svg {
+   display: block;
+   width: 15px;
+   height: 15px;
 }
 .button:hover {
    transform: translateY(-1px);
@@ -1780,8 +1799,15 @@ html[data-theme="dark"] .confirm-dialog-icon {
    color: var(--green);
    background: color-mix(in srgb, var(--green) 24%, transparent);
 }
+/* Inline stroke glyphs replacing emoji in dialog heads. */
+.confirm-dialog-icon svg {
+   display: block;
+   width: 24px;
+   height: 24px;
+}
 .confirm-dialog-title {
    margin: 4px 0 0;
+   font-family: "Sora", "Inter", system-ui, sans-serif;
    font-size: 19px;
    font-weight: 700;
    letter-spacing: -0.01em;
@@ -2516,10 +2542,18 @@ html[data-theme="dark"] .confirm-dialog-icon {
    .site-footer,
    .pdf-options-modal,
    .toast,
+   .login-page,
    /* App-shell notices must never reach paper. The member read-only banner in
       particular was printing on the exported score, because the legacy print
       rule in styles.css only hides .topbar/.intro/.editor-card/.preview-footer. */
-   .album-banner {
+   .album-banner,
+   /* Home/album gallery overlays live in .cloud-modal shells; the browser prints
+      whatever is open, so they must be excluded like every other dialog. */
+   .cloud-modal,
+   .home-fab,
+   /* Generic confirm-style dialogs (join/invite/members/new song/new album…)
+      have no shell of their own — hide them like every other overlay. */
+   .confirm-dialog {
       display: none !important;
    }
    /* Multi-bar selection ("Copy bars") is EDITOR-ONLY chrome: the translucent
@@ -3418,178 +3452,8 @@ html[data-screen="home"] body {
    overflow: hidden;
 }
 
-/* ---- Login page (full-screen auth gate) ---- */
-.login-page {
-   position: fixed;
-   inset: 0;
-   z-index: 140;
-   display: grid;
-   grid-template-columns: 1.05fr 1fr;
-   background: var(--app-bg);
-   opacity: 0;
-   transition: opacity 0.3s ease;
-   /* Login-only green: deeper than the app's --green so white text on the panel
-      and the filled buttons read with more contrast, but NOT as dark as the
-      logo/brand gradient. Scoped to the login page (overrides the tokens locally)
-      so the rest of the app is untouched. */
-   --green: #1a6742;
-   --dark-green: #145536;
-}
-.login-page[hidden] {
-   display: none;
-}
-.login-page.is-open {
-   opacity: 1;
-}
-/* Left brand panel */
-.login-aside {
-   position: relative;
-   display: flex;
-   align-items: center;
-   justify-content: center;
-   padding: 48px;
-   color: #fff;
-   background: linear-gradient(155deg, var(--green), var(--dark-green));
-   overflow: hidden;
-}
-.login-aside::after {
-   content: "";
-   position: absolute;
-   inset: 0;
-   background:
-      radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.16), transparent 42%),
-      radial-gradient(circle at 82% 78%, rgba(255, 255, 255, 0.12), transparent 46%);
-   pointer-events: none;
-}
-.login-aside-inner {
-   position: relative;
-   max-width: 400px;
-}
-/* Reuse the My Songs brand lockup. The logo shows on its own — no tinted tile
-   behind it — so it reads as a clean mark on the green panel. */
-.login-aside-brand {
-   margin-bottom: 30px;
-}
-/* Logo shows bare on the green panel — no tinted tile / blur behind it. */
-.login-aside-brand .home-brand-icon {
-   width: 46px;
-   height: 46px;
-   border-radius: 0;
-   background: none;
-   -webkit-backdrop-filter: none;
-   backdrop-filter: none;
-}
-.login-aside-brand .home-brand-icon img {
-   width: 46px;
-   height: 46px;
-}
-.login-aside-brand .home-brand-text {
-   color: #fff;
-   font-size: 16px;
-}
-.login-aside-brand .home-brand-text small {
-   color: rgba(255, 255, 255, 0.78);
-}
-.login-brand-icon {
-   display: inline-grid;
-   place-items: center;
-   width: 60px;
-   height: 60px;
-   border-radius: 18px;
-   background: rgba(255, 255, 255, 0.16);
-   backdrop-filter: blur(4px);
-   margin-bottom: 22px;
-}
-.login-brand-icon img {
-   width: 34px;
-   height: 34px;
-}
-.login-aside-title {
-   margin: 0;
-   font-size: clamp(26px, 2.6vw, 33px);
-   font-weight: 800;
-   letter-spacing: -0.02em;
-   line-height: 1.16;
-}
-.login-aside-tag {
-   margin: 14px 0 30px;
-   font-size: 14.5px;
-   line-height: 1.5;
-   opacity: 0.88;
-}
-.login-aside-points {
-   list-style: none;
-   margin: 0;
-   padding: 0;
-   display: flex;
-   flex-direction: column;
-   gap: 14px;
-}
-.login-aside-points li {
-   display: flex;
-   align-items: center;
-   gap: 12px;
-   font-size: 14.5px;
-   font-weight: 500;
-   opacity: 0.95;
-}
-.login-aside-points li span {
-   display: grid;
-   place-items: center;
-   width: 30px;
-   height: 30px;
-   border-radius: 9px;
-   background: rgba(255, 255, 255, 0.16);
-   font-size: 15px;
-}
-/* Right form panel */
-.login-main {
-   display: grid;
-   place-items: center;
-   padding: 40px 28px;
-   overflow-y: auto;
-}
-.login-card {
-   width: min(392px, 100%);
-   display: flex;
-   flex-direction: column;
-   gap: 16px;
-}
-.login-card-head {
-   text-align: center;
-   display: flex;
-   flex-direction: column;
-   align-items: center;
-   gap: 6px;
-   margin-bottom: 4px;
-}
-/* Compact brand lockup at the top of the form. Only shows on narrow screens
-   where the green brand panel is hidden — on wide layouts the panel already
-   carries the brand, so we hide this to avoid repeating it. (Scoped under
-   .login-card so it outranks the shared .home-brand display rule.) */
-.login-card .login-card-brand {
-   display: none;
-   margin-bottom: 10px;
-}
-.login-card-brand .home-brand-icon {
-   width: 40px;
-   height: 40px;
-}
-.login-card-brand .home-brand-text {
-   font-size: 15px;
-}
-.login-card-title {
-   margin: 4px 0 0;
-   font-size: 24px;
-   font-weight: 800;
-   letter-spacing: -0.01em;
-   color: var(--ink);
-}
-.login-card-sub {
-   margin: 0;
-   font-size: 14px;
-   color: var(--muted);
-}
+/* Login page styles moved to styles/auth.css (auth visual refresh). The
+   .cloud-modal backdrop below is SHARED with My Songs/Albums — it stays. */
 
 /* Shared modal backdrop (login + gallery). */
 .cloud-modal {
@@ -3668,131 +3532,9 @@ html[data-screen="home"] body {
    max-width: 30ch;
 }
 
-/* ---- Login modal ---- */
-.cloud-login-icon {
-   width: 58px;
-   height: 58px;
-   display: grid;
-   place-items: center;
-   font-size: 30px;
-   color: #fff;
-   background: linear-gradient(140deg, var(--green), var(--dark-green));
-   border-radius: 18px;
-   box-shadow: 0 10px 24px rgba(35, 122, 80, 0.28);
-}
-.cloud-google-btn {
-   width: 100%;
-   min-height: 46px;
-   margin-top: 4px;
-   display: inline-flex;
-   align-items: center;
-   justify-content: center;
-   gap: 10px;
-   border: 1px solid var(--line);
-   border-radius: 12px;
-   background: var(--surface);
-   color: var(--ink);
-   font: 700 14px inherit;
-   cursor: pointer;
-   transition:
-      transform 0.16s ease,
-      box-shadow 0.16s ease,
-      background 0.16s ease,
-      border-color 0.16s ease;
-}
-.cloud-google-btn:hover {
-   transform: translateY(-1px);
-   border-color: #bfd7c6;
-   box-shadow: var(--shadow-sm);
-}
-.cloud-google-mark {
-   display: grid;
-   place-items: center;
-   width: 18px;
-   height: 18px;
-}
-.cloud-divider {
-   width: 100%;
-   display: flex;
-   align-items: center;
-   gap: 12px;
-   color: var(--muted);
-   font-size: 11px;
-   text-transform: uppercase;
-   letter-spacing: 0.08em;
-}
-.cloud-divider::before,
-.cloud-divider::after {
-   content: "";
-   flex: 1;
-   height: 1px;
-   background: var(--line);
-}
-.cloud-email-form {
-   width: 100%;
-   display: flex;
-   flex-direction: column;
-   gap: 12px;
-}
-.cloud-field {
-   display: flex;
-   flex-direction: column;
-   gap: 5px;
-   text-align: left;
-}
-.cloud-field span {
-   font-size: 12px;
-   font-weight: 700;
-   color: var(--muted);
-}
-.cloud-field input {
-   min-height: 42px;
-   padding: 9px 12px;
-   border: 1px solid var(--line);
-   border-radius: 10px;
-   background: var(--app-bg);
-   color: var(--ink);
-   font-size: 14px;
-   transition:
-      border-color 0.16s ease,
-      box-shadow 0.16s ease;
-}
-.cloud-field input:focus-visible {
-   outline: none;
-   border-color: var(--green);
-   box-shadow: 0 0 0 3px rgba(35, 122, 80, 0.16);
-}
-.cloud-auth-error {
-   margin: 0;
-   padding: 8px 10px;
-   font-size: 12.5px;
-   text-align: left;
-   color: #b42318;
-   background: rgba(180, 35, 24, 0.08);
-   border: 1px solid rgba(180, 35, 24, 0.22);
-   border-radius: 9px;
-}
-.cloud-auth-error[hidden] {
-   display: none;
-}
-.cloud-auth-actions {
-   display: flex;
-   gap: 10px;
-   margin-top: 2px;
-}
-.cloud-auth-actions .button {
-   flex: 1;
-   min-height: 44px;
-   justify-content: center;
-}
-/* The "Sign in" button is a filled green button on the login page. Force white
-   text in BOTH themes: the dark-theme `.button-primary{color:#08130d}` rule
-   (near-black, for the app's lighter green) would otherwise win by specificity
-   and leave near-black text on the login page's deep green — unreadable. */
-.cloud-auth-primary,
-html[data-theme="dark"] .cloud-auth-primary {
-   color: #fff;
-}
+/* Login-only form controls (cloud-google-btn, cloud-divider, cloud-field,
+   cloud-email-form, cloud-auth-error, cloud-auth-primary) moved to
+   styles/auth.css and re-scoped under .login-page. */
 
 /* ---- Account button (topbar) ---- */
 .account-button {
@@ -3855,9 +3597,11 @@ html[data-theme="dark"] .cloud-auth-primary {
    display: flex;
    align-items: center;
    gap: 10px;
-   padding: 8px 8px 10px;
+   padding: 10px 10px 12px;
    min-width: 0;
 }
+/* Initials avatar: a soft brand tint so the popover identity reads like the
+   card covers; photos fill the circle unchanged. */
 .account-popover-avatar {
    flex: 0 0 auto;
    width: 34px;
@@ -3865,10 +3609,11 @@ html[data-theme="dark"] .cloud-auth-primary {
    display: grid;
    place-items: center;
    border-radius: 50%;
-   background: var(--green);
-   color: #fff;
+   background: color-mix(in srgb, var(--green) 16%, var(--soft));
+   color: var(--dark-green);
+   font-family: "Sora", "Inter", system-ui, sans-serif;
    font-size: 15px;
-   font-weight: 700;
+   font-weight: 800;
    overflow: hidden;
 }
 .account-popover-avatar img {
@@ -3876,14 +3621,20 @@ html[data-theme="dark"] .cloud-auth-primary {
    height: 100%;
    object-fit: cover;
 }
+html[data-theme="dark"] .account-popover-avatar {
+   background: #1d211e;
+   color: #7fd3a4;
+}
 .account-popover-who {
    display: flex;
    flex-direction: column;
    min-width: 0;
 }
 .account-popover-who strong {
+   font-family: "Sora", "Inter", system-ui, sans-serif;
    font-size: 13.5px;
    font-weight: 700;
+   letter-spacing: -0.01em;
    color: var(--ink);
    white-space: nowrap;
    overflow: hidden;
@@ -4200,23 +3951,6 @@ html[data-theme="dark"] .vd-mode-btn.is-active {
    color: var(--green);
    opacity: 0.9;
 }
-.song-card-yt {
-   display: inline-grid;
-   place-items: center;
-   width: 24px;
-   height: 24px;
-   border-radius: 50%;
-   background: #ff0033;
-   color: #fff;
-   font-size: 11px;
-   text-decoration: none;
-   flex: 0 0 auto;
-   transition: transform 0.15s ease;
-}
-.song-card-yt:hover {
-   transform: translateY(-1px);
-}
-
 /* ---- Editor header: Back affordance + document breadcrumb ---- */
 .topbar-nav {
    display: flex;
@@ -4361,23 +4095,170 @@ html[data-theme="dark"] .topbar-help-btn {
       align-items: center;
       padding: 8px 10px;
    }
-   /* Login page: collapse to a single column, hide the brand panel. */
-   .login-page {
-      grid-template-columns: 1fr;
-   }
-   .login-aside {
-      display: none;
-   }
-   /* With the brand panel gone, surface a compact lockup above the form. */
-   .login-card .login-card-brand {
-      display: inline-flex;
-   }
-   .login-main {
-      padding: 28px 20px;
-   }
+   /* Login responsive rules moved to styles/auth.css (uses the documented
+      ≤680px band instead of the legacy 560px breakpoint). */
 }
 
 /* ======================= My Songs gallery ========================= */
+/* ======================================================================
+   LOBBY THEME — the cloud gallery is ALWAYS dark.
+   My Songs / Albums / Album detail are a "lobby" in front of the editor:
+   they keep their own near-black green stage regardless of the light/dark
+   theme toggle (which keeps controlling the editor only). Mechanism: the two
+   modal roots re-map the CORE tokens for their whole subtree, so every
+   descendant that already consumes var(--surface), var(--ink) etc. is
+   re-skinned for free — no per-rule dark duplicates needed.
+   House rule (from auth.css): --spark is an accent, never a surface.
+   ====================================================================== */
+.cloud-gallery,
+.cloud-album {
+   --app-bg: #0a0a0a; /* near-black stage */
+   --surface: #111211; /* card / shell surface */
+   --soft: #1b1c1a; /* tinted fills (chips, icon tiles, inactive tracks) */
+   --line: #2b2d2a; /* hairlines */
+   --ink: #f2f2ef; /* primary text */
+   --muted: #a3a8a0; /* secondary text (~7:1 on --surface) */
+   --green: #5a8f6d; /* structural green — focus rings, hover fills */
+   --dark-green: #cfe8bf; /* retargeted: pale-green TEXT accent, legible on dark */
+}
+/* Stage: a deep near-black gradient + one static lime aura at the top. Static
+   decoration — no animation loops in the lobby (entrance + hover only). */
+.cloud-gallery .cloud-gallery-shell,
+.cloud-album .cloud-album-shell {
+   background:
+      radial-gradient(120% 60% at 50% -10%, rgba(184, 232, 92, 0.06), transparent 60%),
+      linear-gradient(160deg, #111311 0%, #0a0a0a 55%, #0c0d0b 100%);
+}
+/* Header bars: transparent over the stage, hairline below. */
+.cloud-gallery-head,
+.cloud-album-head {
+   background: transparent;
+   border-bottom-color: var(--line);
+}
+/* Brand lockup: the icon tile picks up the lime spark on dark. */
+.cloud-gallery .home-brand-icon {
+   background: color-mix(in srgb, var(--spark) 14%, var(--soft));
+}
+/* Page title: bigger display voice — the lobby is a destination, not a dialog. */
+.cloud-gallery .home-intro h1 {
+   font-size: clamp(17px, 1.8vw, 21px);
+   letter-spacing: -0.02em;
+}
+.cloud-gallery .library-count {
+   color: var(--spark);
+}
+/* Hook #1 — one-shot title shimmer, adapted from the mirage-shimmer-text
+   pattern (a highlight sweeping a background-clipped gradient). Fired by
+   .is-shimmer on #mySongsTitle each time the gallery opens; JS removes the
+   class on animationend so it never repeats while idling. */
+@media (prefers-reduced-motion: no-preference) {
+   .home-intro h1.is-shimmer {
+      background: linear-gradient(100deg, var(--ink) 40%, var(--spark) 50%, var(--ink) 60%);
+      background-size: 220% 100%;
+      background-position: 120% 0;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: lobby-shimmer 1.4s var(--lobby-ease) 1 both;
+   }
+   @keyframes lobby-shimmer {
+      to {
+         background-position: -120% 0;
+      }
+   }
+}
+/* Primary actions go lime-on-dark (was green-on-white): the lobby's one loud
+   fill, matched to the active tab pill and the FAB. */
+.cloud-gallery .button-primary,
+.cloud-album .button-primary {
+   background: var(--spark);
+   color: var(--spark-ink);
+}
+.cloud-gallery .button-primary:hover,
+.cloud-album .button-primary:hover {
+   background: color-mix(in srgb, var(--spark) 88%, #fff);
+}
+/* Ghost secondary buttons keep the dark fill; text goes pale green. */
+.cloud-gallery .button-ghost,
+.cloud-album .button-ghost {
+   background: var(--soft);
+   color: var(--ink);
+   border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+}
+/* Search: dark pill field, lime focus ring. */
+.cloud-gallery .cloud-search input,
+.cloud-album .cloud-search input {
+   background: var(--soft);
+   border-color: var(--line);
+}
+.cloud-gallery .cloud-search input:focus-visible,
+.cloud-album .cloud-search input:focus-visible {
+   border-color: color-mix(in srgb, var(--spark) 60%, transparent);
+   box-shadow: 0 0 0 3px var(--lobby-glow);
+}
+/* Help "?" button sits only in the gallery — retint freely. */
+.cloud-gallery .topbar-help-btn {
+   background: var(--soft);
+   border-color: color-mix(in srgb, var(--spark) 35%, var(--line));
+   color: var(--spark);
+}
+/* Hook #5 — tabs: an inset pill track; the ACTIVE segment is a lime pill with
+   near-black text (the lobby's most visible accent hook). */
+.cloud-gallery .home-tabs {
+   border-color: var(--line);
+   background: var(--soft);
+}
+.cloud-gallery .home-tab.is-active,
+.cloud-gallery .home-tab[aria-selected="true"] {
+   color: var(--spark-ink);
+   background: var(--spark);
+}
+.cloud-gallery .home-tab:focus-visible {
+   outline: 2px solid var(--spark);
+   outline-offset: 2px;
+}
+/* Account popover: token remap already re-surfaces it; add the dark polish
+   (deeper panel + lime avatar tint) on top. */
+.cloud-gallery .account-popover,
+.cloud-album .account-popover {
+   background: #161715;
+   border-color: var(--line);
+   box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.4),
+      0 22px 48px -18px rgba(0, 0, 0, 0.6);
+}
+.cloud-gallery .account-popover-avatar,
+.cloud-album .account-popover-avatar {
+   background: color-mix(in srgb, var(--spark) 16%, var(--soft));
+   color: var(--spark);
+}
+/* Danger (sign out) stays red, tuned for dark. */
+.cloud-gallery .account-popover-item.is-signout,
+.cloud-album .account-popover-item.is-signout {
+   color: #ff9b8f;
+}
+.cloud-gallery .account-popover-item.is-signout:hover,
+.cloud-gallery .account-popover-item.is-signout:focus-visible,
+.cloud-album .account-popover-item.is-signout:hover,
+.cloud-album .account-popover-item.is-signout:focus-visible {
+   background: rgba(255, 100, 85, 0.12);
+}
+/* Album header "Leave" keeps the single rose accent — the base rule below
+   (in the ALBUM section) stays byte-identical for the member-actions contract;
+   the dark variant there already covers the lobby. */
+/* Album context pill inside the lobby header. */
+.cloud-album .album-pill {
+   background: var(--soft);
+   color: var(--spark);
+   border-color: color-mix(in srgb, var(--spark) 30%, transparent);
+}
+/* Member read-only banner inside the lobby. */
+.cloud-gallery .album-banner,
+.cloud-album .album-banner {
+   background: var(--soft);
+   color: var(--ink);
+}
+
 .cloud-gallery {
    place-items: stretch;
    padding: 0;
@@ -4415,7 +4296,7 @@ html[data-theme="dark"] .topbar-help-btn {
    grid-template-columns: 1fr auto 1fr;
    align-items: center;
    gap: 18px;
-   padding: 18px clamp(20px, 4vw, 56px);
+   padding: 14px clamp(20px, 4vw, 56px);
    border-bottom: 1px solid var(--line);
    background: var(--surface);
 }
@@ -4518,6 +4399,7 @@ html[data-theme="dark"] .topbar-help-btn {
 }
 .home-intro h1 {
    margin: 0;
+   font-family: "Sora", "Inter", system-ui, sans-serif;
    font-size: clamp(15px, 1.6vw, 18px);
    font-weight: 700;
    letter-spacing: -0.01em;
@@ -4543,6 +4425,7 @@ html[data-theme="dark"] .topbar-help-btn {
 .library-count {
    font-weight: 600;
    color: var(--dark-green);
+   font-variant-numeric: tabular-nums;
 }
 .cloud-search {
    position: relative;
@@ -4566,7 +4449,6 @@ html[data-theme="dark"] .topbar-help-btn {
    background: var(--surface);
    color: var(--ink);
    font-size: 14.5px;
-   box-shadow: var(--shadow-sm);
    transition:
       border-color 0.16s ease,
       box-shadow 0.16s ease;
@@ -4639,22 +4521,26 @@ html[data-theme="dark"] .topbar-help-btn {
 /* Card. Cards sit in the grid; each column is nudged up or down (zigzag) via
    --shift, and cards near the scroll edges get blurred via --blur (set by JS).
    Hovering/focusing a card lifts it (via --lift) and reveals its actions +
-   detail. Visual language: soft elevation + hairline instead of a hard frame. */
+   detail. Visual language: a hairline frame with a cover photo (or a quiet
+   typographic motif) at the top — flat surfaces, colour carried by the data
+   on the cover rather than by the chrome. */
 .song-card {
    --shift: 0px;
    --lift: 0px;
    position: relative;
    width: 214px;
-   height: 252px;
+   /* Height ADAPTS to the viewport: the two-row carousel (2 × height + gap +
+      zigzag ±20px + the grid's vertical padding) must fit inside the gallery
+      body, or overflow-y:hidden clips whole cards away. The 260px floor also
+      guarantees room for the reserved reveal strip (detail + actions) without
+      crushing the identity zone; 344px is the design size on tall screens. */
+   height: clamp(260px, calc(50vh - 152px), 344px);
    display: flex;
    flex-direction: column;
-   padding: 20px 20px 16px;
+   padding: 0;
    border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
    border-radius: 22px;
    background: var(--surface);
-   box-shadow:
-      0 1px 2px rgba(16, 40, 28, 0.04),
-      0 8px 24px -12px rgba(16, 40, 28, 0.16);
    cursor: pointer;
    transform: translateY(calc(var(--shift) + var(--lift))) scale(var(--scale, 1));
    filter: blur(var(--blur, 0px));
@@ -4676,15 +4562,25 @@ html[data-theme="dark"] .topbar-help-btn {
 .song-card:nth-child(4n + 4) {
    --shift: 20px;
 }
+/* Hover choreography (lobby hook #2): lift + lime hairline + a soft mode-
+   agnostic glow. The cover tints carry the mode colour; the card chrome
+   stays neutral lime so every card reacts the same way. */
 .song-card:hover,
 .song-card:focus-visible {
-   --lift: -6px;
-   border-color: color-mix(in srgb, var(--green) 30%, transparent);
+   --lift: -8px;
+   border-color: color-mix(in srgb, var(--spark) 55%, transparent);
    box-shadow:
-      0 2px 6px rgba(16, 40, 28, 0.06),
-      0 20px 42px -18px rgba(16, 40, 28, 0.3);
+      0 24px 48px -20px rgba(0, 0, 0, 0.65),
+      0 0 0 1px color-mix(in srgb, var(--spark) 25%, transparent),
+      0 0 32px -8px var(--lobby-glow);
    outline: none;
    z-index: 3;
+}
+/* Press feedback: sink the lift instead of scaling (scale would fight the
+   JS-set --scale used by the edge-blur ramp). */
+.song-card:active {
+   --lift: -3px;
+   border-color: color-mix(in srgb, var(--spark) 35%, transparent);
 }
 /* Dimmed (blurred, off-center) cards are not interactive: they can't be
    clicked, hovered, or focused. Scroll them to the middle to activate them. */
@@ -4692,84 +4588,137 @@ html[data-theme="dark"] .topbar-help-btn {
    pointer-events: none;
    cursor: default;
 }
-/* Subtle, minimalist accent: a soft tinted glow in the top-left corner instead
-   of a loud full-width gradient bar. */
-.song-card::before {
-   content: "";
-   position: absolute;
-   top: -40%;
-   left: -30%;
-   width: 150px;
-   height: 150px;
-   border-radius: 50%;
-   background: radial-gradient(circle, color-mix(in srgb, var(--lime) 30%, transparent), transparent 70%);
-   opacity: 0.55;
-   pointer-events: none;
-}
 /* Legacy hook kept harmless: JS no longer sets .is-active on this grid. */
 .song-card.is-active {
    box-shadow: var(--shadow-md);
    border-color: var(--green);
    outline: none;
 }
-.song-card-mode-icon {
-   display: inline-flex;
+/* ---- Cover: the card's 16:9 top zone ----
+   Either a real YouTube thumbnail (.is-photo) or a quiet typographic motif
+   (.is-motif) that states what the song IS — its glyph and its opening
+   tokens. Colour lives on the cover (the data), not on the card chrome. */
+.song-card-cover {
+   position: relative;
+   flex: none;
+   width: 100%;
+   aspect-ratio: 16 / 9;
+   background: var(--soft);
+   overflow: hidden;
+}
+.song-card-cover.is-photo img.song-card-cover-img {
+   position: absolute;
+   inset: 0;
+   width: 100%;
+   height: 100%;
+   object-fit: cover;
+   /* Fade in over a quiet tint once decoded; on load failure the img is
+      hidden and the cover repaints as a motif (delegated listeners in JS). */
+   opacity: 0;
+   transition: opacity 0.3s ease;
+}
+.song-card-cover.is-photo img.song-card-cover-img.is-loaded {
+   opacity: 1;
+}
+/* No white flash while a thumbnail loads (lobby is always dark). */
+.song-card-cover.is-photo {
+   background: #121311;
+}
+/* Typographic motif cover: mode tint + large Sora glyph + a token strip. */
+.song-card-cover.is-motif {
+   display: flex;
    align-items: center;
    justify-content: center;
-   width: 26px;
-   height: 26px;
-   border-radius: 50%;
-   font-size: 14px;
-   font-weight: 800;
-   line-height: 1;
-   flex: none;
-   color: #fff;
-   background: var(--green, #237a50);
-   border: 2px solid #fff;
-   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
 }
-.song-card-mode-icon.is-numbers {
-   color: #fff;
-   background: #4f46e5;
-   border-color: #fff;
+/* Motif tints: the lobby is always dark, so the (former dark-theme) deep
+   tints are the default. Cards only ever render inside the gallery. */
+.song-card-cover.is-motif[data-mode="chords"] {
+   background: #171b16;
 }
-/* Mode is expressed by the whole card: a subtle tinted background + a faint
-   ♪ / # watermark (kept behind the text so the card stays readable). */
-.song-card.is-chords {
-   background: #eef7f1;
+.song-card-cover.is-motif[data-mode="numbers"] {
+   background: #1b1a26;
 }
-.song-card.is-numbers {
-   background: #f2efff;
+.song-card-cover.is-motif[data-mode="album"] {
+   background: var(--soft);
 }
-.song-card.is-numbers::before {
-   background: radial-gradient(circle, color-mix(in srgb, #4f46e5 26%, transparent), transparent 70%);
+/* When a photo fails to load, the cover repaints as a motif (same tints). */
+.song-card-cover.is-photo.is-fallback {
+   display: flex;
+   align-items: center;
+   justify-content: center;
 }
-/* Faint mode glyph used as a background watermark. */
+.song-card-cover.is-photo.is-fallback[data-mode="chords"] {
+   background: #171b16;
+}
+.song-card-cover.is-photo.is-fallback[data-mode="numbers"] {
+   background: #1b1a26;
+}
+/* Large display glyph used inside the motif cover (mode mark or album letter). */
 .song-card-mode-mark {
-   position: absolute;
-   top: 8px;
-   right: 12px;
-   z-index: -1;
-   font-size: 96px;
+   font-family: "Sora", "Inter", system-ui, sans-serif;
+   font-size: 64px;
    line-height: 1;
    font-weight: 800;
    pointer-events: none;
    user-select: none;
-   opacity: 0.07;
+   opacity: 0.16;
    color: var(--green);
 }
-.song-card.is-numbers .song-card-mode-mark {
+.song-card.is-numbers .song-card-mode-mark,
+.song-card-cover.is-motif[data-mode="numbers"] .song-card-mode-mark {
    color: #4f46e5;
 }
-/* Dark theme overrides for the mode tints. */
-html[data-theme="dark"] .song-card.is-chords {
-   background: #132a20;
+/* Lobby is always dark → the higher-contrast mark opacity is the default. */
+.song-card-mode-mark {
+   opacity: 0.22;
 }
-html[data-theme="dark"] .song-card.is-numbers {
-   background: #1c1a33;
+/* Hover "breath" on the motif cover: the mode tint brightens for a beat.
+   A transition (not a loop) — it settles while the card is hovered. */
+.song-card-cover.is-motif {
+   transition: filter 0.35s ease;
 }
-html[data-theme="dark"] .song-card-mode-mark {
-   opacity: 0.09;
+.song-card:hover .song-card-cover.is-motif,
+.song-card:focus-visible .song-card-cover.is-motif {
+   filter: saturate(1.15) brightness(1.08);
+}
+/* One-shot sheen sweeping the cover on hover-entry (restarts on re-entry).
+   Sits on the cover, not the card — the card's ::before/::after are off-limits
+   (the old radial glow lived there and was removed for good). */
+@media (prefers-reduced-motion: no-preference) {
+   .song-card-cover::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(105deg, transparent 42%, rgba(255, 255, 255, 0.09) 50%, transparent 58%);
+      transform: translateX(-120%);
+      pointer-events: none;
+   }
+   .song-card:hover .song-card-cover::after,
+   .song-card:focus-visible .song-card-cover::after {
+      animation: lobby-sheen 0.9s var(--lobby-ease) 1 both;
+   }
+   @keyframes lobby-sheen {
+      to {
+         transform: translateX(120%);
+      }
+   }
+}
+/* Token strip at the bottom of a motif cover: the song's honest content
+   (first tokens / section marks) instead of fake imagery. */
+.song-card-cover-tokens {
+   position: absolute;
+   left: 12px;
+   right: 12px;
+   bottom: 10px;
+   font-family: "Sora", "Inter", system-ui, sans-serif;
+   font-size: 10.5px;
+   font-weight: 600;
+   letter-spacing: 0.02em;
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+   color: var(--muted);
+   font-variant-numeric: tabular-nums;
 }
 /* Version-count chip: "3 versions" — uniform font-size, count emphasised. */
 .song-card-chip.is-version {
@@ -4778,10 +4727,18 @@ html[data-theme="dark"] .song-card-mode-mark {
 .song-card-chip.is-version strong {
    font-weight: 800;
    letter-spacing: -0.01em;
+   font-variant-numeric: tabular-nums;
+}
+/* Identity zone between cover and dock: Sora display voice for the title. */
+.song-card-identity {
+   flex: 1 1 auto;
+   min-height: 0;
+   padding: 12px 16px 0;
 }
 .song-card-title {
-   margin: 4px 0 3px;
-   font-size: 16.5px;
+   margin: 0;
+   font-family: "Sora", "Inter", system-ui, sans-serif;
+   font-size: 16px;
    font-weight: 700;
    letter-spacing: -0.01em;
    line-height: 1.3;
@@ -4793,33 +4750,26 @@ html[data-theme="dark"] .song-card-mode-mark {
    overflow: hidden;
 }
 .song-card-creator {
+   margin-top: 3px;
    font-size: 12.5px;
    color: var(--muted);
    white-space: nowrap;
    overflow: hidden;
    text-overflow: ellipsis;
 }
-/* Bottom dock: the Key/Time chips sit at the lower-left, with the action row
-   parked directly underneath them (invisible, so it costs no visual space).
-   On hover the whole dock glides up by --dock-shift, which slides the chips
-   upward and "opens" room for the actions that fade in below them. One
-   transform on one element = GPU-composited and perfectly in sync. */
+/* Bottom dock: the Key/Time chips and (on reveal) the action row. NOTHING in
+   this card moves on hover any more — the old slide-up made the chips travel
+   up and collide with the identity/detail data above. Instead the dock owns a
+   RESERVED strip: the detail line and the action row are laid out in their own
+   fixed slots (always occupying space), and hover only fades them in. Zero
+   overlap is possible by construction, on desktop and phone alike. */
 .song-card-dock {
-   --dock-shift: 42px;
-   margin-top: auto;
-   /* Layout only reserves the chip row; the action row hangs below it. */
-   margin-bottom: calc(-1 * var(--dock-shift));
+   flex: none;
+   margin: 0;
+   padding: 4px 16px 12px;
    display: flex;
    flex-direction: column;
    align-items: flex-start;
-   transform: translateY(0);
-   transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
-   will-change: transform;
-}
-.song-card:hover .song-card-dock,
-.song-card:focus-visible .song-card-dock,
-.song-card:focus-within .song-card-dock {
-   transform: translateY(calc(-1 * var(--dock-shift)));
 }
 .song-card-meta {
    display: flex;
@@ -4837,6 +4787,7 @@ html[data-theme="dark"] .song-card-mode-mark {
    font-weight: 700;
    letter-spacing: -0.01em;
    color: var(--ink);
+   font-variant-numeric: tabular-nums;
 }
 .song-card-chip small {
    font-weight: 600;
@@ -4846,44 +4797,41 @@ html[data-theme="dark"] .song-card-mode-mark {
    letter-spacing: 0.06em;
 }
 /* Section count + last-updated: hidden until the card is hovered/focused. It
-   stays in the flow the whole time (only opacity/transform animate), so
-   revealing it never reflows the card. */
+   stays in the flow the whole time (only opacity animates — no transform, no
+   reflow, no overlap with the data above it). */
 .song-card-detail {
-   margin-top: 6px;
+   margin-top: 4px;
    font-size: 11.5px;
    line-height: 1.4;
    color: var(--muted);
    opacity: 0;
-   transform: translateY(-4px);
    overflow: hidden;
    display: -webkit-box;
    -webkit-line-clamp: 2;
    line-clamp: 2;
    -webkit-box-orient: vertical;
-   transition:
-      opacity 0.26s ease 0.06s,
-      transform 0.34s cubic-bezier(0.22, 1, 0.36, 1) 0.06s;
+   transition: opacity 0.26s ease 0.06s;
 }
 .song-card:hover .song-card-detail,
 .song-card:focus-visible .song-card-detail,
 .song-card:focus-within .song-card-detail {
    opacity: 1;
-   transform: translateY(0);
 }
-/* Actions (export / duplicate / delete) are parked below the chips inside the
-   dock, so they can never cover the song title. They fade in as the dock
-   rises; the small stagger makes the two motions feel like one gesture. */
+/* Actions (export / duplicate / delete) live in their own slot below the
+   chips; they fade in on reveal and can never cover the title or the chips. */
 .song-card-actions {
-   margin-top: 10px;
+   margin-top: 8px;
    display: flex;
    gap: 8px;
    opacity: 0;
+   pointer-events: none;
    transition: opacity 0.22s ease;
 }
 .song-card:hover .song-card-actions,
 .song-card:focus-visible .song-card-actions,
 .song-card:focus-within .song-card-actions {
    opacity: 1;
+   pointer-events: auto;
    transition-delay: 0.08s;
 }
 .song-card-action {
@@ -4918,70 +4866,63 @@ html[data-theme="dark"] .song-card-mode-mark {
 .song-card-action.is-edit {
    display: none;
 }
-/* Tooltip naming the button, so the icons are never a guessing game. Sits
-   above the button (there is always room: the dock is at the card bottom). */
-.song-card-action::after {
-   content: attr(data-label);
-   position: absolute;
-   bottom: calc(100% + 7px);
-   left: 50%;
-   z-index: 4;
-   padding: 4px 8px;
-   border-radius: 7px;
-   background: color-mix(in srgb, var(--ink) 92%, transparent);
-   color: var(--surface);
-   font-size: 10.5px;
-   font-weight: 600;
-   letter-spacing: 0.01em;
-   line-height: 1.2;
-   white-space: nowrap;
-   opacity: 0;
-   transform: translate(-50%, 4px);
-   pointer-events: none;
-   transition:
-      opacity 0.16s ease,
-      transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.song-card-action:hover::after,
-.song-card-action:focus-visible::after {
-   opacity: 1;
-   transform: translate(-50%, 0);
-}
+/* Buttons are named by their native `title` attribute instead of a CSS
+   tooltip: a floating ::after label sat ON TOP of the Key/Time chips and the
+   detail line that share the reveal moment, and a 214px-wide card clips any
+   tooltip that drifts past its edge. The browser's own title bubble never
+   collides with card content. */
 .song-card-action.is-delete:hover {
    background: rgba(180, 35, 24, 0.12);
    color: #b42318;
 }
-/* Export .pdf is the primary per-card action, so it carries the brand tint. */
+/* Export .pdf is the primary per-card action, so it carries the spark. */
 .song-card-action.is-pdf:hover,
 .song-card-action.is-pdf:focus-visible {
-   background: color-mix(in srgb, var(--green) 16%, transparent);
-   color: var(--dark-green);
+   background: color-mix(in srgb, var(--spark) 16%, transparent);
+   color: var(--spark);
 }
 .song-card-action.is-duplicate:hover {
-   background: var(--soft);
-   color: var(--dark-green);
+   background: color-mix(in srgb, var(--spark) 14%, transparent);
+   color: var(--ink);
 }
 /* Copy Link — same visual treatment as is-duplicate */
 .song-card-action.is-copy-link:hover {
-   background: var(--soft);
-   color: var(--dark-green);
+   background: color-mix(in srgb, var(--spark) 14%, transparent);
+   color: var(--ink);
 }
 .song-card-action.is-export:hover {
-   background: var(--soft);
-   color: var(--dark-green);
+   background: color-mix(in srgb, var(--spark) 14%, transparent);
+   color: var(--ink);
 }
-/* Edit album details (name + description) — the same muted-green treatment as the
+/* Edit album details (name + description) — the same spark treatment as the
    other secondary actions. Deliberately NOT `is-edit`: that class is the phone-only
    "Open" shortcut, which is hidden on desktop (see above). */
 .song-card-action.is-details:hover,
 .song-card-action.is-details:focus-visible {
-   background: var(--soft);
-   color: var(--dark-green);
+   background: color-mix(in srgb, var(--spark) 14%, transparent);
+   color: var(--ink);
 }
-/* Copy Link — same visual treatment as is-duplicate */
-.song-card-action.is-copy-link:hover {
-   background: var(--soft);
-   color: var(--dark-green);
+
+/* ---- Micro-motion: staggered entrance (Hook #3) ----
+   Only under no-preference, and the `from` keyframe carries the resting
+   --shift/--scale so the animation never fights the zigzag or the JS-set
+   edge-blur scale. Fill mode is `backwards` (NOT `both`): a forwards fill
+   would keep overriding the inline opacity/transform that JS sets on the
+   dimmed edge cards after the animation ends. If this CSS fails to parse,
+   cards simply appear unstyled — no content is ever hidden behind an
+   animation. */
+@media (prefers-reduced-motion: no-preference) {
+   @keyframes card-in {
+      from {
+         opacity: 0;
+         transform: translateY(calc(var(--shift) - 18px)) scale(calc(var(--scale, 1) * 0.985));
+      }
+   }
+   .cloud-cards .song-card,
+   .cloud-cards .skeleton-card {
+      animation: card-in 0.38s var(--lobby-ease) backwards;
+      animation-delay: calc(min(var(--card-i, 0), 14) * 36ms);
+   }
 }
 
 /* Left/right nudge buttons. */
@@ -5039,7 +4980,8 @@ html[data-theme="dark"] .song-card-mode-mark {
 }
 .cloud-gallery-state p {
    margin: 4px 0 0;
-   font-size: 17px;
+   font-family: "Sora", "Inter", system-ui, sans-serif;
+   font-size: 19px;
    font-weight: 700;
    color: var(--ink);
 }
@@ -5047,10 +4989,44 @@ html[data-theme="dark"] .song-card-mode-mark {
    font-size: 13px;
    max-width: 34ch;
 }
+/* Lobby hook #4: the state glyph sits in a soft tile with a faint lime ring,
+   and its strokes DRAW themselves in one-shot when the state becomes visible
+   (the display flip restarts the animation automatically). */
 .cloud-gallery-state-icon {
-   font-size: 40px;
-   opacity: 0.85;
-   color: var(--green, #1f9d55);
+   width: 72px;
+   height: 72px;
+   display: grid;
+   place-items: center;
+   border-radius: 22px;
+   background: var(--soft);
+   box-shadow: 0 0 0 1px color-mix(in srgb, var(--spark) 18%, transparent);
+   color: var(--spark);
+}
+.cloud-gallery-state-icon svg {
+   width: 34px;
+   height: 34px;
+   display: block;
+}
+@media (prefers-reduced-motion: no-preference) {
+   .cloud-gallery-state:not([hidden]) .cloud-gallery-state-icon svg :is(path, circle, line) {
+      stroke-dasharray: 80;
+      stroke-dashoffset: 80;
+      animation: lobby-draw 0.9s var(--lobby-ease) 0.15s forwards;
+   }
+   @keyframes lobby-draw {
+      to {
+         stroke-dashoffset: 0;
+      }
+   }
+}
+/* Retry after a load failure: a spark-outlined ghost. */
+#galleryRetry {
+   border: 1px solid color-mix(in srgb, var(--spark) 45%, transparent);
+   color: var(--spark);
+   pointer-events: auto;
+}
+#galleryRetry:hover {
+   background: color-mix(in srgb, var(--spark) 14%, transparent);
 }
 .cloud-spinner {
    width: 38px;
@@ -5179,14 +5155,15 @@ html[data-theme="dark"] .song-card-mode-mark {
    }
    .song-card {
       /* Cards fill their grid cell; no fixed width, and no zigzag shift/blur
-         (that was a horizontal-carousel affordance). A DEFINITE height (not just
-         min-height) is required so the tap-to-reveal action overlay — an absolutely
-         positioned child using height:100% — can fill the whole card. */
+         (that was a horizontal-carousel affordance). Height follows the new
+         cover anatomy; the tap-to-reveal action overlay still needs the card
+         itself as its positioning context, which .song-card provides. */
       --shift: 0px;
       --lift: 0px;
       width: 100%;
-      height: 184px;
-      padding: 16px 16px 14px;
+      height: auto;
+      min-height: 196px;
+      padding: 0;
       transform: none;
       filter: none;
       opacity: 1;
@@ -5200,46 +5177,46 @@ html[data-theme="dark"] .song-card-mode-mark {
       --shift: 0px;
    }
    /* ---- Phone tap-to-reveal action overlay ----
-      On phones a card's dock (chips + tiny action row) stays tucked away. Tapping
-      a card adds .is-selected (JS), which blurs the card's own content and floats
-      a centered grid of enlarged action buttons (Edit / Export .pdf / Export
-      .file / Duplicate / Delete) over it. Tapping the card again or tapping
-      outside removes .is-selected. */
+      On phones a card's dock (chips) stays tucked away. Tapping a card adds
+      .is-selected (JS), which blurs the card's own content and floats a centered
+      grid of enlarged action buttons (Edit / Export .pdf / Export .file /
+      Duplicate / Delete) over it. Tapping the card again or tapping outside
+      removes .is-selected. */
    .song-card {
       overflow: hidden;
    }
    /* Resting state: the dock is a normal quiet footer; the tiny action row is
       hidden (the overlay is the only way to act on a card on phones). The dock
-      must NOT create a containing block (its will-change/transform would make
-      the absolutely-positioned action overlay size against the 32px dock instead
-      of the whole card), so clear both here. */
+      must NOT create a containing block (any transform/will-change here would
+      make the absolutely-positioned action overlay size against the ~17px dock
+      instead of the whole card), so keep it transform-free. */
    .song-card-dock {
-      --dock-shift: 0px;
-      transform: none;
-      will-change: auto;
-      margin-bottom: 0;
-   }
-   /* CRITICAL: the desktop base applies `transform: translateY(...)` to the dock
-      on hover/focus/focus-within (line ~3441). Tapping a card moves focus INTO it
-      (:focus-within), which re-applies that transform here and — even as an
-      identity translate — establishes a containing block, so the absolutely
-      positioned .song-card-actions overlay would size against the ~17px dock
-      instead of the whole card (buttons overflow/clip, e.g. multi-line titles
-      pushed Delete off the bottom). Force `transform: none` for every dock state
-      on phones so the overlay always fills the card and centres vertically
-      regardless of how many rows the title wraps to. */
-   .song-card:hover .song-card-dock,
-   .song-card:focus-visible .song-card-dock,
-   .song-card:focus-within .song-card-dock,
-   .song-card.is-selected .song-card-dock {
-      transform: none;
+      padding: 4px 14px 12px;
    }
    .song-card-actions {
       display: none;
    }
    .song-card-detail {
       opacity: 1;
-      transform: none;
+   }
+   /* Phone identity zone: tighter padding, single-line Sora title. */
+   .song-card-identity {
+      padding: 10px 12px 0;
+   }
+   .song-card-title {
+      font-size: 14px;
+      -webkit-line-clamp: 1;
+      line-clamp: 1;
+      white-space: nowrap;
+   }
+   .song-card-creator {
+      font-size: 11.5px;
+   }
+   .song-card-cover-tokens {
+      font-size: 9.5px;
+   }
+   .song-card-mode-mark {
+      font-size: 52px;
    }
    /* Explicit resting filter so selecting a card interpolates blur(0)->blur(3px)
       deterministically (transitioning from the `none` keyword can stick). NOTE:
@@ -5250,7 +5227,7 @@ html[data-theme="dark"] .song-card-mode-mark {
    .song-card-creator,
    .song-card-detail,
    .song-card-meta,
-   .song-card::before {
+   .song-card-cover {
       filter: blur(0);
       transition:
          filter 0.24s ease,
@@ -5261,16 +5238,19 @@ html[data-theme="dark"] .song-card-mode-mark {
    .song-card.is-selected .song-card-creator,
    .song-card.is-selected .song-card-detail,
    .song-card.is-selected .song-card-meta,
-   .song-card.is-selected::before {
+   .song-card.is-selected .song-card-cover {
       filter: blur(3px);
       opacity: 0.35;
       pointer-events: none;
    }
    .song-card.is-selected {
-      border-color: color-mix(in srgb, var(--green) 35%, transparent);
+      /* Lobby variant: the shell is always dark here, so the green light-theme
+         shadow would vanish — the selected edge glows spark instead. */
+      border-color: color-mix(in srgb, var(--spark) 45%, transparent);
       box-shadow:
-         0 2px 6px rgba(16, 40, 28, 0.06),
-         0 20px 42px -18px rgba(16, 40, 28, 0.3);
+         0 2px 6px rgba(0, 0, 0, 0.25),
+         0 20px 42px -18px rgba(0, 0, 0, 0.6),
+         0 0 24px -6px var(--lobby-glow);
    }
    /* Floated, centered action grid. Sits above the blurred content and animates
       in from a slight scale/offset so it reads as sliding to the card center. */
@@ -5334,40 +5314,24 @@ html[data-theme="dark"] .song-card-mode-mark {
    is the friendlier tap target there. Phones (<=680px) use a different model —
    tap a card to reveal a centered action overlay — so this is scoped to >680px. */
 @media (hover: none) and (min-width: 681px) {
-   .song-card-dock {
-      transform: translateY(calc(-1 * var(--dock-shift)));
-   }
+   /* Nothing slides on touch devices; the reveal strip is simply pinned open. */
    .song-card-actions,
    .song-card-detail {
       opacity: 1;
+      pointer-events: auto;
    }
-   .song-card-detail {
-      transform: translateY(0);
-   }
-   /* Tooltips are hover-only affordances; taps shouldn't leave one stuck on. */
+   /* The CSS tooltip is gone (native `title` names the buttons); this guard
+      stays so any future ::after label can't get stuck on after a tap. */
    .song-card-action::after {
       display: none;
    }
 }
 
-/* Dark-theme fine-tuning (most colors already come from tokens). */
-html[data-theme="dark"] .cloud-google-btn {
-   background: var(--surface);
-}
-html[data-theme="dark"] .cloud-google-btn:hover {
-   border-color: #465049;
-   background: var(--soft);
-}
-html[data-theme="dark"] .cloud-field input,
-html[data-theme="dark"] .cloud-search input {
-   background: #101210;
-}
-html[data-theme="dark"] .cloud-auth-error {
-   color: #ff9b8f;
-   background: rgba(255, 100, 85, 0.1);
-   border-color: rgba(255, 100, 85, 0.28);
-}
-html[data-theme="dark"] .song-card-action.is-delete:hover {
+/* Lobby fine-tuning (most colors already come from the token remap).
+   Login-only dark overrides (google-btn / field / auth-error) live in
+   styles/auth.css. The lobby search rule above already covers My Songs;
+   the delete hover keeps ONE dark rose treatment (was dark-theme-only). */
+.song-card-action.is-delete:hover {
    color: #ff9b8f;
    background: rgba(255, 100, 85, 0.12);
    border-color: rgba(255, 100, 85, 0.4);
@@ -6460,7 +6424,7 @@ html[data-theme="dark"] .youtube-chip-open:hover .youtube-chip-label {
       padding: 2px 3px;
    }
 }
-body[data-editor-mode="numbers"] .editor-mode-badge-icon::before {
+[data-editor-mode="numbers"] .editor-mode-badge-icon::before {
    content: "#";
 }
 body[data-editor-mode="numbers"] .editor-mode-badge {
@@ -6535,7 +6499,7 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    align-items: stretch;
    width: min(320px, 100%);
    margin: 10px 0;
-   padding: 4px;
+   padding: 3px;
    border: 1px solid var(--line);
    border-radius: 999px;
    background: var(--surface);
@@ -6545,7 +6509,7 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    appearance: none;
    border: 0;
    border-radius: 999px;
-   padding: 8px 14px;
+   padding: 9px 16px;
    font: 700 13px inherit;
    color: var(--muted);
    background: transparent;
@@ -6708,7 +6672,45 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
 .cloud-album-heading {
    min-width: 0;
    justify-self: center;
-   text-align: center;
+   display: flex;
+   align-items: center;
+   gap: 12px;
+   text-align: left;
+}
+/* Lobby hook #7: the album hero tile glows — dark gradient fill, lime-tinted
+   hairline, soft lime aura, glyph in spark. One-shot scale-in keyed on the
+   shell's .is-open entrance. */
+.cloud-album-hero {
+   flex: none;
+   display: grid;
+   place-items: center;
+   width: 52px;
+   height: 52px;
+   border: 1px solid color-mix(in srgb, var(--spark) 30%, transparent);
+   border-radius: 15px;
+   background: linear-gradient(150deg, #1b1c1a, #0e0f0d);
+   box-shadow: 0 0 24px -6px var(--lobby-glow);
+}
+.cloud-album-hero span {
+   font-family: "Sora", "Inter", system-ui, sans-serif;
+   font-size: 24px;
+   font-weight: 800;
+   letter-spacing: -0.02em;
+   color: var(--spark);
+   line-height: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+   .cloud-album .cloud-album-hero {
+      transform: scale(0.9);
+      transition: transform 0.32s var(--lobby-ease);
+   }
+   .cloud-album.is-open .cloud-album-hero {
+      transform: scale(1);
+   }
+}
+.cloud-album-heading-text {
+   min-width: 0;
+   text-align: left;
 }
 .cloud-album-heading .cloud-modal-title {
    margin: 0;
@@ -6819,6 +6821,8 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    letter-spacing: 0.14em;
    text-transform: uppercase;
    text-align: center;
+   font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+   font-variant-numeric: tabular-nums;
 }
 
 /* New album dialog fields. */
@@ -6851,11 +6855,18 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    background: var(--soft);
 }
 .invite-code-value {
+   font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
    font-size: 24px;
    font-weight: 800;
    letter-spacing: 0.16em;
    color: var(--dark-green);
    font-variant-numeric: tabular-nums;
+}
+/* In-place copy confirmation: the button briefly reads "Copied". */
+#inviteCodeCopy.is-copied {
+   border-color: color-mix(in srgb, var(--green) 45%, transparent);
+   background: var(--soft);
+   color: var(--dark-green);
 }
 
 /* Add-song dialog: radio list of My Songs. */
@@ -6917,10 +6928,15 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    display: flex;
    align-items: center;
    gap: 12px;
-   padding: 11px 13px;
+   padding: 12px 14px;
    border: 1px solid var(--line);
    border-radius: 12px;
    background: var(--surface);
+   transition: background 0.15s ease, border-color 0.15s ease;
+}
+#albumMembersDialog .member-row:hover {
+   background: var(--soft);
+   border-color: color-mix(in srgb, var(--green) 28%, var(--line));
 }
 .member-avatar {
    flex: 0 0 auto;
@@ -6931,6 +6947,7 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    border-radius: 50%;
    background: var(--soft);
    color: var(--dark-green);
+   font-family: "Sora", "Inter", system-ui, sans-serif;
    font-weight: 800;
    font-size: 14px;
 }
@@ -6943,6 +6960,7 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
 }
 .member-who strong {
    font-size: 14px;
+   letter-spacing: -0.01em;
    color: var(--ink);
 }
 .member-who small {
@@ -6965,37 +6983,11 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon
    flex-wrap: nowrap;
 }
 
-/* Dark theme tweaks for the album UI. */
-/* Dark theme: the active pill stays GREEN (its --green token is lighter there),
-   so it needs dark text instead of white. */
-html[data-theme="dark"] .home-tab.is-active,
-html[data-theme="dark"] .home-tab[aria-selected="true"] {
-   color: #0a1a12;
-   background: var(--green);
-}
-html[data-theme="dark"] .album-card {
-   background: #101210;
-   color: #eaf2ea;
-}
-html[data-theme="dark"] .album-card-name {
-   color: #f1f4f2;
-}
-html[data-theme="dark"] .album-card-icon {
-   background: #1d211e;
-   color: #7fd3a4;
-}
-html[data-theme="dark"] .cloud-album-shell,
-html[data-theme="dark"] .cloud-album-head {
-   background: #101210;
-}
-html[data-theme="dark"] .album-pill {
-   background: #1d211e;
-   color: #7fd3a4;
-}
-html[data-theme="dark"] .album-banner {
-   background: #1d211e;
-   color: #dde6dd;
-}
+/* Dark theme tweaks for the album UI. The lobby is ALWAYS dark, so the
+   former dark-theme duplicates for tabs / album cards / hero / pills were
+   replaced by the LOBBY token remap + always-on rules near the top. The
+   standalone member/invite dialogs keep their own dark rules (they are NOT
+   inside .cloud-gallery / .cloud-album, so the remap does not reach them). */
 html[data-theme="dark"] .invite-code-box {
    background: #1d211e;
 }
@@ -7032,12 +7024,14 @@ html[data-theme="dark"] .member-badge {
    border-color: color-mix(in srgb, #e11d48 55%, transparent);
    background: color-mix(in srgb, #e11d48 14%, #fff);
 }
-html[data-theme="dark"] .cloud-album-actions .button.is-danger {
+/* The Leave button lives in the always-dark lobby → the dark rose variant is
+   the default (its dark-theme duplicate was removed). */
+.cloud-album-actions .button.is-danger {
    color: #fda4af;
    border: 1px solid color-mix(in srgb, #fb7185 30%, transparent);
    background: color-mix(in srgb, #fb7185 14%, #111);
 }
-html[data-theme="dark"] .cloud-album-actions .button.is-danger:hover {
+.cloud-album-actions .button.is-danger:hover {
    color: #fecdd3;
    border-color: color-mix(in srgb, #fb7185 52%, transparent);
    background: color-mix(in srgb, #fb7185 22%, #111);
@@ -7456,6 +7450,16 @@ html[data-theme="dark"] #albumMembersDialog .member-row.is-manageable:active {
       justify-self: center;
       text-align: center;
    }
+   .cloud-album-heading-text {
+      text-align: center;
+   }
+   .cloud-album-hero {
+      width: 36px;
+      height: 36px;
+   }
+   .cloud-album-hero span {
+      font-size: 18px;
+   }
    .cloud-album-actions {
       width: 100%;
       justify-self: stretch;
@@ -7502,17 +7506,16 @@ html[data-theme="dark"] #albumMembersDialog .member-row.is-manageable:active {
    ====================================================================== */
 .skeleton-card {
    --shift: 0px;
+   --card-i: 0;
    position: relative;
    width: 214px;
-   height: 252px;
+   height: clamp(260px, calc(50vh - 152px), 344px);
    border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
    border-radius: 22px;
    background: var(--surface);
    overflow: hidden;
    display: flex;
    flex-direction: column;
-   gap: 10px;
-   padding: 20px 20px 16px;
    pointer-events: none;
    /* Match the EXACT grid slot of a real card, including the zigzag offset
       (the .song-card nth-child pattern) so the skeleton overlays the same
@@ -7527,35 +7530,39 @@ html[data-theme="dark"] #albumMembersDialog .member-row.is-manageable:active {
 .skeleton-card:nth-child(4n + 4) {
    --shift: 20px;
 }
-.skeleton-card .sk-mark {
-   width: 44px;
-   height: 44px;
-   border-radius: 12px;
-   align-self: flex-start;
-   margin-bottom: 2px;
+/* Cover zone stand-in (full-bleed 16:9 like the real cover). */
+.skeleton-card .sk-cover {
+   flex: none;
+   width: 100%;
+   aspect-ratio: 16 / 9;
+   border-radius: 0;
 }
 .skeleton-card .sk-title {
    height: 18px;
    width: 72%;
    border-radius: 8px;
+   margin: 14px 16px 0;
 }
 .skeleton-card .sk-sub {
    height: 14px;
    width: 48%;
    border-radius: 8px;
+   margin: 6px 16px 0;
 }
 .skeleton-card .sk-detail {
    height: 14px;
    width: 64%;
    border-radius: 8px;
+   margin: 10px 16px 0;
 }
 .skeleton-card .sk-footer {
    height: 14px;
    width: 38%;
    border-radius: 8px;
-   align-self: flex-end;
+   margin: auto 16px 14px;
+   align-self: flex-start;
 }
-.skeleton-card .sk-mark,
+.skeleton-card .sk-cover,
 .skeleton-card .sk-title,
 .skeleton-card .sk-sub,
 .skeleton-card .sk-detail,
@@ -7572,16 +7579,18 @@ html[data-theme="dark"] #albumMembersDialog .member-row.is-manageable:active {
       background-position: -220% 0;
    }
 }
-html[data-theme="dark"] .skeleton-card {
-   background: #14160f;
-   border-color: #2a2e28;
+/* Skeletons render only inside the (always-dark) lobby → the former
+   dark-theme colors are the default now. */
+.skeleton-card {
+   background: #121311;
+   border-color: #2b2d2a;
 }
-html[data-theme="dark"] .skeleton-card .sk-mark,
-html[data-theme="dark"] .skeleton-card .sk-title,
-html[data-theme="dark"] .skeleton-card .sk-sub,
-html[data-theme="dark"] .skeleton-card .sk-detail,
-html[data-theme="dark"] .skeleton-card .sk-footer {
-   background: linear-gradient(100deg, #23261f 30%, #3a3f36 50%, #23261f 30%);
+.skeleton-card .sk-cover,
+.skeleton-card .sk-title,
+.skeleton-card .sk-sub,
+.skeleton-card .sk-detail,
+.skeleton-card .sk-footer {
+   background: linear-gradient(100deg, #23241f 30%, #383934 50%, #23241f 30%);
    background-size: 220% 100%;
 }
 /* Add-from-My-Songs dialog: wider card + in-dialog search field. */
@@ -7627,7 +7636,10 @@ html[data-theme="dark"] .skeleton-card .sk-footer {
 .song-card.is-album:focus-visible .song-card-meta-line {
    display: none;
 }
-html[data-theme="dark"] .song-card.is-album .song-card-desc-text {
+/* Album card description accent (lobby always dark → always-on): pale green
+   reads better than --muted on the dark card. */
+.song-card.is-album:hover .song-card-desc-text,
+.song-card.is-album:focus-visible .song-card-desc-text {
    color: #9fb69f;
 }
 /* ---------------------------------------------------------------------------
@@ -7962,6 +7974,8 @@ body[data-view-only="1"] .chord-above-input {
    z-index: 12;
    display: none;
 }
+/* Lobby hook #6: the FAB trigger goes lime (the lobby's loudest accent) with
+   near-black text; the overshoot rotation stays. */
 .home-fab-trigger {
    display: grid;
    place-items: center;
@@ -7969,26 +7983,37 @@ body[data-view-only="1"] .chord-above-input {
    height: var(--fab-size);
    border: none;
    border-radius: 50%;
-   background: linear-gradient(150deg, color-mix(in srgb, var(--green) 86%, #fff), var(--green) 55%, var(--dark-green));
-   color: #fff;
+   background: linear-gradient(150deg, #cdef7d, var(--spark) 55%, #9ccb43);
+   color: var(--spark-ink);
    font-size: clamp(26px, 4.4vw, 40px);
    line-height: 1;
    cursor: pointer;
    box-shadow:
-      0 8px 20px -6px rgba(16, 40, 28, 0.5),
-      0 2px 6px rgba(16, 40, 28, 0.25);
+      0 8px 20px -6px rgba(0, 0, 0, 0.6),
+      0 0 24px -6px var(--lobby-glow);
    transition:
       transform 0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
       background 0.25s ease,
       box-shadow 0.25s ease;
 }
 .home-fab-trigger:focus-visible {
-   outline: 2px solid var(--dark-green);
+   outline: 2px solid var(--spark);
    outline-offset: 3px;
 }
 .home-fab.is-open .home-fab-trigger {
    transform: rotate(135deg);
-   background: var(--dark-green);
+   background: var(--spark);
+}
+/* Press feedback lives on the plus glyph (NOT the trigger) so it never fights
+   the trigger's open/close rotation transform. Reduced-motion safe. */
+.home-fab-plus {
+   display: inline-block;
+   transition: transform 0.16s ease;
+}
+@media (prefers-reduced-motion: no-preference) {
+   .home-fab-trigger:active .home-fab-plus {
+      transform: scale(0.88);
+   }
 }
 /* Blur + dim the page behind the dial so the focus lands on the menu: a
    full-viewport layer INSIDE the FAB's stacking context but BELOW the dial
@@ -8081,9 +8106,9 @@ body[data-view-only="1"] .chord-above-input {
    transition-delay: 180ms;
 }
 .home-fab-item.is-active {
-   border-color: color-mix(in srgb, var(--green) 55%, transparent);
-   background: color-mix(in srgb, var(--green) 14%, var(--surface));
-   color: var(--dark-green);
+   border-color: color-mix(in srgb, var(--spark) 55%, transparent);
+   background: color-mix(in srgb, var(--spark) 14%, var(--surface));
+   color: var(--spark);
 }
 /* The icon badge keeps the SAME (filled) look whether the item is active or not,
    so the dial reads consistently. The ACTIVE view is still shown by the card's
@@ -8096,24 +8121,22 @@ body[data-view-only="1"] .chord-above-input {
    height: clamp(32px, 3.8vw, 46px);
    border-radius: 12px;
    font-size: clamp(16px, 1.9vw, 22px);
-   background: var(--green);
-   color: #fff;
-   box-shadow: 0 4px 12px -6px rgba(16, 40, 28, 0.55);
+   background: var(--spark);
+   color: var(--spark-ink);
+   box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.6);
    transition:
       background 0.18s ease,
       color 0.18s ease;
 }
 .home-fab-item:hover .home-fab-item-icon,
 .home-fab-item:focus-visible .home-fab-item-icon {
-   background: var(--dark-green);
+   background: color-mix(in srgb, var(--spark) 85%, #fff);
 }
-html[data-theme="dark"] .home-fab-item-icon {
-   background: var(--green);
-   color: #06231a;
-}
-html[data-theme="dark"] .home-fab-item.is-active {
-   color: var(--green);
-   background: color-mix(in srgb, var(--green) 20%, var(--surface));
+/* Inline stroke glyphs replacing the emoji/text icons. */
+.home-fab-item-icon svg {
+   display: block;
+   width: 55%;
+   height: 55%;
 }
 
 /* Tablet + phone: the floating menu replaces the tab row and the header's
@@ -8182,10 +8205,39 @@ html[data-theme="dark"] .home-fab-item.is-active {
    .home-fab::before {
       transition: none;
    }
-}
-@media print {
-   .home-fab {
-      display: none !important;
+   /* The staggered card entrance is animation-only chrome; disable it entirely
+      (the `both` fill would otherwise pin opacity during its delay). */
+   .cloud-cards .song-card,
+   .cloud-cards .skeleton-card {
+      animation: none;
+   }
+   /* Lobby one-shots off: title shimmer, state-icon line-draw, hero scale-in,
+      cover sheen. Content simply appears at rest. */
+   .home-intro h1.is-shimmer,
+   .cloud-gallery-state-icon svg :is(path, circle, line),
+   .song-card-cover::after {
+      animation: none;
+   }
+   .home-intro h1.is-shimmer {
+      background: none;
+      -webkit-background-clip: initial;
+      background-clip: initial;
+      -webkit-text-fill-color: currentColor;
+   }
+   .cloud-gallery-state:not([hidden]) .cloud-gallery-state-icon svg :is(path, circle, line) {
+      stroke-dasharray: none;
+      stroke-dashoffset: 0;
+   }
+   .cloud-album .cloud-album-hero {
+      transform: none;
+      transition: none;
+   }
+   /* Hover-reveal transitions become instant so content never lags behind. */
+   .song-card-dock,
+   .song-card-detail,
+   .song-card-actions,
+   .song-card {
+      transition: none;
    }
 }
 
@@ -8210,13 +8262,13 @@ html[data-theme="dark"] .home-fab-item.is-active {
       width: var(--card-w);
       /* Height follows the viewport too, but is capped against the VIEWPORT HEIGHT
          so the two-row carousel never clips its bottom row (the grid is
-         overflow-y:hidden). 34vw alone can get too tall on a landscape tablet. */
-      height: clamp(252px, min(34vw, calc(50vh - 120px)), 360px);
+         overflow-y:hidden). 46vw alone can get too tall on a landscape tablet. */
+      height: clamp(252px, min(42vw, calc(50vh - 140px)), 430px);
    }
    /* The loading skeleton must match the real cards it stands in for. */
    .skeleton-card {
       width: var(--card-w);
-      height: clamp(252px, min(34vw, calc(50vh - 120px)), 360px);
+      height: clamp(252px, min(42vw, calc(50vh - 140px)), 430px);
    }
    /* The home header title sits TRULY centered now that the create buttons live
       in the FAB: equal 1fr side columns put the middle (auto) column on the
@@ -8241,21 +8293,16 @@ html[data-theme="dark"] .home-fab-item.is-active {
    .song-card-detail {
       font-size: clamp(12px, 1.5vw, 14px);
    }
-   .song-card-mode-icon {
-      width: clamp(28px, 3.2vw, 34px);
-      height: clamp(28px, 3.2vw, 34px);
-      font-size: clamp(15px, 1.8vw, 18px);
-   }
    .song-card-mode-mark {
-      font-size: clamp(96px, 13vw, 150px);
+      font-size: clamp(72px, 10vw, 110px);
+   }
+   .song-card-cover-tokens {
+      font-size: clamp(10.5px, 1.2vw, 13px);
    }
    .song-card-action {
       width: clamp(34px, 4vw, 42px);
       height: clamp(34px, 4vw, 42px);
       font-size: clamp(15px, 1.8vw, 18px);
-   }
-   .song-card-dock {
-      --dock-shift: clamp(42px, 5vw, 54px);
    }
    /* ---- Header + search bar also scale with the viewport (tablet) ----
       The brand lockup ("Spartio.app"), the page title, the profile
@@ -8313,8 +8360,2417 @@ html[data-theme="dark"] .home-fab-item.is-active {
    }
 }
 
+/* ======================================================================
+   LIBRARY REDESIGN — songbook index
+   Real arrangement metadata leads each row; green is reserved for primary
+   actions, selection, and the notation mark. Lists stay visible on every width.
+   ====================================================================== */
+@media screen {
+   .cloud-gallery.library-redesign,
+   .cloud-album.library-redesign {
+      --library-ground: #f2f5f2;
+      --library-surface: #ffffff;
+      --library-raised: #eaf5ed;
+      --library-line: #d9e5dc;
+      --library-rule: #e9efea;
+      --library-control: #7c8a80;
+      --library-ink: #163a2a;
+      --library-muted: #526259;
+      --library-accent: #237a50;
+      --library-danger: #a32922;
+      padding: 0;
+      display: grid;
+      place-items: stretch;
+      background: var(--library-ground);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+      transition: none;
+   }
+   .cloud-modal.library-redesign[hidden] {
+      display: none;
+   }
+   html[data-theme="dark"] .cloud-gallery.library-redesign,
+   html[data-theme="dark"] .cloud-album.library-redesign {
+      --library-ground: #0f1110;
+      --library-surface: #171a18;
+      --library-raised: #202521;
+      --library-line: #343a35;
+      --library-rule: #292e2a;
+      --library-control: #7c8a80;
+      --library-ink: #f1f4f2;
+      --library-muted: #b6c0b8;
+      --library-accent: #83c99d;
+      --library-danger: #ff9b8f;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-shell,
+   .cloud-album.library-redesign .cloud-album-shell {
+      width: 100%;
+      max-width: none;
+      height: 100%;
+      min-height: 0;
+      margin: 0;
+      overflow: hidden;
+      transform: none;
+      opacity: 1;
+      transition: none;
+      background: var(--library-ground);
+      color: var(--library-ink);
+   }
+   .cloud-gallery.library-redesign.is-open .cloud-gallery-shell {
+      transform: none;
+      opacity: 1;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-head,
+   .cloud-album.library-redesign .cloud-album-head {
+      position: relative;
+      z-index: 5;
+      display: grid;
+      grid-template-columns: minmax(150px, 1fr) auto minmax(150px, 1fr);
+      align-items: center;
+      gap: 24px;
+      width: 100%;
+      padding: 0 clamp(20px, 4vw, 56px);
+      min-height: 68px;
+      border: 0;
+      background: var(--library-ground);
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-heading {
+      justify-self: start;
+   }
+   .cloud-gallery.library-redesign .home-brand {
+      gap: 9px;
+   }
+   .cloud-gallery.library-redesign .home-brand-icon {
+      width: 30px;
+      height: 30px;
+      background: transparent;
+   }
+   .cloud-gallery.library-redesign .home-brand-icon img {
+      width: 26px;
+      height: 26px;
+   }
+   .cloud-gallery.library-redesign .home-brand-text {
+      font: 700 16px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.02em;
+      color: var(--library-ink);
+   }
+   .cloud-gallery.library-redesign .home-brand-text small {
+      display: none;
+   }
+   .cloud-gallery.library-redesign .home-tabs {
+      display: flex !important;
+      align-items: stretch;
+      justify-content: center;
+      gap: 26px;
+      align-self: stretch;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+   }
+   .cloud-gallery.library-redesign .home-tab {
+      position: relative;
+      min-height: 44px;
+      padding: 0 2px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--library-muted);
+      font: 600 14px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+      white-space: nowrap;
+   }
+   .cloud-gallery.library-redesign .home-tab::after {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      height: 2px;
+      background: var(--library-accent);
+      content: "";
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 180ms ease-out;
+   }
+   .cloud-gallery.library-redesign .home-tab:hover {
+      color: var(--library-ink);
+      background: transparent;
+   }
+   .cloud-gallery.library-redesign .home-tab.is-active,
+   .cloud-gallery.library-redesign .home-tab[aria-selected="true"] {
+      color: var(--library-ink);
+      background: transparent;
+   }
+   .cloud-gallery.library-redesign .home-tab.is-active::after,
+   .cloud-gallery.library-redesign .home-tab[aria-selected="true"]::after {
+      transform: scaleX(1);
+   }
+   .cloud-gallery.library-redesign .home-tab:focus-visible,
+   .cloud-gallery.library-redesign .account-button:focus-visible,
+   .cloud-gallery.library-redesign .gallery-resume:focus-visible {
+      outline: 3px solid var(--library-accent);
+      outline-offset: 3px;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-actions {
+      justify-self: end;
+      flex-wrap: nowrap;
+      gap: 12px;
+   }
+   .cloud-gallery.library-redesign .account-button {
+      min-height: 44px;
+      gap: 9px;
+      padding: 4px 10px 4px 4px;
+      border: 1px solid var(--library-control);
+      border-radius: 10px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+      font: 600 13px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .account-button:hover,
+   .cloud-gallery.library-redesign .account-button[aria-expanded="true"] {
+      border-color: var(--library-control);
+      background: var(--library-surface);
+   }
+   .cloud-gallery.library-redesign .account-avatar {
+      width: 34px;
+      height: 34px;
+      background: var(--library-raised);
+      color: var(--library-accent);
+      font-size: 13px;
+      font-weight: 700;
+   }
+   .cloud-gallery.library-redesign .account-button:not(.is-authed) .account-avatar {
+      display: none;
+   }
+   .cloud-gallery.library-redesign .gallery-resume {
+      min-height: 40px;
+      padding: 0 10px;
+      background: transparent;
+      color: var(--library-muted);
+   }
+   .cloud-gallery.library-redesign .account-popover {
+      z-index: 20;
+      width: min(300px, calc(100vw - 32px));
+      padding: 8px;
+      border: 1px solid var(--library-control);
+      border-radius: 14px;
+      background: var(--library-surface);
+      box-shadow: 0 12px 32px rgba(15, 35, 22, 0.16);
+   }
+   .cloud-gallery.library-redesign .account-popover-id {
+      padding: 12px;
+   }
+   .cloud-gallery.library-redesign .account-popover-avatar {
+      width: 40px;
+      height: 40px;
+      background: var(--library-raised);
+      color: var(--library-accent);
+      font: 700 15px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .account-popover-who strong {
+      color: var(--library-ink);
+      font: 600 14px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .account-popover-who small {
+      color: var(--library-muted);
+      font-size: 12px;
+   }
+   .cloud-gallery.library-redesign .account-popover-sep {
+      background: var(--library-rule);
+   }
+   .cloud-gallery.library-redesign .account-popover-item {
+      min-height: 44px;
+      border-radius: 8px;
+      color: var(--library-ink);
+      font: 500 14px/1.3 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .account-popover-item:hover,
+   .cloud-gallery.library-redesign .account-popover-item:focus-visible {
+      background: var(--library-raised);
+      outline: 2px solid transparent;
+   }
+   .cloud-gallery.library-redesign .account-popover-item.is-signout {
+      color: var(--library-danger);
+   }
+   .cloud-gallery.library-redesign .account-popover-item.is-signout:hover,
+   .cloud-gallery.library-redesign .account-popover-item.is-signout:focus-visible {
+      background: color-mix(in srgb, var(--library-danger) 10%, var(--library-surface));
+   }
+   .cloud-gallery.library-redesign .account-popover-item:disabled {
+      color: var(--library-muted);
+      opacity: 0.75;
+   }
+   .cloud-gallery.library-redesign .account-popover-item:focus-visible {
+      outline: 3px solid var(--library-accent);
+      outline-offset: -2px;
+   }
 
+   .cloud-gallery.library-redesign .library-content {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      width: min(1240px, 100%);
+      min-width: 0;
+      min-height: 0;
+      margin: 0 auto;
+      padding: 34px clamp(20px, 4vw, 56px) 40px;
+      overflow: hidden;
+   }
+   .cloud-gallery.library-redesign .library-view-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 22px;
+   }
+   .cloud-gallery.library-redesign .home-intro {
+      min-width: 0;
+      margin: 0;
+      padding: 0;
+      text-align: left;
+   }
+   .cloud-gallery.library-redesign .home-intro h1 {
+      color: var(--library-ink);
+      font: 650 26px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.035em;
+   }
+   .cloud-gallery.library-redesign .home-intro p {
+      margin: 5px 0 0;
+      color: var(--library-muted);
+      font-size: 13px;
+   }
+   .cloud-gallery.library-redesign .library-count {
+      color: inherit;
+      font-weight: 500;
+   }
+   .cloud-gallery.library-redesign .library-view-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+   }
+   .cloud-gallery.library-redesign .library-view-actions > [hidden],
+   .cloud-gallery.library-redesign .cloud-gallery-actions > [hidden] {
+      display: none !important;
+   }
+   .cloud-gallery.library-redesign .library-view-actions .button {
+      display: inline-flex !important;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 14px;
+      border-radius: 8px;
+      font: 600 13px/1.2 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .library-view-actions .button-primary,
+   .cloud-album.library-redesign .cloud-album-actions .button-primary {
+      border: 1px solid var(--library-accent);
+      background: var(--library-accent);
+      color: #ffffff;
+   }
+   html[data-theme="dark"] .cloud-gallery.library-redesign .library-view-actions .button-primary,
+   html[data-theme="dark"] .cloud-album.library-redesign .cloud-album-actions .button-primary {
+      color: #102016;
+   }
+   .cloud-gallery.library-redesign .library-view-actions .button-ghost,
+   .cloud-album.library-redesign .cloud-album-actions .button-ghost,
+   .cloud-gallery.library-redesign .gallery-resume {
+      border: 1px solid var(--library-control);
+      background: var(--library-surface);
+      color: var(--library-ink);
+   }
+   .cloud-gallery.library-redesign .library-view-actions .button:hover,
+   .cloud-album.library-redesign .cloud-album-actions .button:hover {
+      filter: brightness(0.96);
+   }
+   .cloud-gallery.library-redesign .home-tab-panel[hidden] {
+      display: none !important;
+   }
+   .cloud-gallery.library-redesign .home-tab-panel:not([hidden]) {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      min-height: 0;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-searchbar {
+      justify-content: flex-start;
+      gap: 10px;
+      padding: 0 0 16px;
+   }
+   .cloud-gallery.library-redesign .cloud-search {
+      width: min(540px, 100%);
+   }
+   .cloud-gallery.library-redesign .cloud-search input,
+   .cloud-album.library-redesign .cloud-search input {
+      min-height: 44px;
+      padding: 9px 14px 9px 40px;
+      border: 1px solid var(--library-control);
+      border-radius: 8px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+      font: 400 14px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .cloud-search input::placeholder,
+   .cloud-album.library-redesign .cloud-search input::placeholder {
+      color: var(--library-muted);
+      opacity: 1;
+   }
+   .library-dialog .new-song-name-input::placeholder,
+   .library-dialog .attach-link-input::placeholder {
+      color: var(--library-muted);
+      opacity: 1;
+   }
+   .cloud-gallery.library-redesign .cloud-search input:focus-visible,
+   .cloud-album.library-redesign .cloud-search input:focus-visible {
+      border-color: var(--library-accent);
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 35%, transparent);
+      outline-offset: 1px;
+      box-shadow: none;
+   }
+   .cloud-gallery.library-redesign .cloud-search-icon {
+      left: 14px;
+      color: var(--library-muted);
+   }
+   .cloud-gallery.library-redesign .topbar-help-btn {
+      display: grid;
+      place-items: center;
+      flex: 0 0 44px;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      border: 1px solid var(--library-control);
+      border-radius: 8px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+   }
+   .cloud-gallery.library-redesign .topbar-help-icon {
+      margin: 0;
+   }
+   .cloud-gallery.library-redesign .topbar-help-btn:focus-visible {
+      outline: 3px solid var(--library-accent);
+      outline-offset: 2px;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-body,
+   .cloud-album.library-redesign .cloud-album-body {
+      position: relative;
+      display: block;
+      flex: 1 1 auto;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
+   }
+   .cloud-gallery.library-redesign .cloud-cards,
+   .cloud-album.library-redesign .cloud-cards {
+      display: flex;
+      flex-direction: column;
+      align-content: stretch;
+      justify-content: flex-start;
+      gap: 0;
+      width: 100%;
+      height: auto;
+      min-height: 0;
+      max-width: 100%;
+      padding: 0;
+      overflow: visible;
+      touch-action: auto;
+   }
+   .cloud-gallery.library-redesign .cloud-cards::-webkit-scrollbar,
+   .cloud-album.library-redesign .cloud-cards::-webkit-scrollbar {
+      display: initial;
+   }
+   .cloud-gallery.library-redesign .song-card,
+   .cloud-album.library-redesign .song-card {
+      position: relative;
+      display: grid;
+      grid-template-columns: 52px minmax(180px, 1.45fr) minmax(130px, 0.9fr) minmax(260px, 1.7fr);
+      grid-template-rows: minmax(52px, auto);
+      grid-template-areas: "cover identity detail dock";
+      align-items: center;
+      gap: 16px;
+      width: 100%;
+      height: auto;
+      min-height: 82px;
+      padding: 11px 10px;
+      overflow: visible;
+      border: 0;
+      border-bottom: 1px solid var(--library-rule);
+      border-radius: 0;
+      background: transparent;
+      color: var(--library-ink);
+      cursor: pointer;
+      filter: none;
+      opacity: 1;
+      transform: none;
+      box-shadow: none;
+      transition: background-color 0.14s ease;
+      animation: none;
+   }
+   .cloud-gallery.library-redesign .song-card:hover,
+   .cloud-album.library-redesign .song-card:hover {
+      border-color: var(--library-rule);
+      background: var(--library-surface);
+      filter: none;
+      transform: none;
+      box-shadow: none;
+   }
+   .cloud-gallery.library-redesign .song-card:focus-visible,
+   .cloud-album.library-redesign .song-card:focus-visible {
+      z-index: 2;
+      outline: 3px solid var(--library-accent);
+      outline-offset: 1px;
+      background: var(--library-surface);
+   }
+   .cloud-gallery.library-redesign .song-card:has(.song-row-menu[open]),
+   .cloud-album.library-redesign .song-card:has(.song-row-menu[open]) {
+      z-index: 30;
+   }
+   .cloud-gallery.library-redesign .song-card:active,
+   .cloud-album.library-redesign .song-card:active {
+      transform: none;
+   }
+   .cloud-gallery.library-redesign .song-card-cover,
+   .cloud-album.library-redesign .song-card-cover {
+      grid-area: cover;
+      position: relative;
+      width: 48px;
+      height: 48px;
+      min-height: 0;
+      aspect-ratio: 1;
+      overflow: hidden;
+      border: 0;
+      border-radius: 6px;
+      background: var(--library-raised);
+      color: var(--library-accent);
+   }
+   .cloud-gallery.library-redesign .song-card-cover::after,
+   .cloud-album.library-redesign .song-card-cover::after {
+      display: none;
+   }
+   .cloud-gallery.library-redesign .song-card-cover.is-motif,
+   .cloud-album.library-redesign .song-card-cover.is-motif {
+      background: var(--library-raised);
+   }
+   .cloud-gallery.library-redesign .song-card-cover.is-motif[data-mode="numbers"],
+   .cloud-gallery.library-redesign .song-card-cover.is-motif[data-mode="chordpro"],
+   .cloud-album.library-redesign .song-card-cover.is-motif[data-mode="numbers"],
+   .cloud-album.library-redesign .song-card-cover.is-motif[data-mode="chordpro"] {
+      background: var(--library-raised);
+      color: var(--library-accent);
+   }
+   .cloud-gallery.library-redesign .song-card-cover-img,
+   .cloud-album.library-redesign .song-card-cover-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 1;
+   }
+   .cloud-gallery.library-redesign .song-card-mode-mark,
+   .cloud-album.library-redesign .song-card-mode-mark {
+      position: static;
+      font: 700 26px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      color: var(--library-accent);
+      opacity: 1;
+      filter: none;
+      transform: none;
+      transition: transform 150ms ease-out;
+   }
+   .cloud-gallery.library-redesign .song-card:hover .song-card-mode-mark,
+   .cloud-gallery.library-redesign .song-card:focus-visible .song-card-mode-mark,
+   .cloud-album.library-redesign .song-card:hover .song-card-mode-mark,
+   .cloud-album.library-redesign .song-card:focus-visible .song-card-mode-mark {
+      transform: translateY(-1px) scale(1.08);
+   }
+   .cloud-gallery.library-redesign .song-card-cover.is-motif[data-mode="numbers"] .song-card-mode-mark,
+   .cloud-album.library-redesign .song-card-cover.is-motif[data-mode="numbers"] .song-card-mode-mark {
+      color: var(--library-accent);
+   }
+   .cloud-gallery.library-redesign .song-card-cover-tokens,
+   .cloud-album.library-redesign .song-card-cover-tokens {
+      display: none;
+   }
+   .cloud-gallery.library-redesign .song-card-identity,
+   .cloud-album.library-redesign .song-card-identity {
+      grid-area: identity;
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: 4px;
+      padding: 0;
+   }
+   .cloud-gallery.library-redesign .song-card-title,
+   .cloud-album.library-redesign .song-card-title {
+      overflow: hidden;
+      margin: 0;
+      color: var(--library-ink);
+      font: 600 15px/1.3 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.01em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+   }
+   .cloud-gallery.library-redesign .song-card-creator,
+   .cloud-album.library-redesign .song-card-creator {
+      display: block;
+      overflow: hidden;
+      margin: 0;
+      color: var(--library-muted);
+      font: 400 13px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+   }
+   .cloud-gallery.library-redesign .song-card-detail,
+   .cloud-album.library-redesign .song-card-detail {
+      grid-area: detail;
+      display: flex;
+      flex-direction: column;
+      overflow: visible;
+      align-self: center;
+      margin: 0;
+      padding: 0;
+      color: var(--library-muted);
+      font: 400 12px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+      opacity: 1;
+      transform: none;
+   }
+   .cloud-gallery.library-redesign .song-card-arrangement,
+   .cloud-gallery.library-redesign .song-card-updated,
+   .cloud-album.library-redesign .song-card-arrangement,
+   .cloud-album.library-redesign .song-card-updated {
+      display: block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+   }
+   .cloud-gallery.library-redesign .song-card-updated,
+   .cloud-album.library-redesign .song-card-updated {
+      color: var(--library-muted);
+      font-size: 11px;
+   }
+   .cloud-gallery.library-redesign .song-card-dock,
+   .cloud-album.library-redesign .song-card-dock {
+      grid-area: dock;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      min-height: 44px;
+      overflow: visible;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
+      transition: none;
+   }
+   .cloud-gallery.library-redesign .song-card-meta,
+   .cloud-album.library-redesign .song-card-meta {
+      display: flex;
+      flex: 1 1 auto;
+      align-items: center;
+      gap: 8px 12px;
+      min-width: 0;
+      padding: 0;
+      overflow: hidden;
+   }
+   .cloud-gallery.library-redesign .song-card-mode,
+   .cloud-gallery.library-redesign .song-card-chip,
+   .cloud-gallery.library-redesign .song-card-role,
+   .cloud-album.library-redesign .song-card-mode,
+   .cloud-album.library-redesign .song-card-chip,
+   .cloud-album.library-redesign .song-card-role {
+      flex: none;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--library-muted);
+      font: 500 12px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+      white-space: nowrap;
+   }
+   .cloud-gallery.library-redesign .song-card-mode {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 7px;
+      border: 1px solid var(--library-control);
+      border-radius: 6px;
+      background: var(--library-raised);
+      color: var(--library-ink);
+      font-weight: 600;
+   }
+   .cloud-gallery.library-redesign .song-card-mode-symbol,
+   .cloud-album.library-redesign .song-card-mode-symbol {
+      color: var(--library-accent);
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1;
+      transition: transform 150ms ease-out;
+   }
+   .cloud-gallery.library-redesign .song-card:hover .song-card-mode-symbol,
+   .cloud-gallery.library-redesign .song-card:focus-visible .song-card-mode-symbol,
+   .cloud-album.library-redesign .song-card:hover .song-card-mode-symbol,
+   .cloud-album.library-redesign .song-card:focus-visible .song-card-mode-symbol {
+      transform: translateY(-1px) scale(1.08);
+   }
+   .cloud-gallery.library-redesign .song-card-chip,
+   .cloud-album.library-redesign .song-card-chip {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+   }
+   .cloud-gallery.library-redesign .song-card-chip small,
+   .cloud-album.library-redesign .song-card-chip small {
+      color: var(--library-muted);
+      font: 500 11px/1.35 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .song-card-chip strong,
+   .cloud-album.library-redesign .song-card-chip strong {
+      color: var(--library-ink);
+      font: 700 13px/1.35 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .song-card-role.is-md,
+   .cloud-album.library-redesign .song-card-role.is-md {
+      color: var(--library-accent);
+      font-weight: 600;
+   }
+   .cloud-gallery.library-redesign .song-card-actions,
+   .cloud-album.library-redesign .song-card-actions {
+      position: relative;
+      display: flex;
+      flex: none;
+      align-items: center;
+      justify-content: flex-end;
+      width: auto;
+      min-height: 44px;
+      padding: 0;
+      overflow: visible;
+      opacity: 1;
+      pointer-events: auto;
+   }
+   .cloud-gallery.library-redesign .song-row-menu,
+   .cloud-album.library-redesign .song-row-menu {
+      position: relative;
+   }
+   .cloud-gallery.library-redesign .song-row-menu-trigger,
+   .cloud-album.library-redesign .song-row-menu-trigger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 52px;
+      min-height: 40px;
+      padding: 0 9px;
+      border: 1px solid var(--library-control);
+      border-radius: 7px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+      cursor: pointer;
+      font: 500 12px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+      list-style: none;
+   }
+   .cloud-gallery.library-redesign .song-row-menu-trigger::-webkit-details-marker,
+   .cloud-album.library-redesign .song-row-menu-trigger::-webkit-details-marker {
+      display: none;
+   }
+   .cloud-gallery.library-redesign .song-row-menu-trigger:hover,
+   .cloud-album.library-redesign .song-row-menu-trigger:hover {
+      border-color: var(--library-accent);
+   }
+   .cloud-gallery.library-redesign .song-row-menu-trigger:focus-visible,
+   .cloud-album.library-redesign .song-row-menu-trigger:focus-visible {
+      outline: 3px solid var(--library-accent);
+      outline-offset: 2px;
+   }
+   .cloud-gallery.library-redesign .song-row-menu-items,
+   .cloud-album.library-redesign .song-row-menu-items {
+      position: absolute;
+      z-index: 20;
+      top: calc(100% + 5px);
+      right: 0;
+      display: flex;
+      flex-direction: column;
+      width: max-content;
+      min-width: 168px;
+      max-width: min(240px, calc(100vw - 32px));
+      padding: 5px;
+      border: 1px solid var(--library-control);
+      border-radius: 9px;
+      background: var(--library-surface);
+      box-shadow: 0 10px 26px rgba(15, 35, 22, 0.16);
+   }
+   .cloud-gallery.library-redesign .song-card-action,
+   .cloud-album.library-redesign .song-card-action {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      min-height: 40px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--library-ink);
+      cursor: pointer;
+      font: 400 13px/1.3 Inter, ui-sans-serif, system-ui, sans-serif;
+      text-align: left;
+   }
+   .cloud-gallery.library-redesign .song-card-action:hover,
+   .cloud-gallery.library-redesign .song-card-action:focus-visible,
+   .cloud-album.library-redesign .song-card-action:hover,
+   .cloud-album.library-redesign .song-card-action:focus-visible {
+      outline: none;
+      background: var(--library-raised);
+   }
+   .cloud-gallery.library-redesign .song-card-action.is-delete,
+   .cloud-album.library-redesign .song-card-action.is-delete {
+      color: var(--library-danger);
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-state,
+   .cloud-album.library-redesign .cloud-gallery-state {
+      position: static;
+      display: flex;
+      width: 100%;
+      min-height: 190px;
+      margin: 12px 0;
+      padding: 28px;
+      border: 1px solid var(--library-line);
+      border-radius: 10px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-state[hidden],
+   .cloud-album.library-redesign .cloud-gallery-state[hidden] {
+      display: none !important;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-state-icon {
+      color: var(--library-accent);
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-state p,
+   .cloud-album.library-redesign .cloud-gallery-state p {
+      margin: 10px 0 4px;
+      color: var(--library-ink);
+      font: 600 16px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-state span,
+   .cloud-album.library-redesign .cloud-gallery-state span {
+      max-width: 52ch;
+      color: var(--library-muted);
+      font: 400 14px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-state .button {
+      min-height: 42px;
+      margin-top: 12px;
+      border-radius: 8px;
+   }
+   .cloud-gallery.library-redesign .skeleton-card,
+   .cloud-album.library-redesign .skeleton-card {
+      display: grid;
+      grid-template-columns: 52px minmax(180px, 1.45fr) minmax(130px, 0.9fr) minmax(260px, 1.7fr);
+      align-items: center;
+      gap: 16px;
+      width: 100%;
+      height: auto;
+      min-height: 82px;
+      padding: 11px 10px;
+      border: 0;
+      border-bottom: 1px solid var(--library-rule);
+      border-radius: 0;
+      background: transparent;
+      animation: none;
+   }
+   .cloud-gallery.library-redesign .skeleton-card > span,
+   .cloud-album.library-redesign .skeleton-card > span {
+      display: block;
+      height: 12px;
+      border-radius: 3px;
+      background: var(--library-raised);
+      animation: none;
+   }
+   .cloud-gallery.library-redesign .skeleton-card .sk-cover,
+   .cloud-album.library-redesign .skeleton-card .sk-cover {
+      width: 48px;
+      height: 48px;
+      grid-row: 1 / span 3;
+   }
+   .cloud-gallery.library-redesign .skeleton-card .sk-title,
+   .cloud-album.library-redesign .skeleton-card .sk-title {
+      width: min(70%, 230px);
+   }
+   .cloud-gallery.library-redesign .skeleton-card .sk-sub,
+   .cloud-gallery.library-redesign .skeleton-card .sk-detail,
+   .cloud-gallery.library-redesign .skeleton-card .sk-footer,
+   .cloud-album.library-redesign .skeleton-card .sk-sub,
+   .cloud-album.library-redesign .skeleton-card .sk-detail,
+   .cloud-album.library-redesign .skeleton-card .sk-footer {
+      width: min(48%, 160px);
+   }
 
+   .cloud-album.library-redesign .cloud-album-shell {
+      display: flex;
+      flex-direction: column;
+   }
+   .cloud-album.library-redesign .cloud-album-head {
+      grid-template-columns: auto minmax(180px, 1fr) minmax(0, 2fr);
+      min-height: 92px;
+      border-bottom: 1px solid var(--library-rule);
+   }
+   .cloud-album.library-redesign .album-back {
+      min-height: 42px;
+      border: 1px solid var(--library-control);
+      border-radius: 8px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+   }
+   .cloud-album.library-redesign .cloud-album-heading {
+      gap: 12px;
+      min-width: 0;
+   }
+   .cloud-album.library-redesign .cloud-album-hero {
+      width: 38px;
+      height: 38px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--library-accent);
+      font: 600 22px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-album.library-redesign .cloud-album-hero span {
+      font: inherit;
+   }
+   .cloud-album.library-redesign .cloud-modal-title {
+      color: var(--library-ink);
+      font: 650 22px/1.25 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.025em;
+   }
+   .cloud-album.library-redesign .cloud-album-description {
+      max-width: 62ch;
+      margin: 4px 0 0;
+      color: var(--library-muted);
+      font: 400 13px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-album.library-redesign .cloud-modal-sub {
+      max-width: none;
+      margin-top: 4px;
+      color: var(--library-muted);
+      font-size: 12px;
+   }
+   .cloud-album.library-redesign .cloud-album-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 7px;
+      flex-wrap: wrap;
+   }
+   .cloud-album.library-redesign .cloud-album-actions .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 0 10px;
+      border-radius: 8px;
+      font: 600 12px/1.2 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-album.library-redesign .cloud-album-searchbar {
+      width: min(1240px, 100%);
+      margin: 0 auto;
+      padding: 22px clamp(20px, 4vw, 56px) 14px;
+   }
+   .cloud-album.library-redesign .cloud-album-body {
+      width: min(1240px, 100%);
+      margin: 0 auto;
+      padding: 0 clamp(20px, 4vw, 56px) 36px;
+   }
 
+   .cloud-gallery.library-redesign .cloud-modal-title,
+   .cloud-gallery.library-redesign .confirm-dialog-title,
+   .cloud-album.library-redesign .confirm-dialog-title {
+      color: var(--library-ink);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .confirm-dialog-backdrop {
+      background: rgba(12, 24, 17, 0.42);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+   }
+   .confirm-dialog-card {
+      gap: 14px;
+      align-items: stretch;
+      padding: 26px;
+      border: 1px solid var(--library-control, var(--line));
+      border-radius: 16px;
+      text-align: left;
+   }
+   .confirm-dialog-icon {
+      width: auto;
+      height: auto;
+      align-self: flex-start;
+      border-radius: 0;
+      background: transparent;
+      color: var(--dark-green);
+      font-size: 20px;
+   }
+   html[data-theme="dark"] .confirm-dialog-icon {
+      background: transparent;
+   }
+   .confirm-dialog-title {
+      margin: 0;
+      font: 650 20px/1.25 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.025em;
+   }
+   .confirm-dialog-desc {
+      max-width: 58ch;
+      color: #526259;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-line;
+   }
+   html[data-theme="dark"] .confirm-dialog-desc {
+      color: #b6c0b8;
+   }
+   .confirm-dialog .new-song-name-label,
+   .confirm-dialog .pdf-field-label {
+      color: #526259;
+   }
+   html[data-theme="dark"] .confirm-dialog .new-song-name-label,
+   html[data-theme="dark"] .confirm-dialog .pdf-field-label {
+      color: #b6c0b8;
+   }
+   .confirm-dialog-actions {
+      justify-content: flex-end;
+      gap: 8px;
+   }
+   .confirm-dialog-actions .button {
+      flex: 0 1 auto;
+      min-width: 110px;
+      min-height: 44px;
+      border-radius: 8px;
+   }
+   .confirm-dialog-actions-stacked .button {
+      width: 100%;
+   }
 
+   .library-dialog .confirm-dialog-card {
+      --library-control: #7c8a80;
+      --library-muted: #526259;
+      position: relative;
+      width: min(560px, calc(100vw - 32px));
+      max-height: min(88vh, 860px);
+      align-items: stretch;
+      gap: 18px;
+      overflow-y: auto;
+      padding: 30px;
+      border-color: var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+      color: var(--ink);
+      box-shadow: 0 18px 50px rgba(15, 35, 22, 0.2);
+   }
+   .library-dialog#joinAlbumDialog .confirm-dialog-card {
+      width: min(460px, calc(100vw - 32px));
+   }
+   html[data-theme="dark"] .library-dialog .confirm-dialog-card {
+      --library-muted: #b6c0b8;
+   }
+   .library-dialog-head {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding-right: 32px;
+   }
+   .library-dialog-head .confirm-dialog-desc {
+      margin: 0;
+      color: var(--library-muted);
+   }
+   .library-dialog-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 40px;
+      height: 40px;
+      border: 1px solid var(--library-control, #7c8a80);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+      font: 400 24px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .library-dialog-close:hover {
+      background: var(--soft);
+      color: var(--ink);
+   }
+   .library-dialog-close:focus-visible {
+      outline: 3px solid var(--green);
+      outline-offset: 2px;
+   }
+   .library-dialog .new-song-name {
+      margin: 0;
+   }
+   .library-dialog .new-song-name-label,
+   .library-dialog .mode-picker-fieldset legend {
+      margin: 0 0 8px;
+      color: var(--ink);
+      font: 600 13px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0;
+      text-transform: none;
+   }
+   .library-dialog .new-song-name-label em {
+      color: var(--library-muted);
+      font-weight: 400;
+   }
+   .library-dialog .new-song-name-input,
+   .library-dialog .attach-link-input {
+      min-height: 46px;
+      border: 1px solid var(--library-control, var(--control, var(--line)));
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      font: 400 15px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .library-dialog .new-song-name-input:focus-visible,
+   .library-dialog .attach-link-input:focus-visible {
+      border-color: var(--green);
+      outline: 3px solid color-mix(in srgb, var(--green) 30%, transparent);
+      outline-offset: 1px;
+      box-shadow: none;
+   }
+   .library-dialog .new-song-name-hint {
+      margin-top: 7px;
+      color: var(--library-muted);
+      font-size: 13px;
+   }
+   .library-dialog .new-song-name-error {
+      color: #a32922;
+      font-size: 13px;
+   }
+   html[data-theme="dark"] .library-dialog .new-song-name-error {
+      color: #ff9b8f;
+   }
+   .library-dialog .mode-picker-card,
+   .mode-picker-card {
+      width: min(940px, calc(100vw - 32px));
+      max-height: min(92vh, 900px);
+   }
+   .mode-picker-fieldset {
+      min-width: 0;
+      margin: 0;
+      padding: 0;
+      border: 0;
+   }
+   .mode-picker-fieldset legend {
+      padding: 0;
+   }
+   .mode-picker-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 0;
+      padding: 0;
+   }
+   .mode-card {
+      display: flex;
+      min-width: 0;
+      min-height: 100%;
+      flex-direction: column;
+      gap: 14px;
+      padding: 14px;
+      border: 1px solid var(--library-control, #7c8a80);
+      border-radius: 10px;
+      background: var(--surface);
+      box-shadow: none;
+      color: var(--ink);
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.14s ease, background-color 0.14s ease;
+   }
+   .mode-card:hover {
+      border-color: var(--green);
+      background: var(--surface);
+      box-shadow: none;
+      transform: none;
+   }
+   .mode-card:focus-visible {
+      outline: 3px solid var(--green);
+      outline-offset: 2px;
+   }
+   .mode-card.is-selected {
+      border: 2px solid var(--green);
+      padding: 13px;
+      background: var(--soft);
+   }
+   html[data-theme="dark"] .library-dialog .mode-card {
+      border-color: var(--library-control);
+      background: var(--surface);
+      box-shadow: none;
+   }
+   html[data-theme="dark"] .library-dialog .mode-card:hover,
+   html[data-theme="dark"] .library-dialog .mode-card.is-selected {
+      border-color: var(--green);
+      background: var(--soft);
+   }
+   .mode-card-visual {
+      display: flex;
+      min-height: 72px;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border: 0;
+      border-radius: 6px;
+      background: var(--soft);
+   }
+   .mode-card-score {
+      color: var(--ink);
+      font: 700 17px/1.25 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.02em;
+      white-space: normal;
+      overflow-wrap: anywhere;
+   }
+   .mode-card-beats {
+      color: var(--library-muted, var(--muted));
+      font: 400 11px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      white-space: normal;
+   }
+   .mode-card-body {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+   }
+   .mode-card-title {
+      margin: 0;
+      color: var(--ink);
+      font: 600 15px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.01em;
+   }
+   .mode-card-sub {
+      color: var(--library-muted, var(--muted));
+      font: 400 13px/1.45 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .mode-card-sub code {
+      color: var(--ink);
+      font: inherit;
+      font-weight: 600;
+   }
+   .mode-card-points {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin: 4px 0 0;
+      padding: 0;
+      color: var(--library-muted, var(--muted));
+      list-style: none;
+   }
+   .mode-card-points span {
+      color: var(--library-muted, var(--muted));
+      font: 400 12px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .mode-card-points span::before {
+      content: "· ";
+      color: var(--green);
+      font-weight: 700;
+   }
+   .library-dialog-actions {
+      margin-top: 0;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+   }
+   .library-dialog-actions .button:disabled {
+      border-color: var(--library-control, var(--line));
+      background: var(--soft);
+      color: var(--library-muted, var(--muted));
+      cursor: not-allowed;
+      opacity: 1;
+   }
+   .library-dialog .confirm-dialog-actions .button-ghost {
+      border-color: var(--library-control, #7c8a80);
+      background: var(--surface);
+      color: var(--ink);
+   }
+   .library-dialog .confirm-dialog-actions .button:disabled {
+      border-color: var(--library-control, var(--line));
+      background: var(--soft);
+      color: var(--library-muted, var(--muted));
+      box-shadow: none;
+      cursor: not-allowed;
+      opacity: 1;
+   }
+   .attach-link-field {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+   }
+   .library-dialog .attach-link-input {
+      min-height: 120px;
+      margin: 0;
+      padding: 12px;
+      resize: vertical;
+      overflow-wrap: anywhere;
+   }
+   .library-dialog .attach-link-input::placeholder {
+      color: var(--muted);
+      opacity: 1;
+   }
+   .attach-link-card .new-song-name-hint {
+      margin: 0;
+   }
+   .confirm-dialog-card.add-song-dialog-card {
+      width: min(650px, calc(100vw - 32px));
+      max-height: min(88vh, 780px);
+   }
+   .add-song-search {
+      margin: 0;
+   }
+   .add-song-search input {
+      padding-left: 40px;
+   }
+   .add-song-list {
+      gap: 0;
+      max-height: min(38vh, 340px);
+      margin: 0;
+      overflow: auto;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+   }
+   .add-song-option {
+      min-height: 60px;
+      padding: 9px 10px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      background: transparent;
+   }
+   .add-song-option:last-child {
+      border-bottom: 0;
+   }
+   .add-song-option:has(input:checked) {
+      background: var(--soft);
+   }
+   .add-song-option:focus-within {
+      outline: 2px solid var(--green);
+      outline-offset: -2px;
+   }
+   .add-song-option input[type="radio"] {
+      width: 18px;
+      height: 18px;
+   }
+   .add-song-option-text strong {
+      color: var(--ink);
+      font: 600 14px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .add-song-option-text small {
+      color: var(--library-muted, var(--muted));
+      font: 400 12px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .add-song-loading,
+   .add-song-state {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 72px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--library-muted, var(--muted));
+      font: 400 14px/1.45 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .add-song-loading[hidden],
+   .add-song-state[hidden] {
+      display: none !important;
+   }
+   .add-song-state.is-error {
+      color: var(--library-danger, #a32922);
+   }
+   .add-song-state .button {
+      min-height: 38px;
+      border-radius: 7px;
+   }
+   .cloud-album.library-redesign .cloud-gallery-searchbar .cloud-search {
+      width: min(540px, 100%);
+   }
+}
 
+@media screen and (max-width: 900px) {
+   .cloud-gallery.library-redesign .song-card,
+   .cloud-album.library-redesign .song-card,
+   .cloud-gallery.library-redesign .skeleton-card,
+   .cloud-album.library-redesign .skeleton-card {
+      grid-template-columns: 48px minmax(140px, 1.2fr) minmax(100px, 0.8fr) minmax(180px, 1.3fr);
+      gap: 12px;
+   }
+   .cloud-gallery.library-redesign .song-card-meta,
+   .cloud-album.library-redesign .song-card-meta {
+      flex-wrap: wrap;
+      gap: 4px 10px;
+   }
+   .cloud-album.library-redesign .cloud-album-head {
+      grid-template-columns: auto minmax(0, 1fr);
+      padding-top: 12px;
+      padding-bottom: 12px;
+   }
+   .cloud-album.library-redesign .cloud-album-actions {
+      grid-column: 1 / -1;
+      justify-content: flex-start;
+   }
+}
+
+@media screen and (max-width: 680px) {
+   .cloud-gallery.library-redesign .cloud-gallery-head {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas: "brand actions" "tabs tabs";
+      gap: 0 10px;
+      min-height: 0;
+      padding: 6px 16px 0;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-heading {
+      grid-area: brand;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-actions {
+      grid-area: actions;
+      gap: 6px;
+   }
+   .cloud-gallery.library-redesign .home-tabs {
+      grid-area: tabs;
+      justify-content: flex-start;
+      gap: 22px;
+      min-height: 44px;
+      margin-top: 5px;
+   }
+   .cloud-gallery.library-redesign .home-tab {
+      min-height: 44px;
+      font-size: 13px;
+   }
+   .cloud-gallery.library-redesign .account-button {
+      min-width: 44px;
+      min-height: 44px;
+      justify-content: center;
+      padding: 4px;
+   }
+   .cloud-gallery.library-redesign .account-button.is-authed .account-label {
+      display: none;
+   }
+   .cloud-gallery.library-redesign .account-button:not(.is-authed) .account-label {
+      display: inline !important;
+   }
+   .cloud-gallery.library-redesign .account-avatar {
+      width: 34px;
+      height: 34px;
+   }
+   .cloud-gallery.library-redesign .gallery-resume {
+      display: inline-flex !important;
+      min-width: 44px;
+      padding: 0 8px;
+   }
+   .cloud-gallery.library-redesign .library-content {
+      padding: 22px 16px max(22px, env(safe-area-inset-bottom));
+   }
+   .cloud-gallery.library-redesign .library-view-head {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 14px;
+      margin-bottom: 18px;
+   }
+   .cloud-gallery.library-redesign .home-intro h1 {
+      font-size: 22px;
+   }
+   .cloud-gallery.library-redesign .library-view-actions {
+      justify-content: flex-start;
+      width: 100%;
+   }
+   .cloud-gallery.library-redesign .library-view-actions .button {
+      min-height: 44px;
+      padding: 0 11px;
+      font-size: 12px;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-searchbar {
+      gap: 8px;
+      padding-bottom: 12px;
+   }
+   .cloud-gallery.library-redesign .cloud-search {
+      flex: 1 1 0;
+      min-width: 0;
+   }
+   .cloud-gallery.library-redesign .cloud-search input {
+      min-height: 44px;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-body,
+   .cloud-album.library-redesign .cloud-album-body {
+      overflow: auto;
+   }
+   .cloud-gallery.library-redesign .song-card,
+   .cloud-album.library-redesign .song-card {
+      grid-template-columns: 44px minmax(0, 1fr) auto;
+      grid-template-rows: auto auto auto;
+      grid-template-areas: "cover identity actions" "cover detail actions" "cover dock actions";
+      gap: 4px 10px;
+      min-height: 86px;
+      padding: 11px 2px;
+   }
+   .cloud-gallery.library-redesign .song-card-cover,
+   .cloud-album.library-redesign .song-card-cover {
+      width: 40px;
+      height: 40px;
+   }
+   .cloud-gallery.library-redesign .song-card-mode-mark,
+   .cloud-album.library-redesign .song-card-mode-mark {
+      font-size: 19px;
+   }
+   .cloud-gallery.library-redesign .song-card-title,
+   .cloud-album.library-redesign .song-card-title {
+      font-size: 14px;
+   }
+   .cloud-gallery.library-redesign .song-card-creator,
+   .cloud-album.library-redesign .song-card-creator {
+      font-size: 12px;
+   }
+   .cloud-gallery.library-redesign .song-card-detail,
+   .cloud-album.library-redesign .song-card-detail {
+      font-size: 11px;
+   }
+   .cloud-gallery.library-redesign .song-card-detail,
+   .cloud-album.library-redesign .song-card-detail {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 1px 5px;
+   }
+   .cloud-gallery.library-redesign .song-card-dock,
+   .cloud-album.library-redesign .song-card-dock {
+      grid-template-columns: minmax(0, 1fr) auto;
+      min-height: 20px;
+      gap: 5px;
+   }
+   .cloud-gallery.library-redesign .song-card-meta,
+   .cloud-album.library-redesign .song-card-meta {
+      flex-wrap: wrap;
+      gap: 4px 8px;
+   }
+   .cloud-gallery.library-redesign .song-card-mode,
+   .cloud-gallery.library-redesign .song-card-chip,
+   .cloud-gallery.library-redesign .song-card-role,
+   .cloud-album.library-redesign .song-card-mode,
+   .cloud-album.library-redesign .song-card-chip,
+   .cloud-album.library-redesign .song-card-role {
+      font-size: 11px;
+   }
+   .cloud-gallery.library-redesign .song-row-menu-trigger,
+   .cloud-album.library-redesign .song-row-menu-trigger {
+      min-width: 44px;
+      min-height: 44px;
+      padding: 0 7px;
+      font-size: 11px;
+   }
+   .cloud-gallery.library-redesign .song-row-menu-items,
+   .cloud-album.library-redesign .song-row-menu-items {
+      position: fixed;
+      top: auto;
+      right: 16px;
+      bottom: max(16px, env(safe-area-inset-bottom));
+      min-width: min(240px, calc(100vw - 32px));
+   }
+   .cloud-gallery.library-redesign .song-card-action,
+   .cloud-album.library-redesign .song-card-action {
+      min-height: 44px;
+   }
+   .cloud-gallery.library-redesign .skeleton-card,
+   .cloud-album.library-redesign .skeleton-card {
+      grid-template-columns: 44px minmax(0, 1fr) 52px;
+      grid-template-rows: 13px 11px 11px;
+      grid-template-areas: "cover title footer" "cover sub footer" "cover detail footer";
+      gap: 5px 10px;
+      min-height: 86px;
+      padding: 11px 2px;
+   }
+   .cloud-gallery.library-redesign .skeleton-card .sk-cover,
+   .cloud-album.library-redesign .skeleton-card .sk-cover {
+      grid-area: cover;
+      width: 40px;
+      height: 40px;
+   }
+   .cloud-gallery.library-redesign .skeleton-card .sk-title,
+   .cloud-album.library-redesign .skeleton-card .sk-title {
+      grid-area: title;
+      width: 72%;
+   }
+   .cloud-gallery.library-redesign .skeleton-card .sk-sub,
+   .cloud-album.library-redesign .skeleton-card .sk-sub {
+      grid-area: sub;
+      width: 52%;
+   }
+   .cloud-gallery.library-redesign .skeleton-card .sk-detail,
+   .cloud-album.library-redesign .skeleton-card .sk-detail {
+      grid-area: detail;
+      width: 65%;
+   }
+   .cloud-gallery.library-redesign .skeleton-card .sk-footer,
+   .cloud-album.library-redesign .skeleton-card .sk-footer {
+      grid-area: footer;
+      width: 44px;
+      height: 36px;
+   }
+   .cloud-album.library-redesign .cloud-album-head {
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 8px 12px;
+      padding: 10px 16px 12px;
+   }
+   .cloud-album.library-redesign .cloud-album-heading {
+      gap: 7px;
+   }
+   .cloud-album.library-redesign .cloud-album-hero {
+      display: none;
+   }
+   .cloud-album.library-redesign .cloud-modal-title {
+      font-size: 18px;
+   }
+   .cloud-album.library-redesign .cloud-album-description {
+      font-size: 12px;
+   }
+   .cloud-album.library-redesign .cloud-modal-sub {
+      font-size: 11px;
+   }
+   .cloud-album.library-redesign .cloud-album-actions {
+      grid-column: 1 / -1;
+      justify-content: flex-start;
+      gap: 6px;
+   }
+   .cloud-album.library-redesign .cloud-album-actions .button {
+      min-height: 44px;
+      padding: 0 9px;
+   }
+   .cloud-album.library-redesign .cloud-album-searchbar,
+   .cloud-album.library-redesign .cloud-album-body {
+      padding-right: 16px;
+      padding-left: 16px;
+   }
+   .library-dialog .confirm-dialog-card,
+   .library-dialog .confirm-dialog-card.mode-picker-card,
+   .confirm-dialog-card.add-song-dialog-card {
+      width: 100%;
+      max-height: min(92dvh, 900px);
+      padding: 18px 14px max(14px, env(safe-area-inset-bottom));
+      border-radius: 16px;
+   }
+   .library-dialog .mode-picker-card {
+      gap: 10px;
+   }
+   .mode-picker-grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 6px;
+   }
+   .mode-card {
+      min-height: 0;
+      flex-direction: row;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px;
+   }
+   .mode-card.is-selected {
+      padding: 7px;
+   }
+   .mode-card-visual {
+      flex: 0 0 78px;
+      height: auto;
+      min-height: 54px;
+      padding: 6px;
+      overflow: visible;
+   }
+   .mode-card-score {
+      font-size: 13px;
+   }
+   .mode-card-beats {
+      font-size: 11px;
+      line-height: 1.1;
+   }
+   .mode-card-body {
+      min-width: 0;
+      gap: 3px;
+   }
+   .mode-card-title {
+      font-size: 14px;
+   }
+   .mode-card-sub {
+      font-size: 12px;
+   }
+   .mode-card-points {
+      display: flex;
+      gap: 2px;
+   }
+   .mode-card-points span {
+      font-size: 11px;
+      line-height: 1.25;
+   }
+   .library-dialog .new-song-name-hint {
+      margin-top: 4px;
+   }
+   .library-dialog-actions .button {
+      min-width: 0;
+      flex: 1 1 0;
+   }
+   .library-dialog .library-dialog-actions {
+      position: sticky;
+      z-index: 3;
+      bottom: -1px;
+      margin-top: 0;
+      padding: 12px 0 max(10px, env(safe-area-inset-bottom));
+      background: var(--surface);
+   }
+}
+
+@media screen and (max-width: 380px) {
+   .cloud-gallery.library-redesign .library-view-actions {
+      gap: 6px;
+   }
+   .cloud-gallery.library-redesign .library-view-actions .button {
+      padding: 0 8px;
+      font-size: 11px;
+   }
+   .mode-card-visual {
+      flex-basis: 74px;
+   }
+}
+
+@media screen and (hover: none) and (pointer: coarse) {
+   .cloud-gallery.library-redesign .library-view-actions .button,
+   .cloud-gallery.library-redesign .song-row-menu-trigger,
+   .cloud-gallery.library-redesign .topbar-help-btn,
+   .cloud-gallery.library-redesign .account-button,
+   .cloud-album.library-redesign .song-row-menu-trigger,
+   .cloud-album.library-redesign .album-back,
+   .cloud-album.library-redesign .cloud-album-actions .button {
+      min-height: 44px;
+   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+   .cloud-gallery.library-redesign *,
+   .cloud-album.library-redesign *,
+   .library-dialog * {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+   }
+   .cloud-gallery.library-redesign .home-tab::after,
+   .cloud-gallery.library-redesign .song-card-mode-mark,
+   .cloud-gallery.library-redesign .song-card-mode-symbol,
+   .cloud-album.library-redesign .song-card-mode-mark,
+   .cloud-album.library-redesign .song-card-mode-symbol {
+      transition: none !important;
+      transform: none !important;
+   }
+}
+
+@media screen {
+   :where(
+      .cloud-gallery.library-redesign,
+      .cloud-gallery.library-redesign *,
+      .cloud-album.library-redesign,
+      .cloud-album.library-redesign *,
+      .confirm-dialog,
+      .confirm-dialog *
+   ) {
+      font-family: "Sora", "Inter", system-ui, sans-serif !important;
+   }
+   :where(.confirm-dialog code, .invite-code-value, .album-code-input) {
+      font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace) !important;
+   }
+}
+
+/* ============================================================================
+   EDITOR CHROME REFRESH — framed sheet (screen only)
+
+   Art direction: the chrome is one tinted frame; the score paper is the only
+   white sheet. Depth comes from a tone step, not shadows — the one elevation
+   token is reserved for things that truly float (dialogs, popovers, menus).
+   Colour budget: the brand green appears on Save, focus and the mode glyph;
+   everything else in the chrome is ink/grey.
+
+   SCOPE: screen only. Nothing here may reach @media print or the PDF layout
+   preview — html.is-print-layout rules are more specific and stay untouched.
+   Protected: styles/preview.css, #previewCard, #cpPreviewCard and the whole
+   PDF pipeline.
+   ========================================================================== */
+:root {
+   --editor-ground: #eef1ec;
+   --editor-surface: #ffffff;
+   --editor-raised: #eaf5ed;
+   --editor-line: #d9e5dc;
+   --editor-rule: #e9efea;
+   --editor-control: #7c8a80;
+   --editor-ink: #163a2a;
+   --editor-muted: #526259;
+   --editor-accent: #237a50;
+   --editor-accent-ink: #ffffff;
+   --editor-accent-hover: #1b6543;
+   --editor-danger: #a32922;
+   --editor-elev: 0 14px 34px rgba(16, 40, 28, 0.16);
+   --editor-font: "Sora", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+html[data-theme="dark"] {
+   --editor-ground: #0f1110;
+   --editor-surface: #171a18;
+   --editor-raised: #202521;
+   --editor-line: #343a35;
+   --editor-rule: #292e2a;
+   --editor-control: #7c8a80;
+   --editor-ink: #f1f4f2;
+   --editor-muted: #b6c0b8;
+   --editor-accent: #83c99d;
+   --editor-accent-ink: #10231b;
+   --editor-accent-hover: #9ad9b3;
+   --editor-danger: #ff9b8f;
+   --editor-elev: 0 18px 40px rgba(0, 0, 0, 0.55);
+}
+
+@media screen {
+   body {
+      background: var(--editor-ground);
+   }
+
+   /* ---- Typography: Sora is the editor's voice -------------------------
+      Applies to the chrome only. The score paper (#previewCard /
+      #cpPreviewCard) keeps its own musical typography (Inter 850/900 +
+      the accidental subset) because it is the printed document and its
+      metrics are part of the PDF contract. */
+   .topbar,
+   .topbar .button,
+   .topbar .editor-breadcrumb,
+   .topbar .editor-mode-badge,
+   .topbar .album-pill,
+   .topbar .youtube-chip,
+   .album-banner,
+   .toast,
+   .site-footer,
+   .scroll-affordance,
+   .placing-banner,
+   .account-popover,
+   .section-menu-popover,
+   .chord-popover,
+   .beat-menu,
+   .fermata-editor,
+   .confirm-dialog-card,
+   .pdf-options-dialog,
+   .device-hint-card {
+      font-family: var(--editor-font);
+   }
+
+   /* ---- Frame: the top bar shares the tinted ground, with no rule --------- */
+   .topbar {
+      height: 48px;
+      padding: 0 clamp(12px, 2vw, 24px);
+      border-bottom: 0;
+      background: var(--editor-ground);
+      box-shadow: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+   }
+   .topbar-nav {
+      gap: 8px;
+   }
+   .topbar-actions {
+      gap: 6px;
+   }
+   /* The style's top-bar move: the context cluster (mode, album) is set apart
+      from the action pair by a quiet 1px divider, and the document's name is
+      the one piece of display type in the bar. */
+   .topbar-divider {
+      width: 1px;
+      height: 20px;
+      align-self: center;
+      margin: 0 2px;
+      background: color-mix(in srgb, var(--editor-muted) 34%, transparent);
+   }
+   .editor-back {
+      min-height: 30px;
+      padding: 5px 8px;
+      border: 0;
+      background: transparent;
+      color: var(--editor-muted);
+      font-size: 13px;
+   }
+   .editor-back:hover {
+      background: var(--editor-raised);
+      color: var(--editor-ink);
+   }
+   .editor-breadcrumb {
+      gap: 1px;
+      padding-left: 0;
+      border-left: 0;
+   }
+   .editor-breadcrumb-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--editor-muted);
+   }
+   .editor-breadcrumb-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--editor-ink);
+   }
+
+   /* ---- One chip family: white, 1px edge, 8px radius, 28px tall ---------- */
+   .version-switcher-btn,
+   .editor-mode-badge,
+   .album-pill {
+      min-height: 28px;
+      padding: 4px 10px;
+      border: 1px solid var(--editor-line);
+      border-radius: 8px;
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+      font-size: 12px;
+      font-weight: 650;
+      box-shadow: none;
+   }
+   .version-switcher-btn:hover,
+   .album-pill:hover {
+      background: var(--editor-raised);
+      border-color: var(--editor-control);
+   }
+   .version-switcher-caret {
+      display: inline-grid;
+      place-items: center;
+   }
+   .version-switcher-caret svg {
+      display: block;
+      width: 14px;
+      height: 14px;
+   }
+   .album-pill-icon,
+   .album-banner-icon,
+   .editor-mode-badge-icon {
+      display: inline-grid;
+      place-items: center;
+      flex: none;
+   }
+   .album-pill-icon svg {
+      width: 14px;
+      height: 14px;
+   }
+   .album-pill.is-readonly {
+      border-style: dashed;
+      background: var(--editor-surface);
+      color: var(--editor-muted);
+   }
+
+   /* Mode badge: the mode's own notation is the product's face. The glyph is
+      set in the score's voice; no tinted circle (app-screen house rule). */
+   .editor-mode-badge {
+      gap: 7px;
+      padding-left: 8px;
+   }
+   .editor-mode-badge-icon {
+      width: auto;
+      min-width: 20px;
+      height: 20px;
+      border-radius: 0;
+      background: transparent;
+      color: var(--editor-accent);
+      font-size: 12px;
+   }
+   .editor-mode-badge-icon::before {
+      content: "♪";
+      font-weight: 800;
+      line-height: 1;
+   }
+   [data-editor-mode="chords"] .editor-mode-badge-icon::before {
+      content: "Am7";
+      font-size: 10px;
+      letter-spacing: -0.03em;
+   }
+   [data-editor-mode="numbers"] .editor-mode-badge-icon::before {
+      content: "1\0307";
+   }
+   [data-editor-mode="chordpro"] .editor-mode-badge-icon::before {
+      content: "[C]";
+      font-size: 10px;
+      letter-spacing: -0.02em;
+   }
+
+   /* ---- Buttons: flat, one fill (Save), everything else quiet ------------ */
+   .button {
+      min-height: 32px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      box-shadow: none;
+      transition:
+         background 0.16s ease,
+         border-color 0.16s ease,
+         color 0.16s ease,
+         opacity 0.16s ease;
+   }
+   .button:hover {
+      transform: none;
+      filter: none;
+   }
+   .button .btn-icon {
+      display: inline-grid;
+      place-items: center;
+      margin-right: 6px;
+   }
+   .button .btn-icon svg {
+      display: block;
+      width: 15px;
+      height: 15px;
+   }
+   .icon-glyph {
+      display: inline-grid;
+      place-items: center;
+   }
+   .icon-glyph svg {
+      display: block;
+      width: 15px;
+      height: 15px;
+   }
+   .youtube-chip-edit .icon-glyph svg {
+      width: 14px;
+      height: 14px;
+   }
+   .button-primary,
+   .button-save {
+      background: var(--editor-accent);
+      color: var(--editor-accent-ink);
+      border-color: transparent;
+      box-shadow: none;
+   }
+   .button-primary:hover,
+   .button-save:hover {
+      background: var(--editor-accent-hover);
+      box-shadow: none;
+   }
+   .button-ghost {
+      border: 1px solid var(--editor-line);
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+   }
+   .button-ghost:hover {
+      border-color: var(--editor-control);
+      background: var(--editor-raised);
+   }
+   .button-dark {
+      border: 1px solid var(--editor-line);
+      background: transparent;
+      color: var(--editor-ink);
+      box-shadow: none;
+   }
+   .button-dark:hover {
+      border-color: var(--editor-control);
+      background: var(--editor-raised);
+      color: var(--editor-ink);
+   }
+   .icon-button {
+      min-width: 32px;
+      min-height: 32px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--editor-muted);
+   }
+   .icon-button:hover {
+      border-color: var(--editor-line);
+      background: var(--editor-raised);
+      color: var(--editor-ink);
+   }
+   .icon-button svg {
+      display: block;
+      width: 16px;
+      height: 16px;
+   }
+   .button-reset {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--editor-muted);
+   }
+   .button-reset:hover {
+      background: var(--editor-raised);
+      color: var(--editor-ink);
+   }
+   .button.is-danger,
+   .button-ghost.is-danger {
+      color: var(--editor-danger);
+   }
+   .button-danger {
+      background: var(--editor-danger);
+      color: #fff;
+   }
+
+   /* Save settles into a check for a moment after a successful save. The class
+      is added by flashSavedState() — additive only; save logic is untouched. */
+   .button-save .btn-icon {
+      position: relative;
+   }
+   .button-save.is-saved {
+      background: var(--editor-accent-hover);
+   }
+   .button-save.is-saved .btn-icon svg {
+      display: none;
+   }
+   .button-save.is-saved .btn-icon::after {
+      content: "✓";
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1;
+   }
+
+   /* ---- YouTube chip: keep the two-state contract, quiet the surface ----- */
+   .youtube-chip {
+      min-height: 28px;
+      border-radius: 8px;
+      border-color: var(--editor-line);
+      background: var(--editor-surface);
+   }
+   .youtube-chip[data-state="none"] {
+      border-color: transparent;
+      background: transparent;
+   }
+   .youtube-chip-none {
+      border-radius: 8px;
+      color: var(--editor-muted);
+   }
+   .youtube-chip-none:hover {
+      color: var(--editor-ink);
+   }
+
+   /* ---- Frame + canvas well --------------------------------------------- */
+   main {
+      max-width: none;
+      padding: 8px clamp(8px, 1.4vw, 16px) 16px;
+   }
+   .preview-viewport {
+      padding: 18px 16px 24px;
+      background: var(--editor-ground);
+      scrollbar-color: var(--editor-control) transparent;
+   }
+   .preview-viewport:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--editor-accent);
+   }
+   .preview-stage {
+      background: transparent;
+   }
+   .scroll-affordance {
+      border: 1px solid var(--editor-line);
+      border-radius: 8px;
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+      font-size: 12px;
+      box-shadow: var(--editor-elev);
+   }
+   .placing-banner {
+      border: 1px solid var(--editor-line);
+      border-radius: 8px;
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+      box-shadow: var(--editor-elev);
+   }
+
+   /* ---- Banners, toast, footer ----------------------------------------- */
+   .album-banner {
+      margin: 0;
+      padding: 8px clamp(12px, 2vw, 24px);
+      border: 0;
+      border-radius: 0;
+      background: var(--editor-raised);
+      color: var(--editor-ink);
+      font-size: 12.5px;
+      box-shadow: inset 3px 0 0 var(--editor-accent);
+   }
+   .album-banner::before {
+      display: none;
+   }
+   .album-banner-icon svg {
+      width: 16px;
+      height: 16px;
+      color: var(--editor-accent);
+   }
+   .toast {
+      border-radius: 8px;
+      background: #163a2a;
+      color: #f4f8f5;
+      font-size: 12.5px;
+      box-shadow: var(--editor-elev);
+   }
+   html[data-theme="dark"] .toast {
+      background: #e7ece8;
+      color: #10231b;
+   }
+   .site-footer {
+      border-top: 0;
+      background: var(--editor-ground);
+      color: var(--editor-muted);
+   }
+
+   /* ---- Dialog shell: one flat sheet, one floating shadow ---------------- */
+   .confirm-dialog-card,
+   .pdf-options-dialog {
+      border: 1px solid var(--editor-line);
+      border-radius: 16px;
+      background: var(--editor-surface);
+      box-shadow: var(--editor-elev);
+   }
+   .confirm-dialog-icon:not(.member-actions-avatar) {
+      width: 40px;
+      height: 40px;
+      border-radius: 0;
+      background: transparent;
+      color: var(--editor-accent);
+      font-size: 20px;
+   }
+   .confirm-dialog-icon:not(.member-actions-avatar) svg {
+      width: 22px;
+      height: 22px;
+   }
+   html[data-theme="dark"] .confirm-dialog-icon:not(.member-actions-avatar) {
+      background: transparent;
+      color: var(--editor-accent);
+   }
+   .confirm-dialog-actions .button {
+      min-height: 36px;
+   }
+   .confirm-dialog-backdrop,
+   .pdf-options-backdrop {
+      background: rgba(9, 22, 15, 0.42);
+   }
+   html[data-theme="dark"] .confirm-dialog-backdrop,
+   html[data-theme="dark"] .pdf-options-backdrop {
+      background: rgba(0, 0, 0, 0.62);
+   }
+
+   /* ---- PDF options: chrome only; the preview pane keeps its own rules --- */
+   .pdf-options-head h2 {
+      letter-spacing: -0.01em;
+   }
+   .pdf-preview-title {
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--editor-muted);
+   }
+   .pdf-field-divider {
+      font-size: 12px;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--editor-muted);
+   }
+   .pdf-field-divider::after {
+      background: var(--editor-rule);
+   }
+   .pdf-choice {
+      min-height: 34px;
+      border-radius: 8px;
+      border-color: var(--editor-line);
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+   }
+   .pdf-choice:hover {
+      border-color: var(--editor-control);
+      background: var(--editor-raised);
+   }
+   .pdf-choice.is-active,
+   .pdf-choice[aria-pressed="true"] {
+      border-color: var(--editor-accent);
+      background: var(--editor-accent);
+      color: var(--editor-accent-ink);
+   }
+   .pdf-slider {
+      accent-color: var(--editor-accent);
+   }
+
+   /* ---- Floating surfaces: popovers and menus --------------------------- */
+   .account-popover,
+   .section-menu-popover,
+   .chord-popover {
+      border: 1px solid var(--editor-line);
+      border-radius: 12px;
+      background: var(--editor-surface);
+      box-shadow: var(--editor-elev);
+   }
+   .account-popover-item:hover,
+   .account-popover-item:focus-visible {
+      background: var(--editor-raised);
+   }
+   .account-popover-sep {
+      background: var(--editor-rule);
+   }
+   .copy-section,
+   .paste-section,
+   .select-bars {
+      color: var(--editor-ink);
+   }
+   .copy-section:hover,
+   .paste-section:hover,
+   .select-bars:hover {
+      background: var(--editor-raised);
+   }
+   .delete-section {
+      color: var(--editor-danger);
+   }
+   .delete-section:hover {
+      background: var(--editor-raised);
+   }
+   .delete-section:disabled,
+   .paste-section:disabled {
+      color: var(--editor-muted);
+      opacity: 0.6;
+   }
+
+   /* ---- Keyboard focus: one ring, everywhere ---------------------------- */
+   .topbar :focus-visible,
+   .confirm-dialog :focus-visible,
+   .pdf-options-dialog :focus-visible,
+   .account-popover :focus-visible,
+   .section-menu-popover :focus-visible,
+   .chord-popover :focus-visible {
+      outline: 2px solid var(--editor-accent);
+      outline-offset: 2px;
+   }
+
+   /* ---- Dark theme: the same frame, one tone step per surface ------------ */
+   html[data-theme="dark"] body {
+      background: var(--editor-ground);
+   }
+   html[data-theme="dark"] .topbar {
+      background: var(--editor-ground);
+      border-bottom: 0;
+   }
+   html[data-theme="dark"] .version-switcher-btn,
+   html[data-theme="dark"] .editor-mode-badge,
+   html[data-theme="dark"] .album-pill,
+   html[data-theme="dark"] .youtube-chip {
+      border-color: var(--editor-line);
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+   }
+   html[data-theme="dark"] .editor-mode-badge {
+      color: var(--editor-ink);
+   }
+   html[data-theme="dark"] .editor-mode-badge-icon {
+      background: transparent;
+      color: var(--editor-accent);
+   }
+   html[data-theme="dark"] .youtube-chip[data-state="none"] {
+      border-color: transparent;
+      background: transparent;
+   }
+   html[data-theme="dark"] .youtube-chip-none {
+      border-color: var(--editor-line);
+      color: var(--editor-muted);
+   }
+   html[data-theme="dark"] .button-dark {
+      border-color: var(--editor-line);
+      background: transparent;
+      color: var(--editor-ink);
+   }
+   html[data-theme="dark"] .button-dark:hover {
+      border-color: var(--editor-control);
+      background: var(--editor-raised);
+      color: var(--editor-ink);
+   }
+   html[data-theme="dark"] .button-ghost {
+      border-color: var(--editor-line);
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+   }
+   html[data-theme="dark"] .button-ghost:hover {
+      border-color: var(--editor-control);
+      background: var(--editor-raised);
+   }
+   html[data-theme="dark"] .editor-back {
+      border-color: transparent;
+      background: transparent;
+      color: var(--editor-muted);
+   }
+   html[data-theme="dark"] .editor-back:hover {
+      background: var(--editor-raised);
+      color: var(--editor-ink);
+   }
+   html[data-theme="dark"] .youtube-chip-open,
+   html[data-theme="dark"] .youtube-chip-edit {
+      color: #fda4af;
+   }
+
+   .device-hint-close {
+      border: 0;
+      border-radius: 8px;
+      background: var(--editor-accent);
+      color: var(--editor-accent-ink);
+      font-weight: 700;
+      box-shadow: none;
+   }
+   .device-hint-close:hover {
+      background: var(--editor-accent-hover);
+   }
+   .device-hint-card {
+      border: 1px solid var(--editor-line);
+      border-radius: 16px;
+      background: var(--editor-surface);
+      box-shadow: var(--editor-elev);
+   }
+   .device-hint-icon {
+      display: inline-grid;
+      place-items: center;
+      color: var(--editor-accent);
+   }
+   .device-hint-icon svg {
+      width: 26px;
+      height: 26px;
+   }
+
+   /* ---- Phone: the frame disappears; the sheet becomes the screen -------- */
+   @media (max-width: 680px) {
+      .topbar {
+         height: auto;
+         padding: 10px 12px;
+         background: var(--editor-ground);
+      }
+      main {
+         padding: 8px 8px 16px;
+      }
+      .preview-viewport {
+         padding: 12px 10px 18px;
+      }
+      .topbar-actions .button,
+      .topbar-actions .button-ghost,
+      .topbar-actions .button-save,
+      .topbar-actions .button-dark {
+         min-height: 40px;
+         padding: 8px 10px;
+         font-size: 11px;
+      }
+      .topbar-actions .button .btn-icon svg {
+         width: 14px;
+         height: 14px;
+      }
+      .editor-breadcrumb-label {
+         display: none;
+      }
+      .topbar-divider {
+         display: none;
+      }
+      .album-banner {
+         padding: 8px 12px;
+         font-size: 12px;
+      }
+   }
+
+   /* ---- Tablet: keep one row, restore the mode label -------------------- */
+   @media (min-width: 681px) and (max-width: 1050px) {
+      .editor-mode-badge-text {
+         display: inline;
+      }
+      .version-switcher-btn,
+      .editor-mode-badge,
+      .album-pill,
+      .youtube-chip {
+         font-size: 11.5px;
+      }
+   }
+}

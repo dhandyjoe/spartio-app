@@ -22,6 +22,8 @@ import {
    sectionHasFermata,
    editorModeMeta,
    normalizeEditorMode,
+   isSingleBeatMeter,
+   barUnitWord,
    NASHVILLE_TOKEN_RE,
    NASHVILLE_OCTAVE_UP,
    NASHVILLE_OCTAVE_DOWN,
@@ -423,6 +425,11 @@ function sectionTypeClass(name) {
 function sectionHTML(section) {
    const state = getState();
    const { beats } = meterInfo();
+   const beatWord = beats === 1 ? "beat" : "beats";
+   // In `1/4` the bar IS a beat: the section reads as ONE growing bar (no bar
+   // line — see styles/preview.css), so every "bar" label below becomes "beat".
+   const singleBeat = isSingleBeatMeter(state.meter);
+   const unit = barUnitWord(state.meter);
    const showLyrics = lyricsFeatureAvailable && state.lyricsEnabled && section.lyricsEnabled !== false,
       // The chord row exists in Chord Chart mode only, and each SECTION decides
       // whether it uses it (its own Chords On/Off button + per-bar overrides).
@@ -463,7 +470,7 @@ function sectionHTML(section) {
             : "";
       // NOTE: the per-bar chord-row (♪) toggle was removed — the chord row is now
       // controlled only by the section-level "Chords On/Off" button.
-      return `<div class="bar ${showLyrics ? "has-lyrics" : ""}${chordAboveTrack ? " has-chord-above" : ""}${chordAboveOffClass}${barSelClass}${barSelectedClass}${toolsOpen}" style="--beats:${beats}" data-bar="${bar}"><span class="bar-num" aria-hidden="true">${globalBarNum}</span><span class="bar-tools"><button class="copy-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Copy bar ${globalBarNum}" aria-label="Copy bar ${globalBarNum}">⧉</button><button class="paste-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Paste into bar ${globalBarNum}" aria-label="Paste into bar ${globalBarNum}">⎘</button></span><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Delete bar ${globalBarNum}" aria-label="Delete bar ${globalBarNum}">×</button>${Array.from({ length: beats }, (_, beat) => beatHTML(section, bar, beat, chordAboveTrack, chordAboveShown)).join("")}</div>`;
+      return `<div class="bar ${showLyrics ? "has-lyrics" : ""}${chordAboveTrack ? " has-chord-above" : ""}${chordAboveOffClass}${barSelClass}${barSelectedClass}${toolsOpen}" style="--beats:${beats}" data-bar="${bar}"><span class="bar-num" aria-hidden="true">${globalBarNum}</span><span class="bar-tools"><button class="copy-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Copy ${unit} ${globalBarNum}" aria-label="Copy ${unit} ${globalBarNum}">⧉</button><button class="paste-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Paste into ${unit} ${globalBarNum}" aria-label="Paste into ${unit} ${globalBarNum}">⎘</button></span><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Delete ${unit} ${globalBarNum}" aria-label="Delete ${unit} ${globalBarNum}">×</button>${Array.from({ length: beats }, (_, beat) => beatHTML(section, bar, beat, chordAboveTrack, chordAboveShown)).join("")}</div>`;
    });
    const batches = Array.from(
       { length: Math.ceil(bars.length / 4) },
@@ -483,17 +490,17 @@ function sectionHTML(section) {
       ? `<button class="section-chord-above-toggle ${section.chordAboveEnabled === true ? "active" : ""}" data-section="${section.id}" aria-pressed="${section.chordAboveEnabled === true}"><span aria-hidden="true">${section.chordAboveEnabled === true ? "✓" : "–"}</span> Chords ${section.chordAboveEnabled === true ? "On" : "Off"}</button>`
       : "";
    const deleteDisabled = state.sections.length === 1;
-   const sectionMenu = `<details class="section-menu"><summary title="Section options" aria-label="Options for ${escapeHTML(section.name)}">•••</summary><div class="section-menu-popover"><button class="select-bars" type="button" data-section="${section.id}">Copy bars</button><button class="copy-section" type="button" data-section="${section.id}">Copy section</button><button class="paste-section" type="button" data-section="${section.id}">Paste section</button><button class="delete-section" type="button" data-section="${section.id}" ${deleteDisabled ? "disabled" : ""}>Delete section</button></div></details>`;
+   const sectionMenu = `<details class="section-menu"><summary title="Section options" aria-label="Options for ${escapeHTML(section.name)}">•••</summary><div class="section-menu-popover"><button class="select-bars" type="button" data-section="${section.id}">Copy ${unit}s</button><button class="copy-section" type="button" data-section="${section.id}">Copy section</button><button class="paste-section" type="button" data-section="${section.id}">Paste section</button><button class="delete-section" type="button" data-section="${section.id}" ${deleteDisabled ? "disabled" : ""}>Delete section</button></div></details>`;
    const typeClass = sectionTypeClass(section.name);
    const chip = `<span class="section-chip" aria-hidden="true"></span>`;
    // Selection action bar: shown above the grid only for the section being selected.
    const selCount = selBars ? selBars.size : 0;
    const selectionBar = selecting
       ? `<div class="bar-selection-bar" role="status"><span class="bar-selection-count">${
-           selCount ? `${selCount} bar${selCount === 1 ? "" : "s"} selected` : "No bars selected yet"
-        }</span><span class="bar-selection-hint">Tap bars to build the block · tap a selected bar to remove it</span><button class="bar-selection-copy" type="button" data-section="${section.id}" ${selCount ? "" : "disabled"}>Copy</button><button class="bar-selection-cancel" type="button">Cancel</button></div>`
+           selCount ? `${selCount} ${unit}${selCount === 1 ? "" : "s"} selected` : `No ${unit}s selected yet`
+        }</span><span class="bar-selection-hint">Tap ${unit}s to build the block · tap a selected ${unit} to remove it</span><button class="bar-selection-copy" type="button" data-section="${section.id}" ${selCount ? "" : "disabled"}>Copy</button><button class="bar-selection-cancel" type="button">Cancel</button></div>`
       : "";
-   return `<section class="preview-section ${typeClass} ${section.id === state.activeId ? "is-active" : ""} ${hasLyricContent ? "has-lyric-content" : ""}${sectionFermata ? " has-fermata" : ""}${selecting ? " is-selecting" : ""}" data-section="${section.id}"><div class="section-preview-heading"><div>${chip}${title}</div><div class="section-tools">${chordAboveToggle}${lyricsToggle}<span class="bar-caption">${section.bars} ${section.bars === 1 ? "bar" : "bars"} · ${beats} beats per bar</span><button class="text-button add-bar" data-section="${section.id}">+ Add 1 bar</button>${sectionMenu}</div></div>${selectionBar}<div class="bar-grid">${batches}</div></section>`;
+   return `<section class="preview-section ${typeClass} ${section.id === state.activeId ? "is-active" : ""} ${hasLyricContent ? "has-lyric-content" : ""}${sectionFermata ? " has-fermata" : ""}${selecting ? " is-selecting" : ""}" data-section="${section.id}"><div class="section-preview-heading"><div>${chip}${title}</div><div class="section-tools">${chordAboveToggle}${lyricsToggle}<span class="bar-caption">${singleBeat ? `1 bar · ${section.bars} ${section.bars === 1 ? "beat" : "beats"}` : `${section.bars} ${section.bars === 1 ? "bar" : "bars"} · ${beats} ${beatWord} per bar`}</span><button class="text-button add-bar" data-section="${section.id}">${singleBeat ? "+ Add 1 beat" : "+ Add 1 bar"}</button>${sectionMenu}</div></div>${selectionBar}<div class="bar-grid">${batches}</div></section>`;
 }
 // ---- ChordPro rendering ----
 // Lyrics with a chord printed directly above the syllable it precedes. The layout
@@ -545,6 +552,12 @@ export function renderPreview() {
       `<span class="artist-label">Created by:</span> <em class="artist-value">${escapeHTML(artist)}</em>`;
    $("#previewKey").textContent = state.key;
    $("#previewMeter").textContent = state.meter;
+   // Publish the time signature to the stylesheet. `body[data-meter="1/4"]` is the
+   // scope that drops the bar line and re-spaces the row: a 1/4 bar IS a beat, so the
+   // section is drawn as ONE growing bar. Every meter change (grid select, ChordPro
+   // select, project load, undo/redo) funnels through renderPreview(), so the
+   // attribute can never drift away from the score that is on screen.
+   document.body.dataset.meter = state.meter;
    // The old free-text hint ("Drag a chord…") was replaced by the "How to use
    // this score app?" button + dialog (see index.html / events.js). Guard in case
    // the element is absent so older markup doesn't throw.

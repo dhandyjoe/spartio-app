@@ -582,6 +582,37 @@ html:not(.is-print-layout) .nashville-octave-low .nashville-octave-dot {
    background: var(--ink);
    pointer-events: none;
 }
+/*
+  A 1/4 bar IS a beat: the section reads as ONE growing bar, so there is no line
+  BETWEEN the beats. The line stays at the two edges of every line of the score
+  (the editor draws one line per group of bars): the first bar opens it, the last
+  bar closes it. The horizontal rules of the row are not bar lines — they stay.
+*/
+body[data-meter="1/4"] .bar-batch .bar::before {
+   display: none;
+}
+/* The opening edge of the line. The line sits INSIDE the bar: at the row's left
+   edge it would otherwise fall half a pixel OUTSIDE the scrollable grid, where
+   the grid's overflow clips it away. */
+body[data-meter="1/4"] .bar-batch .bar:first-child::before {
+   display: block;
+   left: 0;
+}
+/* The closing edge of the line. The screen has no right bar line of its own
+   (only the print layout draws one), so it is introduced here, mirroring the
+   left bar line above. It sits half a pixel inside the bar: the row is a hair
+   wider than the scrollable grid, so a line flush with the bar's edge would be
+   clipped away by the grid's overflow. */
+body[data-meter="1/4"] .bar-batch .bar:last-child::after {
+   content: "";
+   position: absolute;
+   top: 0;
+   bottom: 0;
+   right: 0.5px;
+   width: 1px;
+   background: var(--ink);
+   pointer-events: none;
+}
 .beat .placed-chord.duration-half::before,
 .beat .placed-chord.duration-quarter::before {
    content: "";
@@ -1825,8 +1856,17 @@ html[data-theme="dark"] .beat-fermata {
    pointer-events: none;
    user-select: none;
 }
+/* 1/4 has no bars to number (the section is one growing bar), so the faint editor
+   counter stays out of it — the same reason the printed stamp is hidden there. */
+body[data-meter="1/4"] .bar-batch .bar .bar-num {
+   display: none;
+}
 /* .section-title base styles live in the section-heading block above (~line 546). */
 html[data-theme="dark"] .bar-batch .bar::before {
+   background: rgba(255, 255, 255, 0.28);
+}
+/* The closing edge of a 1/4 line (screen) follows the same ink as the left one. */
+html[data-theme="dark"] body[data-meter="1/4"] .bar-batch .bar:last-child::after {
    background: rgba(255, 255, 255, 0.28);
 }
 html[data-theme="dark"] .bar-batch {
@@ -2224,6 +2264,10 @@ html[data-theme="dark"] .placing-cancel:hover {
       lyrics are printed, so the sung chart is easier to read. Matches the
       no-lyric bar padding (--print-bar-pad-x) so spacing is uniform. */
    --print-bar-pad-x-lyrics: 2.6mm;
+   /* Horizontal inset of a printed ROW. 0 by default: every bar carries its own
+      side padding (--print-bar-pad-x). The 1/4 scope hands that inset to the row
+      instead, so the beats of the growing bar sit at the normal beat pitch. */
+   --print-row-pad-x: 0mm;
    /* Bar numbers (PDF options → Bars) in two densities:
       • "line"  (default) — ONE big number per printed line, above that line's first barline.
       • "every"           — a small number above every barline (dense rehearsal reference).
@@ -2267,6 +2311,24 @@ html[data-theme="dark"] .placing-cancel:hover {
    --print-beam-gap: 0.75mm;
    /* Keep 42px so print barlines stay visually stable and regression-safe. */
    --print-barline-h: 42px;
+}
+
+/* ---------------------------------------------------------------------------
+   1/4 — ONE GROWING BAR (no bar line).
+   A 1/4 bar IS a beat, so the score is drawn as a single bar that keeps growing
+   with every added beat:
+     • the vertical bar line is dropped — in the live preview, in @media print
+       AND in html.is-print-layout (the three scopes must stay identical);
+     • the bar's own side padding is handed to the ROW, so the beats of the
+       growing bar sit at the same pitch as the beats inside any other bar;
+     • the bar numbers stay out: there is no bar line to stamp them on.
+   These tokens are inert on screen (print tokens are only read by print-scoped
+   rules) and they only ever bite for `data-meter="1/4"`.
+   --------------------------------------------------------------------------- */
+body[data-meter="1/4"] #previewCard {
+   --print-bar-pad-x: 0mm;
+   --print-bar-pad-x-lyrics: 0mm;
+   --print-row-pad-x: 2.6mm;
 }
 
 @media print {
@@ -2337,6 +2399,12 @@ html[data-theme="dark"] .placing-cancel:hover {
       opacity: var(--print-bar-num-opacity);
    }
    html[data-pdf-bar-numbers="line"] body[data-editor-mode="chords"] .bar-batch .bar.pdf-mid-bar .bar-num {
+      display: none !important;
+   }
+   /* 1/4 has no bars to number (one growing bar, no bar line), so the stamp stays
+      out of it — the dialog hides the Bars group for the same reason. */
+   html[data-pdf-bar-numbers="line"] body[data-editor-mode="chords"][data-meter="1/4"] .bar-batch .bar .bar-num,
+   html[data-pdf-bar-numbers="every"] body[data-editor-mode="chords"][data-meter="1/4"] .bar-batch .bar .bar-num {
       display: none !important;
    }
    html[data-pdf-bar-numbers="every"] body[data-editor-mode="chords"] #previewCard {
@@ -2478,7 +2546,9 @@ html[data-theme="dark"] .placing-cancel:hover {
       align-items: stretch;
       width: 100%;
       margin: 1px 0;
-      padding: 0;
+      /* The row's horizontal inset (0 by default; the 1/4 scope hands the bar's
+         own side padding over to the row). */
+      padding: 0 var(--print-row-pad-x);
       column-gap: 0;
       row-gap: 0;
       overflow: visible;
@@ -2529,6 +2599,19 @@ html[data-theme="dark"] .placing-cancel:hover {
    }
    .bar-batch .bar::after {
       right: 0;
+   }
+   /* 1/4 = ONE GROWING BAR: no bar line between the beats. The line stays at the
+      two edges of the printed row — the row starts and ends with it (the row
+      edges are tagged by src/pdf.js, which is the only thing that knows where a
+      row begins and ends once the bars wrap at the paper width).
+      Mirrored in the live preview and in html.is-print-layout. */
+   body[data-meter="1/4"] .bar-batch .bar::before,
+   body[data-meter="1/4"] .bar-batch .bar::after {
+      display: none;
+   }
+   body[data-meter="1/4"] .bar-batch .bar.pdf-row-start::before,
+   body[data-meter="1/4"] .bar-batch .bar.pdf-row-end::after {
+      display: block;
    }
    .bar-batch.has-lyrics .bar.has-lyrics {
       display: grid !important;
@@ -3026,6 +3109,16 @@ html.is-print-layout[data-pdf-bar-numbers="every"] body[data-editor-mode="chords
 html.is-print-layout[data-pdf-bar-numbers="line"] body[data-editor-mode="chords"] .bar-batch .bar.pdf-mid-bar .bar-num {
    display: none !important;
 }
+/* 1/4 has no bars to number (one growing bar, no bar line) — same rule as in
+   @media print, so the preview never promises a stamp the PDF does not draw. */
+html.is-print-layout[data-pdf-bar-numbers="line"]
+   body[data-editor-mode="chords"][data-meter="1/4"]
+   .bar-batch
+   .bar
+   .bar-num,
+html.is-print-layout[data-pdf-bar-numbers="every"] body[data-editor-mode="chords"][data-meter="1/4"] .bar-batch .bar .bar-num {
+   display: none !important;
+}
 html.is-print-layout[data-pdf-bar-numbers="every"] body[data-editor-mode="chords"] #previewCard {
    /* Dense variant: smaller, lighter, and the band shrinks with it. */
    --print-bar-num-size: var(--print-bar-num-size-every);
@@ -3151,7 +3244,9 @@ html.is-print-layout #previewCard .bar-grid {
    align-items: stretch;
    width: 100%;
    margin: 0 0 1px;
-   padding: 0;
+   /* Same row inset as @media print (0 by default; the 1/4 scope hands the bar's
+      own side padding over to the row). */
+   padding: 0 var(--print-row-pad-x);
    column-gap: 0;
    row-gap: 0;
    overflow: visible;
@@ -3212,6 +3307,19 @@ html.is-print-layout #previewCard .bar-batch .bar::after {
    left barline; the previous bar's right barline serves as the divider. */
 html.is-print-layout #previewCard .bar-batch .bar.pdf-mid-bar::before {
    display: none;
+}
+/* 1/4 = ONE GROWING BAR: no bar line between the beats. The line stays at the
+   two edges of the printed row — the row starts and ends with it (the row edges
+   are tagged by src/pdf.js, which is the only thing that knows where a row
+   begins and ends once the bars wrap at the paper width).
+   Mirrored in the live preview and in @media print. */
+html.is-print-layout body[data-meter="1/4"] #previewCard .bar-batch .bar::before,
+html.is-print-layout body[data-meter="1/4"] #previewCard .bar-batch .bar::after {
+   display: none;
+}
+html.is-print-layout body[data-meter="1/4"] #previewCard .bar-batch .bar.pdf-row-start::before,
+html.is-print-layout body[data-meter="1/4"] #previewCard .bar-batch .bar.pdf-row-end::after {
+   display: block;
 }
 html.is-print-layout #previewCard .bar-batch.has-lyrics .bar.has-lyrics {
    display: grid !important;

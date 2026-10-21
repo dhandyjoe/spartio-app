@@ -105,7 +105,29 @@ export const durationMeta = {
    triplet: { count: 3, symbol: "⅓", label: "Beat triplet" },
    quarter: { count: 4, symbol: "¼", label: "Quarter beat" },
 };
-export const meters = ["2/4", "3/4", "4/4", "6/8"];
+// Time signatures offered by the editor. `1/4` is a single-beat bar (useful for a
+// pickup bar or a one-chord-per-bar form); the grid, playback and print/PDF paths
+// already derive the beat count from the numerator, so it needs no special case.
+export const meters = ["1/4", "2/4", "3/4", "4/4", "6/8"];
+
+/**
+ * True for a SINGLE-BEAT meter (`1/4`): the bar IS a beat, so the score is drawn
+ * as one growing bar with no bar line and every "bar" label becomes "beat".
+ *
+ * Pure helper on purpose — the renderer (src/render.js), the event handlers
+ * (src/events.js) and the CSS scope (`body[data-meter="1/4"]`) all read the same
+ * rule from here, so they can never disagree about what `1/4` means.
+ */
+export function isSingleBeatMeter(meter) {
+   return String(meter ?? "")
+      .split("/")[0]
+      .trim() === "1";
+}
+
+/** The word the UI uses for one unit of the score: "beat" in `1/4`, else "bar". */
+export function barUnitWord(meter) {
+   return isSingleBeatMeter(meter) ? "beat" : "bar";
+}
 export const nashvilleAccidentals = ["", "♭", "#"];
 
 // ---- Nashville token grammar (ONE source of truth) --------------------------

@@ -87,21 +87,24 @@ the partially copied album song is deleted again.
 
 ## Member read-only canvas (editor)
 
-A member opening an album arrangement gets a **read-only canvas**. Exactly four
-controls stay usable:
+A member opening an album arrangement gets a **read-only canvas**. The allowed
+controls and actions are:
 
 | Allowed for a member | Locked for a member |
 | --- | --- |
 | **Key** (`#keySelect` / inline `#previewKey`), **Time signature** (`#timeSignature` / `#previewMeter`), **BPM** (`#bpmInput`), **Transpose −/+**, play/stop, Export `.pdf`, theme, zoom | chords & numbered notation (click / drag / palette / rhythm menu / remove subdivision), lyrics + chord-above typing & paste, **the chord row's own controls** (the section *Chords On/Off* button and the per-bar **♪** button), auto-syllable, **+ Add 1 bar**, **delete bar**, **delete section**, **+ Add section**, **Copy bar / Copy bars (range selection)**, **copy/paste section**, rename section, **Reset Sheet**, Title/Artist edits, palette pickers / custom chord / slash builder, Load `.file` |
 
+On phones, the phone view-only policy also locks the time-signature control. This
+restriction applies to all users on a phone, including album members.
+
 How it is enforced (three layers, so a single missed handler can't leak):
 
-1. `cloudUI.js → syncAlbumContextUI()` sets `document.body.dataset.memberReadonly`
+1. `src/cloudUI.js` sets `document.body.dataset.memberReadonly`
    (`"1"` for a member, `"0"` otherwise).
-2. `events.js` — `blockedForMember()` is called at the top of **every** mutating
-   handler (39 call sites), and `applyMemberReadOnlyAffordances()` (called at the
-   end of `bindPreview()`, i.e. after each render) disables the in-preview buttons
-   and sets `readOnly` on the lyric / chord-above fields.
+2. `src/events.js` — `blockedForEdit()` is checked at the top of mutating
+   handlers for album members and phone users. `applyReadOnlyAffordances()` runs
+   at the end of `bindPreview()` after each render, disabling in-preview buttons
+   and setting lyric / chord-above fields to read-only.
 3. `styles/ui.css` — `body[data-member-readonly="1"] …` dims and deactivates the
    controls that live outside the preview (ribbon panels/tabs, section menu,
    footer buttons, lyrics / chords-above toggles).

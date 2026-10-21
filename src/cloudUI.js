@@ -119,6 +119,20 @@ function closeModal(el) {
 // accent are set per call. Only one confirm can be open at a time — opening a
 // second resolves the first as cancelled.
 let activeConfirmCleanup = null;
+// Inline stroke icons for the shared confirm dialog. Keyed by the text glyphs
+// callers already pass, so no call site has to change.
+const CONFIRM_ICON_SVG = {
+   "⏹": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`,
+   "🗑": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>`,
+   "⚠": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`,
+   "🔗": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+   "⧉": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+   "⇥": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>`,
+   "↻": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>`,
+   "🎼": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+   "👤": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+};
+
 function openConfirmDialog({
    title = "Are you sure?",
    message = "",
@@ -137,7 +151,11 @@ function openConfirmDialog({
    const cancelBtn = $("#confirmDialogCancel");
    $("#confirmDialogTitle").textContent = title;
    $("#confirmDialogDesc").textContent = message;
-   $("#confirmDialogIcon").textContent = icon;
+   // Callers still pass the old text glyph ("⧉", "🗑", …). Map the known ones to
+   // the app's inline stroke icons; anything unknown falls back to the glyph so
+   // this stays backward-compatible with future call sites.
+   const iconEl = $("#confirmDialogIcon");
+   if (iconEl) iconEl.innerHTML = CONFIRM_ICON_SVG[icon] || escapeHtml(icon);
    confirmBtn.textContent = confirmLabel;
    cancelBtn.textContent = cancelLabel;
    confirmBtn.classList.toggle("is-danger", !!danger);
@@ -206,8 +224,11 @@ function openAttachLinkDialog() {
    if (title) title.textContent = "Attach a shared song";
    if (desc)
       desc.textContent =
-         "Paste a share link (or payload) from another user. The link fragment is decoded locally — nothing is sent to a server.";
-   if (confirmBtn) confirmBtn.textContent = "Preview";
+         "Paste a share link or payload. Preview the song before importing it into your library.";
+   if (confirmBtn) {
+      confirmBtn.textContent = "Preview";
+      confirmBtn.disabled = true;
+   }
 
    return new Promise((resolve) => {
       const finish = (result) => {
@@ -217,6 +238,9 @@ function openAttachLinkDialog() {
       const onConfirm = () => {
          const val = input ? input.value.trim() : "";
          finish(val || null);
+      };
+      const onInput = () => {
+         if (confirmBtn) confirmBtn.disabled = !(input?.value || "").trim();
       };
       const onDismiss = () => finish(null);
       const onKey = (e) => {
@@ -230,6 +254,7 @@ function openAttachLinkDialog() {
          activeAttachCleanup = null;
          confirmBtn.removeEventListener("click", onConfirm);
          cancelBtn.removeEventListener("click", onDismiss);
+         input?.removeEventListener("input", onInput);
          dialog.removeEventListener("click", onBackdrop);
          document.removeEventListener("keydown", onKey);
          closeModal(dialog);
@@ -242,6 +267,7 @@ function openAttachLinkDialog() {
       activeAttachCleanup = cleanup;
       confirmBtn.addEventListener("click", onConfirm);
       cancelBtn.addEventListener("click", onDismiss);
+      input?.addEventListener("input", onInput);
       dialog.addEventListener("click", onBackdrop);
       document.addEventListener("keydown", onKey);
       openModal(dialog);
@@ -408,6 +434,8 @@ let pendingHomeTab = "songs"; // tab to activate when showing the home screen
 let currentAlbum = null; // { ..., role } being viewed in #albumModal
 let cachedAlbums = []; // albums of the current user (Albums tab)
 let cachedAlbumSongs = []; // songs of the open album (for search filtering)
+let hasLoadedSongs = false;
+let hasLoadedAlbums = false;
 let albumSelectedSongId = null; // candidate song in #addSongDialog
 // Album scope currently open in the editor. Kept SEPARATELY from the cloud
 // context so the save direction stays correct even if the context (or the URL)
@@ -586,6 +614,21 @@ function updateSaveButtonDirty(dirty) {
    btn.setAttribute("aria-label", show ? `${label} (unsaved changes)` : label);
 }
 
+// A short "saved" settle on the Save button (the editor's one signature move).
+// Additive only: the save logic is untouched; the class just drives CSS
+// (icon swaps to a check, tone settles) and is removed after ~1.6s.
+let savedFlashTimer = null;
+function flashSavedState() {
+   const btn = $("#saveCloudBtn");
+   if (!btn) return;
+   btn.classList.remove("is-saved");
+   // Force a reflow so a second save restarts the settle even mid-timer.
+   void btn.offsetWidth;
+   btn.classList.add("is-saved");
+   clearTimeout(savedFlashTimer);
+   savedFlashTimer = setTimeout(() => btn.classList.remove("is-saved"), 1600);
+}
+
 // ======================================================================
 // Auth state → topbar reflection
 // ======================================================================
@@ -605,14 +648,19 @@ function reflectAuth(user) {
             avatar.innerHTML = `<img src="${escapeHtml(user.photoURL)}" alt="" referrerpolicy="no-referrer" />`;
          } else {
             avatar.textContent = initial || "●";
-         }
-         label.textContent = accountName || "Account";
-         btn.title = "Your account";
-      } else {
-         btn.classList.remove("is-authed");
-         avatar.textContent = "◔";
-         label.textContent = "Sign in";
-         btn.title = "Sign in to sync your songs";
+          }
+          label.textContent = accountName || "Account";
+          btn.title = "Your account";
+          btn.setAttribute("aria-label", `Account menu for ${accountName || "your account"}`);
+          btn.setAttribute("aria-haspopup", "true");
+       } else {
+          btn.classList.remove("is-authed");
+          avatar.replaceChildren();
+          label.textContent = "Sign in";
+          btn.title = "Sign in to sync your songs";
+          btn.setAttribute("aria-label", "Sign in to sync your songs");
+          btn.setAttribute("aria-haspopup", "false");
+          btn.setAttribute("aria-expanded", "false");
       }
       // Mirror the identity into the profile card.
       const pAvatar = $("#accountPopoverAvatar");
@@ -711,10 +759,15 @@ async function routeOnLoad() {
 }
 
 // ======================================================================
-// Login page (full-screen auth gate)
+// Login page (full-screen auth gate) — login + register modes on one page
 // ======================================================================
 function showAuthError(message) {
-   const box = $("#authError");
+   showFormError("#authError", message);
+}
+
+// Generalized error setter so login and register share one code path.
+function showFormError(boxId, message) {
+   const box = $(boxId);
    if (!box) return;
    if (!message) {
       box.hidden = true;
@@ -725,10 +778,62 @@ function showAuthError(message) {
    box.hidden = false;
 }
 
+// Switch the auth card between its two sub-views ("login" / "register").
+// The sub-views are `.auth-view[data-auth-view]` containers inside the card;
+// the brand lockups live outside them, so switching never duplicates them.
+function setAuthMode(mode) {
+   const page = $("#loginPage");
+   if (!page) return;
+   page.dataset.authMode = mode === "register" ? "register" : "login";
+   page.querySelectorAll(".auth-view").forEach((view) => {
+      view.hidden = view.dataset.authView !== page.dataset.authMode;
+   });
+   showAuthError("");
+   showFormError("#registerError", "");
+   // Hand focus to the new view's first field — but only when the page is
+   // actually visible (showLoginPage focuses #authEmail itself once open).
+   if (!page.hidden) {
+      page.querySelector(`[data-auth-view="${page.dataset.authMode}"] input`)?.focus();
+   }
+}
+
+// Busy state for the auth buttons: disabled + aria-busy + a working label.
+function setAuthBusy(button, busy, busyLabel) {
+   if (!button) return;
+   if (busy) {
+      // innerHTML, not textContent: the Google buttons carry the mark as an
+      // inline SVG — swapping via textContent would destroy it, and the
+      // text-only restore would leave the button without its logo.
+      button.dataset.idleHTML = button.innerHTML;
+      button.textContent = busyLabel || button.textContent;
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+   } else {
+      if (button.dataset.idleHTML) button.innerHTML = button.dataset.idleHTML;
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+   }
+}
+
+// Password visibility toggle: one helper shared by both forms.
+function wirePasswordToggle(inputId, buttonId) {
+   const input = $(inputId);
+   const button = $(buttonId);
+   if (!input || !button) return;
+   button.addEventListener("click", () => {
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      button.setAttribute("aria-pressed", show ? "true" : "false");
+      button.setAttribute("aria-label", show ? "Hide password" : "Show password");
+      input.focus({ preventScroll: true });
+   });
+}
+
 // Show the full-screen login page (used when signed out / after sign-out).
 function showLoginPage() {
    const page = $("#loginPage");
    if (!page) return;
+   setAuthMode("login");
    showAuthError("");
    document.documentElement.dataset.authGate = "login";
    page.hidden = false;
@@ -752,17 +857,26 @@ function initLogin() {
    const page = $("#loginPage");
    if (!page) return;
 
-   $("#googleSignInBtn")?.addEventListener("click", async () => {
+   // Google sign-in is offered from both the login and the register view.
+   const googleFlow = async (button) => {
       try {
          showAuthError("");
+         setAuthBusy(button, true, "Signing in…");
          await signInWithGoogle();
          toast("Signed in");
       } catch (error) {
          showAuthError(friendlyAuthError(error));
+      } finally {
+         setAuthBusy(button, false);
       }
-   });
+   };
+   $("#googleSignInBtn")?.addEventListener("click", () => googleFlow($("#googleSignInBtn")));
+   $("#googleSignUpBtn")?.addEventListener("click", () => googleFlow($("#googleSignUpBtn")));
 
-   const emailFlow = async (fn, successMsg) => {
+   // ----- Sign-in view -----
+   $("#emailAuthForm")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const button = $("#emailSignInBtn");
       const email = $("#authEmail")?.value.trim();
       const password = $("#authPassword")?.value;
       if (!email || !password) {
@@ -771,18 +885,74 @@ function initLogin() {
       }
       try {
          showAuthError("");
-         await fn(email, password);
-         toast(successMsg);
+         setAuthBusy(button, true, "Signing in…");
+         await signInWithEmail(email, password);
+         toast("Signed in");
       } catch (error) {
          showAuthError(friendlyAuthError(error));
+      } finally {
+         setAuthBusy(button, false);
       }
-   };
-
-   $("#emailAuthForm")?.addEventListener("submit", (e) => {
-      e.preventDefault();
-      emailFlow(signInWithEmail, "Signed in");
    });
-   $("#emailSignUpBtn")?.addEventListener("click", () => emailFlow(signUpWithEmail, "Account created"));
+
+   // The "Create an account" link switches the card to the register view
+   // (it no longer signs up in place).
+   $("#emailSignUpBtn")?.addEventListener("click", () => setAuthMode("register"));
+   $("#backToLoginBtn")?.addEventListener("click", () => setAuthMode("login"));
+
+   // ----- Register view -----
+   $("#registerForm")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const button = $("#registerSubmitBtn");
+      const email = $("#registerEmail")?.value.trim();
+      const password = $("#registerPassword")?.value;
+      const confirm = $("#registerPassword2")?.value;
+      if (!email || !password) {
+         showFormError("#registerError", "Enter your email and password.");
+         return;
+      }
+      if (password !== confirm) {
+         showFormError("#registerError", "Passwords don't match.");
+         return;
+      }
+      try {
+         showFormError("#registerError", "");
+         setAuthBusy(button, true, "Creating…");
+         await signUpWithEmail(email, password);
+         toast("Account created — welcome to Spartio");
+      } catch (error) {
+         const message = friendlyAuthError(error);
+         // The most common register failure is an existing account — route
+         // the user straight to the fix with an inline "Sign in instead".
+         if (/already in use/i.test(message)) {
+            showFormError("#registerError", "");
+            const box = $("#registerError");
+            if (box) {
+               const text = document.createElement("span");
+               text.textContent = message;
+               const link = document.createElement("button");
+               link.type = "button";
+               link.className = "auth-error-link";
+               link.textContent = "Sign in instead";
+               link.addEventListener("click", () => {
+                  setAuthMode("login");
+                  const authEmail = $("#authEmail");
+                  if (authEmail && !authEmail.value) authEmail.value = email;
+               });
+               box.append(text, " ", link);
+               box.hidden = false;
+            }
+         } else {
+            showFormError("#registerError", message);
+         }
+      } finally {
+         setAuthBusy(button, false);
+      }
+   });
+
+   wirePasswordToggle("#authPassword", "#authPassToggle");
+   wirePasswordToggle("#registerPassword", "#registerPassToggle");
+   wirePasswordToggle("#registerPassword2", "#registerPassToggle2");
 }
 
 // ======================================================================
@@ -796,57 +966,102 @@ function initLogin() {
 let renderedCount = 0; // how many cards are currently in the DOM
 
 function setGalleryState(state) {
-   // state: "loading" | "empty" | "no-results" | "ready"
+   // state: "loading" | "empty" | "no-results" | "error" | "ready"
    $("#galleryLoading").hidden = state !== "loading";
    $("#galleryEmpty").hidden = state !== "empty";
    $("#galleryNoResults").hidden = state !== "no-results";
+   $("#galleryError").hidden = state !== "error";
+}
+
+// ---- Card cover (Hook #1) ----------------------------------------------------
+// A card shows either the song's real YouTube thumbnail (.is-photo) or, when
+// the song has no video, a quiet typographic motif (.is-motif) that states what
+// the song IS: its notation glyph + the first tokens of its content. Honest
+// data, no fake imagery.
+function songCoverId(song) {
+   const raw = song && song.latestYoutubeId;
+   if (typeof raw !== "string") return "";
+   return parseYoutubeUrl(raw.trim())?.videoId || "";
+}
+
+// First few "tokens" printed on a motif cover, per mode. Chord charts show the
+// opening chords, numeric shows opening scale degrees, ChordPro shows section
+// tags. Everything is derived from the song itself — nothing invented.
+function motifTokens(song, mode) {
+   if (mode === "chordpro") {
+      const sections = Array.isArray(song.sections) ? song.sections : [];
+      const tags = sections
+         .map((s) => (s && typeof s.tag === "string" ? s.tag.replace(/[{}]/g, "").trim() : ""))
+         .filter(Boolean)
+         .slice(0, 3);
+      return tags.join(" · ");
+   }
+   const flat = typeof song.chordLine === "string" ? song.chordLine : "";
+   const source = flat || (Array.isArray(song.sections) ? song.sections.map((s) => s?.chords || "").join(" ") : "");
+   const tokens = String(source)
+      .split(/\s+/)
+      .filter((t) => t && t !== "|" && t !== "·")
+      .slice(0, 3);
+   return tokens.join(" · ");
+}
+
+function coverMarkup(song, mode) {
+   const videoId = songCoverId(song);
+   if (videoId) {
+      return `<div class="song-card-cover is-photo" data-mode="${mode}">
+         <img class="song-card-cover-img" src="${thumbnailUrl(videoId)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
+      </div>`;
+   }
+   const tokens = motifTokens(song, mode);
+   return `<div class="song-card-cover is-motif" data-mode="${mode}">
+      <span class="song-card-mode-mark" aria-hidden="true">${editorModeMeta[mode].cardMark}</span>
+      ${tokens ? `<span class="song-card-cover-tokens" aria-hidden="true">${escapeHtml(tokens)}</span>` : ""}
+   </div>`;
 }
 
 function cardMarkup(song) {
    const title = escapeHtml(song.title || "Untitled");
    const creator = escapeHtml(song.artist || "Unknown");
-   const key = escapeHtml(song.latestKey || song.key || "");
-   const meter = escapeHtml(song.latestMeter || song.meter || "");
    const sectionCount = Array.isArray(song.sections) ? song.sections.length : 0;
    const updated = song.updatedAt ? new Date(song.updatedAt).toLocaleDateString() : "";
-   // Versioned songs carry the denormalized latest summary on the metadata;
-   // legacy flat song objects (and the test seeds) still render via sections.
    const versioned = typeof song.versionCount === "number";
-   const detail = versioned
-      ? (updated ? `updated ${escapeHtml(updated)}` : "")
-      : `${sectionCount} section${sectionCount === 1 ? "" : "s"}${updated ? ` · updated ${escapeHtml(updated)}` : ""}`;
-   // Glyph + label come from notation.js so the library card can never drift from
-   // the editor's mode badge (♪ Chord Chart, # Numeric Notation + Lyrics, ♬ ChordPro).
    const mode = normalizeEditorMode(song.latestEditorMode || song.editorMode);
-   const modeGlyph = editorModeMeta[mode].cardMark;
-   const modeTitle = editorModeMeta[mode].badge;
-   const keyChip = key ? `<span class="song-card-chip"><small>Key</small> ${key}</span>` : "";
-   const meterChip = meter ? `<span class="song-card-chip"><small>Time</small> ${meter}</span>` : "";
-   // Show the number of arrangements (number-first), with the count emphasised.
-   const versionLabel = versioned
-      ? `<span class="song-card-chip is-version" title="Arrangements"><strong>${song.versionCount}</strong> version${song.versionCount === 1 ? "" : "s"}</span>`
-      : "";
+   const modeLabel = mode === "numbers" ? "Numeric" : editorModeMeta[mode]?.badge || editorModeMeta.chords.badge;
+   const modeBadge = `<span class="song-card-mode" title="${escapeHtml(editorModeMeta[mode]?.badge || editorModeMeta.chords.badge)}" aria-label="${escapeHtml(editorModeMeta[mode]?.badge || editorModeMeta.chords.badge)}"><span class="song-card-mode-symbol" aria-hidden="true">${editorModeMeta[mode]?.cardMark || editorModeMeta.chords.cardMark}</span><span>${escapeHtml(modeLabel)}</span></span>`;
+   const arrangement = versioned
+      ? `${song.versionCount} version${song.versionCount === 1 ? "" : "s"}`
+      : `${sectionCount} section${sectionCount === 1 ? "" : "s"}`;
+   const key = song.latestKey || song.key || "";
+   const timeSignature = song.latestMeter || song.meter || "";
    return `
-      <article class="song-card is-${mode}" role="listitem" tabindex="0" data-id="${escapeHtml(song.cloudId)}"
+      <article class="song-card library-song-row is-${mode}" role="listitem" tabindex="0" data-id="${escapeHtml(song.cloudId)}"
                aria-label="${escapeHtml(title)} by ${creator}">
-         <span class="song-card-mode-mark" aria-hidden="true">${modeGlyph}</span>
-         <h3 class="song-card-title">${title}</h3>
-         <div class="song-card-creator">${creator}</div>
+         ${coverMarkup(song, mode)}
+         <div class="song-card-identity">
+            <h3 class="song-card-title">${title}</h3>
+            <div class="song-card-creator">${creator}</div>
+         </div>
          <div class="song-card-detail">
-            ${detail}
+            <span class="song-card-arrangement">${escapeHtml(arrangement)}</span>
+            ${updated ? `<span class="song-card-updated">Updated ${escapeHtml(updated)}</span>` : ""}
          </div>
          <div class="song-card-dock">
             <div class="song-card-meta">
-               ${keyChip}
-               ${meterChip}
-               ${versionLabel}
+               ${modeBadge}
+               ${key ? `<span class="song-card-chip"><small>Key</small><strong>${escapeHtml(key)}</strong></span>` : ""}
+               ${timeSignature ? `<span class="song-card-chip"><small>Time Signature</small><strong>${escapeHtml(timeSignature)}</strong></span>` : ""}
             </div>
             <div class="song-card-actions">
-               <button class="song-card-action is-edit" type="button" data-act="edit" data-label="Edit" title="Edit" aria-label="Edit ${title}">✎</button>
-               <button class="song-card-action is-pdf" type="button" data-act="pdf" data-label="Export .pdf" title="Export .pdf" aria-label="Export ${title} as PDF">↗</button>
-               <button class="song-card-action is-export" type="button" data-act="export" data-label="Copy Link" title="Copy a share link for this song" aria-label="Copy share link for ${title}">🔗</button>
-               <button class="song-card-action is-duplicate" type="button" data-act="duplicate" data-label="Duplicate" title="Duplicate" aria-label="Duplicate ${title}">⧉</button>
-               <button class="song-card-action is-delete" type="button" data-act="delete" data-label="Delete" title="Delete" aria-label="Delete ${title}">🗑</button>
+               <details class="song-row-menu">
+                  <summary class="song-row-menu-trigger" aria-label="Actions for ${title}">More</summary>
+                  <div class="song-row-menu-items" role="group" aria-label="Song actions">
+                     <button class="song-card-action" type="button" data-act="edit">Open song</button>
+                     <button class="song-card-action" type="button" data-act="pdf">Export PDF</button>
+                     <button class="song-card-action" type="button" data-act="export">Copy Link</button>
+                     <button class="song-card-action" type="button" data-act="duplicate">Duplicate</button>
+                     <button class="song-card-action is-delete" type="button" data-act="delete">Delete</button>
+                  </div>
+               </details>
             </div>
          </div>
       </article>`;
@@ -863,40 +1078,13 @@ function updateEdgeBlur() {
    if (!track) return;
    const cards = track.querySelectorAll(".song-card");
    renderedCount = cards.length;
-   if (!renderedCount) return;
-   // Phones lay the gallery out as a natural vertical-scrolling grid (see the
-   // <=680px CSS), where cards are NOT arranged around a horizontal center.
-   // The edge-blur/dim logic below is meaningless there and would wrongly blur
-   // and disable side cards, so reset every card to sharp + interactive and bail.
-   if (window.matchMedia("(max-width: 680px)").matches) {
-      cards.forEach((card) => {
-         card.style.setProperty("--blur", "0px");
-         card.style.setProperty("--scale", "1");
-         card.style.opacity = "";
-         card.classList.remove("is-dim");
-         card.setAttribute("aria-hidden", "false");
-         card.tabIndex = 0;
-      });
-      return;
-   }
-   const view = track.getBoundingClientRect();
-   const mid = view.left + view.width / 2;
    cards.forEach((card) => {
-      const r = card.getBoundingClientRect();
-      const center = r.left + r.width / 2;
-      const dist = Math.abs(center - mid);
-      const past = Math.max(0, dist - CLEAR_BAND); // distance beyond the sharp band
-      const t = Math.min(1, past / BLUR_SPAN); // 0 = sharp, 1 = fully blurred
-      card.style.setProperty("--blur", t <= 0 ? "0px" : `${(t * 4).toFixed(2)}px`);
-      card.style.setProperty("--scale", `${(1 - t * 0.08).toFixed(3)}`);
-      card.style.opacity = `${(1 - t * 0.45).toFixed(3)}`;
-      // Only sharp (centered) cards are interactive. Blurred cards can't be
-      // clicked, hovered, or focused — they must be scrolled into the middle
-      // first. A small epsilon keeps a barely-blurred card still tappable.
-      const active = t <= 0.04;
-      card.classList.toggle("is-dim", !active);
-      card.setAttribute("aria-hidden", active ? "false" : "true");
-      card.tabIndex = active ? 0 : -1;
+      card.style.removeProperty("--blur");
+      card.style.removeProperty("--scale");
+      card.style.removeProperty("opacity");
+      card.classList.remove("is-dim", "is-selected");
+      card.setAttribute("aria-hidden", "false");
+      card.tabIndex = 0;
    });
 }
 
@@ -933,18 +1121,45 @@ function nudgeCarousel(dir) {
 function renderCards(songs) {
    const track = $("#songCards");
    if (!track) return;
-   track.innerHTML = songs.map(cardMarkup).join("");
+   track.innerHTML = songs.map((song) => cardMarkup(song)).join("");
    track.scrollLeft = 0;
    renderedCount = track.querySelectorAll(".song-card").length;
    updateEdgeBlur();
    updateNudgeVisibility();
 }
 
-// Phone-only: clear the tapped-card action overlay. Safe to call on any layout
-// (it's a no-op when no card is selected).
-function clearCardSelection() {
-   document.querySelectorAll(".song-card.is-selected").forEach((c) => c.classList.remove("is-selected"));
-}
+// Delegated thumbnail lifecycle: fade a loaded cover in, and repaint a failed
+// one as its motif fallback (covers the offline case — i.ytimg.com is
+// cross-origin, so the service worker never caches it). Capture-phase document
+// listeners so no per-image handler markup is needed.
+document.addEventListener(
+   "load",
+   (event) => {
+      const img = event.target;
+      if (img?.classList?.contains("song-card-cover-img")) img.classList.add("is-loaded");
+   },
+   true,
+);
+document.addEventListener(
+   "error",
+   (event) => {
+      const img = event.target;
+      if (!img?.classList?.contains("song-card-cover-img")) return;
+      img.hidden = true; // no broken-image glyph
+      img.closest(".song-card-cover")?.classList.add("is-fallback");
+      // Reuse the motif glyph inside a failed photo cover so the fallback
+      // carries the same notation identity as a native motif cover.
+      const card = img.closest(".song-card");
+      const mode = ["chords", "numbers", "chordpro"].find((m) => card?.classList.contains(`is-${m}`));
+      if (card && mode && !img.previousElementSibling) {
+         img.insertAdjacentHTML(
+            "beforebegin",
+            `<span class="song-card-mode-mark" aria-hidden="true">${editorModeMeta[mode].cardMark}</span>`,
+         );
+      }
+   },
+   true,
+);
 
 function applyFilter() {
    const term = ($("#songSearch")?.value || "").trim().toLowerCase();
@@ -971,17 +1186,17 @@ function updateHomeHeading() {
    const title = $("#mySongsTitle");
    const count = $("#libraryCount");
    if (homeTab === "albums") {
-      if (title) title.textContent = "Your albums library";
+      if (title) title.textContent = "Albums";
       if (count) {
          const n = cachedAlbums.length;
-         count.textContent = n ? `${n} album${n === 1 ? "" : "s"} in your library` : "Your library is empty";
+         count.textContent = hasLoadedAlbums ? `${n} album${n === 1 ? "" : "s"}` : "";
       }
       return;
    }
-   if (title) title.textContent = "Your song library";
+   if (title) title.textContent = "My Songs";
    if (count) {
       const n = cachedSongs.length;
-      count.textContent = n ? `${n} song${n === 1 ? "" : "s"} in your library` : "Your library is empty";
+      count.textContent = hasLoadedSongs ? `${n} song${n === 1 ? "" : "s"}` : "";
    }
 }
 
@@ -992,61 +1207,14 @@ async function refreshSongs() {
    updateNudgeVisibility();
    try {
       cachedSongs = await listSongs();
+      hasLoadedSongs = true;
       // The header title + count reflect the active view (songs vs albums).
       updateHomeHeading();
       applyFilter();
    } catch (error) {
-      setGalleryState("empty");
+      setGalleryState("error");
       toast(isFirestorePermissionsError(error) ? "Could not load — check Firestore security rules" : "Could not load your songs");
    }
-}
-
-// ---- Floating quick menu (tablet/phone) -------------------------------------
-// A speed-dial in the home's bottom-right corner. It carries view navigation and
-// the create/import actions when the tab row + header buttons are hidden (≤1050px,
-// see styles/ui.css). Open/close is pure UI state; the wiring lives in initGallery.
-let homeFabOpen = false;
-let homeFabCloseTimer = null;
-
-function syncHomeFab() {
-   const fab = $("#homeFab");
-   const menu = $("#homeFabMenu");
-   const btn = $("#homeFabBtn");
-   if (btn) btn.setAttribute("aria-expanded", homeFabOpen ? "true" : "false");
-   clearTimeout(homeFabCloseTimer);
-   if (!fab || !menu) return;
-   if (homeFabOpen) {
-      // Unhide FIRST, then add the class on the next frame — a display:none →
-      // visible jump cannot run a transition, so the enter animation needs this.
-      menu.hidden = false;
-      requestAnimationFrame(() => fab.classList.add("is-open"));
-   } else {
-      // Let the exit transition play before hiding the menu.
-      fab.classList.remove("is-open");
-      homeFabCloseTimer = setTimeout(() => {
-         menu.hidden = true;
-      }, 320);
-   }
-}
-
-function openHomeFab() {
-   if (homeFabOpen) return;
-   homeFabOpen = true;
-   syncHomeFab();
-   // Land focus inside the menu so keyboard/SR users arrive at the first action.
-   $("#homeFabMenu")?.querySelector(".home-fab-item:not([hidden])")?.focus();
-}
-
-function closeHomeFab({ restoreFocus = false } = {}) {
-   if (!homeFabOpen) return;
-   homeFabOpen = false;
-   syncHomeFab();
-   if (restoreFocus) $("#homeFabBtn")?.focus();
-}
-
-function toggleHomeFab() {
-   if (homeFabOpen) closeHomeFab();
-   else openHomeFab();
 }
 
 // Switch which home tab is visible (My Songs vs Albums) without navigating.
@@ -1062,10 +1230,12 @@ function setHomeTab(tab) {
    if (btnSongs) {
       btnSongs.classList.toggle("is-active", homeTab === "songs");
       btnSongs.setAttribute("aria-selected", homeTab === "songs" ? "true" : "false");
+      btnSongs.tabIndex = homeTab === "songs" ? 0 : -1;
    }
    if (btnAlbums) {
       btnAlbums.classList.toggle("is-active", homeTab === "albums");
       btnAlbums.setAttribute("aria-selected", homeTab === "albums" ? "true" : "false");
+      btnAlbums.tabIndex = homeTab === "albums" ? 0 : -1;
    }
    // "New Song" and "Attach Link" are MY SONGS actions (starting your own score /
    // importing someone else's share link); album songs are created from inside the
@@ -1075,30 +1245,11 @@ function setHomeTab(tab) {
    const newSongBtn = $("#newSongBtn");
    const attachLinkBtn = $("#attachLinkBtn");
    const newAlbumBtn = $("#newAlbumBtn");
+   const joinAlbumBtn = $("#joinAlbumBtn");
    if (newSongBtn) newSongBtn.hidden = isAlbums;
    if (attachLinkBtn) attachLinkBtn.hidden = isAlbums;
    if (newAlbumBtn) newAlbumBtn.hidden = !isAlbums;
-   // The floating quick menu (tablet/phone) mirrors the tabs: mark the ACTIVE
-   // view and swap its New Song / New Album action.
-   const fabSongs = $("#fabTabSongs");
-   const fabAlbums = $("#fabTabAlbums");
-   if (fabSongs) {
-      fabSongs.classList.toggle("is-active", homeTab === "songs");
-      fabSongs.setAttribute("aria-checked", homeTab === "songs" ? "true" : "false");
-   }
-   if (fabAlbums) {
-      fabAlbums.classList.toggle("is-active", homeTab === "albums");
-      fabAlbums.setAttribute("aria-checked", homeTab === "albums" ? "true" : "false");
-   }
-   const fabNewSong = $("#fabNewSong");
-   const fabNewAlbum = $("#fabNewAlbum");
-   if (fabNewSong) fabNewSong.hidden = isAlbums;
-   if (fabNewAlbum) fabNewAlbum.hidden = !isAlbums;
-   // "Attach Link" imports a shared song into My Songs, so it makes no sense on the
-   // Albums view — hide it there (a plain New Album is all that view needs).
-   const fabAttachLink = $("#fabAttachLink");
-   if (fabAttachLink) fabAttachLink.hidden = isAlbums;
-   // The header title + count are the "where am I" cue now.
+   if (joinAlbumBtn) joinAlbumBtn.hidden = !isAlbums;
    updateHomeHeading();
 }
 
@@ -1113,19 +1264,13 @@ async function showGalleryScreen(tab) {
    }
    if (tab) pendingHomeTab = tab;
    openModal($("#mySongsModal"));
-   // A fresh visit to the home always starts with the floating menu closed.
-   closeHomeFab();
    setHomeTab(pendingHomeTab);
    const search = $("#songSearch");
    if (search) search.value = "";
    await refreshSongs();
    if (pendingHomeTab === "albums" && !TEST_MODE) await refreshAlbums();
-   // The screen fades in from hidden; card widths read as 0 until visible, so
-   // recompute edge blur + nudge visibility once real dimensions are committed.
-   setTimeout(() => {
-      updateEdgeBlur();
-      updateNudgeVisibility();
-   }, 60);
+    updateEdgeBlur();
+    updateNudgeVisibility();
 }
 
 function openGallery() {
@@ -1139,6 +1284,18 @@ function openGallery() {
 // (initNewSongDialog) and openNewSongDialog only flips it open with fresh copy,
 // so multiple opens can never stack duplicate handlers.
 let newSongDialogResolve = null; // current open promise (null = dialog closed)
+let newSongSelectedMode = null;
+
+function syncNewSongModePicker() {
+   const cards = $("#newSongDialog")?.querySelectorAll(".mode-card") || [];
+   cards.forEach((card) => {
+      const selected = card.dataset.mode === newSongSelectedMode;
+      card.classList.toggle("is-selected", selected);
+      card.setAttribute("aria-pressed", selected ? "true" : "false");
+   });
+   const createBtn = $("#newSongCreateBtn");
+   if (createBtn) createBtn.disabled = !newSongSelectedMode;
+}
 
 function closeNewSongDialog(result) {
    const resolve = newSongDialogResolve;
@@ -1183,8 +1340,15 @@ function openNewSongDialog({ title = "New Song", desc = "", defaultLabel = "Vers
          if (nameError) nameError.hidden = true;
          nameInput.classList.remove("is-invalid");
       };
+      nameInput.onkeydown = (event) => {
+         if (event.key !== "Enter") return;
+         event.preventDefault();
+         $("#newSongCreateBtn")?.click();
+      };
    }
    if (nameError) nameError.hidden = true;
+   newSongSelectedMode = null;
+   syncNewSongModePicker();
    return new Promise((resolve) => {
       newSongDialogResolve = resolve;
       dialog.hidden = false;
@@ -1204,15 +1368,20 @@ function initNewSongDialog() {
       card.addEventListener("click", () => {
          const mode = card.dataset.mode;
          if (!["chords", "numbers", "chordpro"].includes(mode)) return;
-         const label = (nameInput?.value || "").trim();
-         if (!label) {
-            if (nameError) nameError.hidden = false;
-            nameInput?.classList.add("is-invalid");
-            nameInput?.focus();
-            return;
-         }
-         closeNewSongDialog({ mode, label });
+         newSongSelectedMode = mode;
+         syncNewSongModePicker();
       });
+   });
+   $("#newSongCreateBtn")?.addEventListener("click", () => {
+      const label = (nameInput?.value || "").trim();
+      if (!label) {
+         if (nameError) nameError.hidden = false;
+         nameInput?.classList.add("is-invalid");
+         nameInput?.focus();
+         return;
+      }
+      if (!newSongSelectedMode) return;
+      closeNewSongDialog({ mode: newSongSelectedMode, label });
    });
    dialog.addEventListener("click", (event) => {
       if (event.target.closest("[data-mode-dismiss]")) closeNewSongDialog(null);
@@ -2106,88 +2275,36 @@ function initGallery() {
    // contextual Back to editor button when a document is already open).
    $("#backToEditorBtn")?.addEventListener("click", () => navigate(editorRoute()));
 
+   $("#galleryRetry")?.addEventListener("click", () => refreshSongs());
    $("#songSearch")?.addEventListener("input", applyFilter);
 
-   // Card interactions (delegated). Clicking a card opens it; the action buttons
-   // (export / duplicate / delete) act on that card without opening it.
-   track?.addEventListener("click", (e) => {
-      const actionBtn = e.target.closest(".song-card-action");
-      const card = e.target.closest(".song-card");
-      if (!card) return;
-      if (card.classList.contains("is-dim")) return; // blurred cards aren't interactive
-      if (actionBtn) {
-         e.stopPropagation();
-         handleCardAction(actionBtn.dataset.act, card.dataset.id, card);
-         return;
-      }
-      // Phones: a tap doesn't open the song directly — it reveals the card's
-      // action overlay (Edit / Export / Duplicate / Delete) floated over a
-      // blurred card. Tapping the same card again (or another card) toggles it.
-      // Opening is then an explicit choice via the Edit action.
-      if (window.matchMedia("(max-width: 680px)").matches) {
-         const wasSelected = card.classList.contains("is-selected");
-         clearCardSelection();
-         if (!wasSelected) card.classList.add("is-selected");
-         return;
-      }
-      openSongInEditor(card.dataset.id);
-   });
-   // Phones: tapping anywhere off a card dismisses the open action overlay.
-   modal.addEventListener("click", (e) => {
-      if (!window.matchMedia("(max-width: 680px)").matches) return;
-      if (e.target.closest(".song-card")) return;
-      clearCardSelection();
-   });
-   // Keyboard: arrows scroll the grid; Enter/Space opens the focused card.
-   track?.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowRight") {
-         e.preventDefault();
-         nudgeCarousel(1);
-      } else if (e.key === "ArrowLeft") {
-         e.preventDefault();
-         nudgeCarousel(-1);
-      } else if (e.key === "Enter" || e.key === " ") {
-         const card = e.target.closest(".song-card");
-         if (card) {
-            e.preventDefault();
-            openSongInEditor(card.dataset.id);
-         }
-      }
-   });
+    // Rows open on click. Their native disclosure menu owns the secondary actions.
+    track?.addEventListener("click", (e) => {
+       const actionBtn = e.target.closest(".song-card-action");
+       const card = e.target.closest(".song-card");
+       if (!card) return;
+       if (actionBtn) {
+          e.stopPropagation();
+          actionBtn.closest("details")?.removeAttribute("open");
+          handleCardAction(actionBtn.dataset.act, card.dataset.id, card);
+          return;
+       }
+       if (e.target.closest(".song-row-menu")) return;
+       openSongInEditor(card.dataset.id);
+    });
+    // Enter or Space opens a focused row. Interactive descendants keep their own keys.
+    track?.addEventListener("keydown", (e) => {
+       if ((e.key === "Enter" || e.key === " ") && !e.target.closest("button, summary, input, a")) {
+          const card = e.target.closest(".song-card");
+          if (card) {
+             e.preventDefault();
+             openSongInEditor(card.dataset.id);
+          }
+       }
+    });
 
-   // Nudge buttons (desktop): scroll the grid by ~one column.
-   $("#galleryPrev")?.addEventListener("click", () => nudgeCarousel(-1));
-   $("#galleryNext")?.addEventListener("click", () => nudgeCarousel(1));
-
-   // As the grid scrolls (buttons, wheel, or touch swipe), refresh which cards
-   // are blurred near the edges and whether the nudge buttons apply.
-   let scrollRaf = 0;
-   track?.addEventListener(
-      "scroll",
-      () => {
-         if (scrollRaf) return;
-         scrollRaf = requestAnimationFrame(() => {
-            scrollRaf = 0;
-            updateEdgeBlur();
-            updateNudgeVisibility();
-         });
-      },
-      { passive: true },
-   );
-
-   window.addEventListener(
-      "resize",
-      () => {
-         updateEdgeBlur();
-         updateNudgeVisibility();
-      },
-      { passive: true },
-   );
-
-   // New song (Logic 1): the user MUST name the version, then pick a mode, before
-   // the editor opens. Guarded so starting fresh doesn't silently discard unsaved
-   // edits. Shared by the header button (desktop) AND the floating menu item
-   // (tablet/phone), so there is one source of truth.
+    // New song: name the first version and choose a mode before opening the editor.
+    // Guarded so starting fresh cannot silently discard unsaved edits.
    function startNewSongFlow() {
       guardUnsavedThen(() => {
          openNewSongDialog({
@@ -2214,9 +2331,7 @@ function initGallery() {
       toast(`Started a new ${isNumbers ? "Nashville numbers" : "chord chart"} song`);
    }
 
-   // Attach Link: open a themed dialog to paste a share link, decode it, and show
-   // a confirm preview before applying to the editor. Shared by the header button
-   // (desktop) and the floating menu item (tablet/phone).
+    // Attach Link opens a local preview before importing the shared song.
    async function attachLinkFlow() {
       const text = await openAttachLinkDialog();
       if (!text) return;
@@ -2235,50 +2350,19 @@ function initGallery() {
       await importFromPayload(payload);
    }
 
-   // Header buttons (desktop). "New Song" keeps its album-tab safety branch: on
-   // the Albums tab it creates the song INSIDE an album, not in My Songs.
-   $("#newSongBtn")?.addEventListener("click", () => {
+    $("#newSongBtn")?.addEventListener("click", () => {
       if (homeTab === "albums") {
          openAlbumNewSongFromHome();
          return;
       }
       startNewSongFlow();
-   });
-   $("#attachLinkBtn")?.addEventListener("click", attachLinkFlow);
-
-   // ---- Floating quick menu (tablet/phone) ----
-   // The trigger toggles the speed-dial; item clicks run the SAME flows as the
-   // header buttons. Clicks inside the menu stop propagation so the document-level
-   // outside-click handler doesn't close it before the item's own click runs.
-   $("#homeFabBtn")?.addEventListener("click", (event) => {
-      event.stopPropagation();
-      toggleHomeFab();
-   });
-   $("#homeFabMenu")?.addEventListener("click", (event) => event.stopPropagation());
-   $("#fabTabSongs")?.addEventListener("click", () => {
-      closeHomeFab();
-      navigate("#/songs");
-   });
-   $("#fabTabAlbums")?.addEventListener("click", () => {
-      closeHomeFab();
-      navigate("#/albums");
-   });
-   $("#fabNewSong")?.addEventListener("click", () => {
-      closeHomeFab();
-      startNewSongFlow();
-   });
-   $("#fabNewAlbum")?.addEventListener("click", () => {
-      closeHomeFab();
-      openNewAlbumDialog();
-   });
-   $("#fabAttachLink")?.addEventListener("click", () => {
-      closeHomeFab();
-      attachLinkFlow();
-   });
-   document.addEventListener("click", () => closeHomeFab());
-   document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && homeFabOpen) closeHomeFab({ restoreFocus: true });
-   });
+    });
+    $("#attachLinkBtn")?.addEventListener("click", attachLinkFlow);
+    document.addEventListener("click", (event) => {
+       document.querySelectorAll(".song-row-menu[open]").forEach((menu) => {
+          if (!menu.contains(event.target)) menu.removeAttribute("open");
+       });
+    });
 }
 
 // Shared import flow: decode a payload, show a preview confirm, and (on accept)
@@ -2383,6 +2467,7 @@ async function saveToCloud() {
             setActiveAlbumCtx(albumContext);
             syncVersionPill();
             bridge.markSaved();
+            flashSavedState();
             toast("Saved to album");
             return true;
          }
@@ -2409,6 +2494,7 @@ async function saveToCloud() {
             }
             syncVersionPill();
             bridge.markSaved();
+            flashSavedState();
             toast("Copied to your library");
             return true;
          } catch (error) {
@@ -2463,6 +2549,7 @@ async function saveToCloud() {
       setActiveAlbumCtx(null);
       syncVersionPill();
       bridge.markSaved();
+      flashSavedState();
       toast("Saved to cloud");
       return true;
    } catch (error) {
@@ -2488,6 +2575,16 @@ function closeAccountMenu() {
 function initAccountButton() {
    const btn = $("#accountBtn");
    const pop = $("#accountPopover");
+   pop?.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      const items = [...pop.querySelectorAll('[role="menuitem"]:not([hidden]):not(:disabled)')];
+      if (!items.length) return;
+      event.preventDefault();
+      const current = items.indexOf(document.activeElement);
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      const nextIndex = (current + delta + items.length) % items.length;
+      items[nextIndex].focus();
+   });
 
    btn?.addEventListener("click", (e) => {
       // Signed out: the button is a straight call to action, not a menu.
@@ -2504,8 +2601,9 @@ function initAccountButton() {
       }
       pop.hidden = false;
       void pop.offsetHeight; // commit the closed start state before animating
-      pop.classList.add("is-open");
-      btn.setAttribute("aria-expanded", "true");
+       pop.classList.add("is-open");
+       btn.setAttribute("aria-expanded", "true");
+       setTimeout(() => pop.querySelector('[role="menuitem"]:not([hidden])')?.focus(), 0);
    });
 
    // Dismiss on outside click and on Escape (standard menu behaviour).
@@ -2524,26 +2622,36 @@ function initAccountButton() {
    // so the user can see the result (events.js handles the actual theming).
    $("#themeToggle")?.addEventListener("click", (e) => e.stopPropagation());
 
-   $("#signOutBtn")?.addEventListener("click", async () => {
-      const confirmed = await openConfirmDialog({
+    $("#signOutBtn")?.addEventListener("click", async (event) => {
+       const signOutButton = event.currentTarget;
+       if (signOutButton.disabled) return;
+       const confirmed = await openConfirmDialog({
          title: "Sign out?",
          message: "You'll need to sign in again to open your cloud library.",
          confirmLabel: "Sign out",
          cancelLabel: "Cancel",
          icon: "⇥",
          danger: true,
-      });
-      if (!confirmed) return;
-      closeAccountMenu();
-      try {
-         await signOutUser();
-         bridge.setCloudContext(null);
-         setActiveAlbumCtx(null);
-         toast("Signed out");
-      } catch (error) {
-         toast("Could not sign out");
-      }
-   });
+       });
+       if (!confirmed) return;
+       const originalMarkup = signOutButton.innerHTML;
+       signOutButton.disabled = true;
+       signOutButton.setAttribute("aria-busy", "true");
+       signOutButton.textContent = "Signing out…";
+       try {
+          await signOutUser();
+          bridge.setCloudContext(null);
+          setActiveAlbumCtx(null);
+          closeAccountMenu();
+          toast("Signed out");
+       } catch (error) {
+          toast("Could not sign out");
+       } finally {
+          signOutButton.disabled = false;
+          signOutButton.innerHTML = originalMarkup;
+          signOutButton.removeAttribute("aria-busy");
+       }
+    });
 }
 
 // ======================================================================
@@ -2579,9 +2687,9 @@ function setAlbumsState(state) {
 const SKELETON_COUNT = 10;
 function renderSkeletonCards(track, count = SKELETON_COUNT) {
    if (!track) return;
-   track.innerHTML = Array.from({ length: count }, () => `
-      <div class="skeleton-card" aria-hidden="true">
-         <span class="sk-mark"></span>
+   track.innerHTML = Array.from({ length: count }, (_, i) => `
+      <div class="skeleton-card" aria-hidden="true" style="--card-i:${i}">
+         <span class="sk-cover"></span>
          <span class="sk-title"></span>
          <span class="sk-sub"></span>
          <span class="sk-detail"></span>
@@ -2618,33 +2726,42 @@ const ALBUM_DESC_MAX = 500;
 function albumCardMarkup(album) {
    const title = escapeHtml(album.name || "Untitled Album");
    const roleLabel = album.role === "owner" ? MD_LABEL : "Member · read-only";
-   const count = `${album.songCount} song${album.songCount === 1 ? "" : "s"}`;
+   const songCount = typeof album.songCount === "number" && Number.isFinite(album.songCount)
+      ? Math.max(0, album.songCount)
+      : null;
+   const count = songCount === null ? "— songs" : `${songCount} song${songCount === 1 ? "" : "s"}`;
    const updated = album.updatedAt ? new Date(album.updatedAt).toLocaleDateString() : "";
-   const detail = `updated ${escapeHtml(updated)}`;
-   const actions = album.role === "owner"
-      ? `<button class="song-card-action is-edit" type="button" data-act="edit" data-label="Open" title="Open album" aria-label="Open album ${title}">✎</button>
-         <button class="song-card-action is-details" type="button" data-act="details" data-label="Edit details" title="Edit album name &amp; description" aria-label="Edit details of ${title}">📝</button>
-         <button class="song-card-action is-delete" type="button" data-act="delete" data-label="Delete" title="Delete album" aria-label="Delete album ${title}">🗑</button>`
-      : `<button class="song-card-action is-edit" type="button" data-act="edit" data-label="Open" title="Open album" aria-label="Open album ${title}">✎</button>`;
-   // Description (revealed on hover/focus). If it reaches the max length the UI
-   // shows an ellipsis; the FULL text stays available as a tooltip.
    const fullDesc = String(album.description || "").trim();
-   const descSpan = fullDesc
-      ? `<span class="song-card-desc-text" title="${escapeHtml(fullDesc)}">${escapeHtml(fullDesc.length > ALBUM_DESC_MAX ? `${fullDesc.slice(0, ALBUM_DESC_MAX)}…` : fullDesc)}</span>`
+   const description = fullDesc.length > ALBUM_DESC_MAX ? `${fullDesc.slice(0, ALBUM_DESC_MAX)}…` : fullDesc;
+   const initial = escapeHtml((album.name || "A").trim().charAt(0).toUpperCase() || "A");
+   const ownerActions = album.role === "owner"
+      ? `<button class="song-card-action" type="button" data-act="details">Edit details</button>
+         <button class="song-card-action is-delete" type="button" data-act="delete">Delete album</button>`
       : "";
-   const metaLine = `<span class="song-card-meta-line">${escapeHtml(count)}${updated ? ` · ${detail}` : ""}</span>`;
    return `
-      <article class="song-card is-album" role="listitem" tabindex="0" data-album-id="${escapeHtml(album.albumId)}"
+      <article class="song-card library-album-row is-album" role="listitem" tabindex="0" data-album-id="${escapeHtml(album.albumId)}"
          aria-label="Open album ${title}">
-         <span class="song-card-mode-mark" aria-hidden="true">💿</span>
-         <h3 class="song-card-title">${title}</h3>
-         <div class="song-card-creator">${escapeHtml(roleLabel)}</div>
-         <div class="song-card-detail">${descSpan}${metaLine}</div>
+         <div class="song-card-cover is-motif" data-mode="album">
+            <span class="song-card-mode-mark" aria-hidden="true">${initial}</span>
+         </div>
+         <div class="song-card-identity">
+            <h3 class="song-card-title">${title}</h3>
+            <div class="song-card-creator">${escapeHtml(description || "No description")}</div>
+         </div>
+         <div class="song-card-detail">${escapeHtml(count)}${updated ? ` · Updated ${escapeHtml(updated)}` : ""}</div>
          <div class="song-card-dock">
             <div class="song-card-meta">
-               <span class="song-card-chip is-version" title="Songs in this album"><small>Songs</small><strong>${album.songCount}</strong></span>
+               <span class="song-card-role${album.role === "owner" ? " is-md" : ""}">${escapeHtml(roleLabel)}</span>
             </div>
-            <div class="song-card-actions">${actions}</div>
+            <div class="song-card-actions">
+               <details class="song-row-menu">
+                  <summary class="song-row-menu-trigger" aria-label="Actions for ${title}">More</summary>
+                  <div class="song-row-menu-items" role="group" aria-label="Album actions">
+                     <button class="song-card-action" type="button" data-act="edit">Open album</button>
+                     ${ownerActions}
+                  </div>
+               </details>
+            </div>
          </div>
       </article>`;
 }
@@ -2652,7 +2769,7 @@ function albumCardMarkup(album) {
 function renderAlbums(list) {
    const grid = $("#albumsGalleryCards");
    if (!grid) return;
-   grid.innerHTML = (list || []).map(albumCardMarkup).join("");
+   grid.innerHTML = (list || []).map((album) => albumCardMarkup(album)).join("");
    updateAlbumEdgeBlur();
    updateAlbumNudgeVisibility();
 }
@@ -2776,6 +2893,7 @@ async function refreshAlbums() {
    updateAlbumNudgeVisibility();
    try {
       cachedAlbums = await listAlbums();
+      hasLoadedAlbums = true;
       // Header title + count follow the active view (albums).
       updateHomeHeading();
       applyAlbumFilter();
@@ -2797,43 +2915,57 @@ function albumSongCardMarkup(song, role) {
    const key = escapeHtml(song.latestKey || song.key || "");
    const meter = escapeHtml(song.latestMeter || song.meter || "");
    const counts = typeof song.versionCount === "number" ? `${song.versionCount} version${song.versionCount === 1 ? "" : "s"}` : "";
+   const updated = song.updatedAt ? new Date(song.updatedAt).toLocaleDateString() : "";
    const isOwner = role === "owner";
+   const title = escapeHtml(song.title || "Untitled");
    const actions = isOwner
-      ? `<button class="song-card-action is-edit" type="button" data-act="edit" data-label="Edit" title="Edit" aria-label="Edit ${escapeHtml(song.title)}">✎</button>
-         <button class="song-card-action is-pdf" type="button" data-act="pdf" data-label="Export .pdf" title="Export .pdf" aria-label="Export ${escapeHtml(song.title)} as PDF">↗</button>
-         <button class="song-card-action is-delete" type="button" data-act="delete" data-label="Remove" title="Remove from album" aria-label="Remove ${escapeHtml(song.title)} from album">🗑</button>`
-      : `<button class="song-card-action is-edit" type="button" data-act="edit" data-label="Open" title="Open" aria-label="Open ${escapeHtml(song.title)}">✎</button>
-         <button class="song-card-action is-pdf" type="button" data-act="pdf" data-label="Export .pdf" title="Export .pdf" aria-label="Export ${escapeHtml(song.title)} as PDF">↗</button>
-         <button class="song-card-action is-duplicate" type="button" data-act="copy" data-label="Save a copy" title="Save a copy to My Songs" aria-label="Save a copy of ${escapeHtml(song.title)}">⧉</button>`;
+      ? `<button class="song-card-action" type="button" data-act="edit">Edit arrangement</button>
+         <button class="song-card-action" type="button" data-act="pdf">Export PDF</button>
+         <button class="song-card-action is-delete" type="button" data-act="delete">Remove from album</button>`
+      : `<button class="song-card-action" type="button" data-act="edit">Open arrangement</button>
+         <button class="song-card-action" type="button" data-act="pdf">Export PDF</button>
+         <button class="song-card-action" type="button" data-act="copy">Save a copy</button>`;
+   const mode = normalizeEditorMode(song.latestEditorMode || song.editorMode);
    return `
-      <article class="song-card is-${normalizeEditorMode(song.latestEditorMode || song.editorMode)}" role="listitem" tabindex="0"
-         data-id="${escapeHtml(song.cloudId)}" aria-label="${escapeHtml(song.title)}">
-         <span class="song-card-mode-mark" aria-hidden="true">${
-            editorModeMeta[normalizeEditorMode(song.latestEditorMode || song.editorMode)].cardMark
-         }</span>
-         <h3 class="song-card-title">${escapeHtml(song.title)}</h3>
-         <div class="song-card-creator">${escapeHtml(song.artist || "Unknown")}</div>
-         <div class="song-card-detail">${escapeHtml(counts)}</div>
+      <article class="song-card library-song-row is-${mode}" role="listitem" tabindex="0"
+         data-id="${escapeHtml(song.cloudId)}" aria-label="${title}">
+         ${coverMarkup(song, mode)}
+         <div class="song-card-identity">
+            <h3 class="song-card-title">${title}</h3>
+            <div class="song-card-creator">${escapeHtml(song.artist || "Unknown")}</div>
+         </div>
+         <div class="song-card-detail">
+            ${counts ? `<span class="song-card-arrangement">${escapeHtml(counts)}</span>` : ""}
+            ${updated ? `<span class="song-card-updated">Updated ${escapeHtml(updated)}</span>` : ""}
+         </div>
          <div class="song-card-dock">
             <div class="song-card-meta">
-               ${key ? `<span class="song-card-chip"><small>Key</small> ${key}</span>` : ""}
-               ${meter ? `<span class="song-card-chip"><small>Time</small> ${meter}</span>` : ""}
+               <span class="song-card-mode" title="${escapeHtml(editorModeMeta[mode]?.badge || editorModeMeta.chords.badge)}" aria-label="${escapeHtml(editorModeMeta[mode]?.badge || editorModeMeta.chords.badge)}"><span class="song-card-mode-symbol" aria-hidden="true">${editorModeMeta[mode]?.cardMark || editorModeMeta.chords.cardMark}</span><span>${escapeHtml(mode === "numbers" ? "Numeric" : editorModeMeta[mode]?.badge || editorModeMeta.chords.badge)}</span></span>
+               ${key ? `<span class="song-card-chip"><small>Key</small><strong>${key}</strong></span>` : ""}
+               ${meter ? `<span class="song-card-chip"><small>Time Signature</small><strong>${meter}</strong></span>` : ""}
             </div>
-            <div class="song-card-actions">${actions}</div>
+            <div class="song-card-actions">
+               <details class="song-row-menu">
+                  <summary class="song-row-menu-trigger" aria-label="Actions for ${title}">More</summary>
+                  <div class="song-row-menu-items" role="group" aria-label="Arrangement actions">${actions}</div>
+               </details>
+            </div>
          </div>
       </article>`;
 }
 
 function setAlbumListState(state) {
-   // "loading" | "empty" | "no-results" | "ready"
+   // "loading" | "empty" | "no-results" | "error" | "ready"
    const list = $("#albumSongCards");
    const load = $("#albumLoading");
    const empty = $("#albumEmpty");
    const none = $("#albumNoResults");
+   const error = $("#albumError");
    if (list) list.hidden = state !== "ready";
    if (load) load.hidden = state !== "loading";
    if (empty) empty.hidden = state !== "empty";
    if (none) none.hidden = state !== "no-results";
+   if (error) error.hidden = state !== "error";
 }
 
 function renderAlbumSongs(list) {
@@ -2841,7 +2973,6 @@ function renderAlbumSongs(list) {
    if (!track) return;
    const role = currentAlbum?.role || "member";
    track.innerHTML = list.map((song) => albumSongCardMarkup(song, role)).join("");
-   setAlbumListState(list.length ? "ready" : "empty");
    updateAlbumSongEdgeBlur();
    updateAlbumSongNudgeVisibility();
    if (currentAlbum?.role === "member") {
@@ -2873,15 +3004,27 @@ async function refreshAlbumSongs() {
       cachedAlbumSongs = await listAlbumSongs(currentAlbum.albumId);
       applyAlbumSongFilter();
    } catch (error) {
-      setAlbumListState("empty");
-      toast(isFirestorePermissionsError(error) ? "Could not load songs — check Firestore security rules" : "Could not load songs");
+      const message = isFirestorePermissionsError(error)
+         ? "Could not load songs. Check Firestore security rules."
+         : "Could not load songs. Check your connection and try again.";
+      const errorMessage = $("#albumErrorMessage");
+      if (errorMessage) errorMessage.textContent = message;
+      setAlbumListState("error");
    }
 }
 
 function renderAlbumHeader() {
    const title = $("#albumTitle");
+   const description = $("#albumDescription");
    const meta = $("#albumMeta");
    if (title) title.textContent = currentAlbum.name;
+   if (description) {
+      const text = String(currentAlbum.description || "").trim();
+      description.textContent = text;
+      description.hidden = !text;
+   }
+   const heroGlyph = $("#albumHeroGlyph");
+   if (heroGlyph) heroGlyph.textContent = (currentAlbum.name || "A").trim().charAt(0).toUpperCase() || "A";
    if (meta) {
       const roleLabel = roleShortLabel(currentAlbum.role);
       const date = currentAlbum.createdAt ? new Date(currentAlbum.createdAt).toLocaleDateString() : "";
@@ -3161,7 +3304,7 @@ function syncAlbumContextUI() {
    const saveBtn = $("#saveCloudBtn");
    if (saveBtn) {
       const label = isAlbum ? (isMember ? "Save a copy" : "Save to Album") : "Save to Cloud";
-      saveBtn.innerHTML = `<span aria-hidden="true">⤒</span> ${label}`;
+      saveBtn.innerHTML = `<span class="btn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13v8"/><path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.24"/><path d="m8 17 4-4 4 4"/></svg></span><span class="btn-label">${label}</span>`;
       saveBtn.setAttribute("data-save-label", label);
       saveBtn.title = label;
    }
@@ -3175,7 +3318,7 @@ function syncAlbumContextUI() {
       // Set the whole content explicitly — never touch "a text node", because
       // the FIRST text node is the whitespace before the arrow (which caused a
       // duplicate "Back" label).
-      backBtn.innerHTML = `<span aria-hidden="true">←</span> Back`;
+      backBtn.innerHTML = `<span class="btn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></span><span class="btn-label">Back</span>`;
       backBtn.title = isAlbum ? "Back to album songs" : "Back to My Songs";
    }
    // The button label just changed ("Save to Album" / "Save a copy"), so refresh
@@ -3359,12 +3502,33 @@ async function refreshInviteCodeIntoDialog(andCopy) {
       if (value) value.textContent = code || "—";
       if (code && andCopy) {
          const ok = await copyTextToClipboard(code);
-         if (ok) toast("Invite code copied!");
+         if (ok) {
+            toast("Invite code copied!");
+            flashInviteCopied();
+         }
       }
    } catch {
       const value = $("#inviteCodeValue");
       if (value) value.textContent = "—";
    }
+}
+// In-place copy confirmation on the "Copy" button: the label flips to
+// "Copied" for a beat, then restores. A timer guard prevents rapid clicks
+// from leaking the temporary label past the timeout.
+let inviteCopyTimer = 0;
+let inviteCopyLabel = "";
+function flashInviteCopied() {
+   const btn = $("#inviteCodeCopy");
+   if (!btn) return;
+   const label = btn.querySelector(".btn-label");
+   if (label && !inviteCopyTimer) inviteCopyLabel = label.textContent;
+   btn.classList.add("is-copied");
+   if (label) label.textContent = "Copied";
+   clearTimeout(inviteCopyTimer);
+   inviteCopyTimer = setTimeout(() => {
+      btn.classList.remove("is-copied");
+      if (label) label.textContent = inviteCopyLabel;
+   }, 1600);
 }
 async function openInviteDialog() {
    const d = $("#inviteDialog");
@@ -3396,61 +3560,95 @@ async function rotateInviteInDialog() {
 // ---- Add song to album dialog (owners) ----
 function closeAddSongDialog(result) {
    const resolve = addSongResolve;
+   const trigger = addSongDialogTrigger;
    addSongResolve = null;
+   addSongDialogTrigger = null;
    closeModal($("#addSongDialog"));
+   setTimeout(() => {
+      if (trigger?.isConnected) trigger.focus();
+   }, 320);
    resolve?.(result);
 }
 // All My Songs loaded for the Add dialog (kept for client-side search filtering).
 let addSongDialogSongs = [];
+let addSongDialogTrigger = null;
 
-async function openAddSongDialog() {
+async function openAddSongDialog(trigger = document.activeElement) {
    const d = $("#addSongDialog");
    if (!d) return;
    if (addSongResolve) { const prev = addSongResolve; addSongResolve = null; prev(null); }
+   addSongDialogTrigger = trigger;
    albumSelectedSongId = null;
    const search = $("#addSongSearch");
    if (search) search.value = "";
-   addSongDialogSongs = await listSongs();
-   applyAddSongFilter();
    openModal(d);
+   setTimeout(() => search?.focus(), 40);
+   setAddSongDialogState("loading");
+   try {
+      addSongDialogSongs = await listSongs();
+      applyAddSongFilter();
+   } catch (error) {
+      console.error("[cloudUI] add-song library load failed", error);
+      setAddSongDialogState("error");
+   }
+}
+
+function setAddSongDialogState(state) {
+   const list = $("#addSongList");
+   const loading = $("#addSongLoading");
+   const empty = $("#addSongEmpty");
+   const error = $("#addSongError");
+   if (list) list.hidden = state !== "ready";
+   if (loading) loading.hidden = state !== "loading";
+   if (empty) empty.hidden = state !== "empty" && state !== "no-results";
+   if (error) error.hidden = state !== "error";
+   if (empty && state === "empty") empty.textContent = "Your library is empty. Save a song first, or create one directly in the album.";
+   if (empty && state === "no-results") empty.textContent = "No songs match your search.";
+   const addButton = $("#addSongOk");
+   if (addButton) addButton.disabled = state !== "ready" || !albumSelectedSongId;
 }
 
 // Filter the Add-from-My-Songs list by the in-dialog search field.
 function applyAddSongFilter() {
    const list = $("#addSongList");
-   const empty = $("#addSongEmpty");
    const term = ($("#addSongSearch")?.value || "").trim().toLowerCase();
-   if (list) list.innerHTML = "";
    if (!addSongDialogSongs.length) {
-      if (empty) { empty.textContent = "Your library is empty — save a song first, or create one directly in the album."; empty.hidden = false; }
+      if (list) list.innerHTML = "";
+      albumSelectedSongId = null;
+      setAddSongDialogState("empty");
       return;
    }
    const filtered = term
       ? addSongDialogSongs.filter((s) => (s.title || "").toLowerCase().includes(term) || (s.artist || "").toLowerCase().includes(term))
       : addSongDialogSongs;
-   if (!filtered.length) {
-      if (empty) { empty.textContent = "No songs match your search."; empty.hidden = false; }
+    if (!filtered.length) {
+      if (list) list.innerHTML = "";
+      albumSelectedSongId = null;
+      setAddSongDialogState("no-results");
       return;
-   }
-   if (empty) empty.hidden = true;
-   if (list) {
+    }
+    if (list) {
       list.innerHTML = filtered
          .map(
             (s, i) => `<label class="add-song-option">
                  <input type="radio" name="addSongChoice" value="${escapeHtml(s.cloudId)}" ${i === 0 ? "checked" : ""} />
                  <span class="add-song-option-text">
                     <strong>${escapeHtml(s.title)}</strong>
-                    <small>${escapeHtml(s.artist || "Unknown")}</small>
+                    <small>${escapeHtml(s.artist || "Unknown")}${typeof s.versionCount === "number" ? ` · ${s.versionCount} version${s.versionCount === 1 ? "" : "s"}` : ""}</small>
                  </span>
               </label>`,
          )
          .join("");
-      list.querySelectorAll('input[name="addSongChoice"]').forEach((r) =>
-         r.addEventListener("change", () => { albumSelectedSongId = r.value; }),
-      );
+       list.querySelectorAll('input[name="addSongChoice"]').forEach((r) =>
+         r.addEventListener("change", () => {
+            albumSelectedSongId = r.value;
+            setAddSongDialogState("ready");
+         }),
+       );
       const first = list.querySelector('input[name="addSongChoice"]');
       albumSelectedSongId = first ? first.value : null;
    }
+   setAddSongDialogState("ready");
 }
 async function submitAddSong() {
    if (!currentAlbum || !albumSelectedSongId) return;
@@ -3500,8 +3698,8 @@ function memberControlsMarkup(member) {
    const uid = escapeHtml(member.uid);
    const name = escapeHtml(member.name || "this member");
    const roleBtn = member.isMd
-      ? `<button class="button button-ghost button-small member-role-btn is-demote" data-member-action="demote" data-uid="${uid}" type="button" title="Change back to a regular member (read-only)" aria-label="Make ${name} a regular member"><span aria-hidden="true">👤</span> Make member</button>`
-      : `<button class="button button-ghost button-small member-role-btn is-promote" data-member-action="promote" data-uid="${uid}" type="button" title="Make ${MD_TITLE} (${MD_LABEL}) — full access" aria-label="Make ${name} the ${MD_TITLE}"><span aria-hidden="true">🎼</span> Make ${MD_LABEL}</button>`;
+      ? `<button class="button button-ghost button-small member-role-btn is-demote" data-member-action="demote" data-uid="${uid}" type="button" title="Change back to a regular member (read-only)" aria-label="Make ${name} a regular member"><span class="btn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span> Make member</button>`
+      : `<button class="button button-ghost button-small member-role-btn is-promote" data-member-action="promote" data-uid="${uid}" type="button" title="Make ${MD_TITLE} (${MD_LABEL}) — full access" aria-label="Make ${name} the ${MD_TITLE}"><span class="btn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span> Make ${MD_LABEL}</button>`;
    // The trash is an inline SVG (the app's stroke-icon language, see index.html)
    // instead of the 🗑 emoji: U+1F5D1 defaults to the TEXT presentation and its
    // glyph metrics never sit dead-centre in the button. A 17px SVG in a
@@ -3725,63 +3923,53 @@ async function confirmDeleteAlbum(album) {
 // ---- Wire album UI: tabs, buttons, card grids, dialogs ----
 function initAlbums() {
    // Home tabs.
-   const tabSongs = $("#tabMySongs");
-   const tabAlbums = $("#tabAlbums");
-   tabSongs?.addEventListener("click", () => navigate("#/songs"));
-   tabAlbums?.addEventListener("click", () => navigate("#/albums"));
+    const tabSongs = $("#tabMySongs");
+    const tabAlbums = $("#tabAlbums");
+    tabSongs?.addEventListener("click", () => navigate("#/songs"));
+    tabAlbums?.addEventListener("click", () => navigate("#/albums"));
+    $(".home-tabs")?.addEventListener("keydown", (event) => {
+       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+       const tabs = [tabSongs, tabAlbums].filter(Boolean);
+       const index = tabs.indexOf(event.target);
+       if (index < 0) return;
+       event.preventDefault();
+       const next = tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+       next.focus();
+       next.click();
+    });
 
-   // Albums tab actions.
-   // Prevent wheel-scrolling while the pointer is over the Albums toolbar.
-   document.querySelector(".albums-searchbar")?.addEventListener("wheel", (e) => e.preventDefault(), { passive: false });
-   $("#newAlbumBtn")?.addEventListener("click", openNewAlbumDialog);
-   $("#joinAlbumBtn")?.addEventListener("click", openJoinAlbumDialog);
-   $("#albumSearch")?.addEventListener("input", applyAlbumFilter);
-   // Albums tab carousel — same interaction model as the My Songs gallery.
-   const albumsTrack = $("#albumsGalleryCards");
+    // Albums tab actions.
+    $("#newAlbumBtn")?.addEventListener("click", openNewAlbumDialog);
+    $("#joinAlbumBtn")?.addEventListener("click", openJoinAlbumDialog);
+    $("#albumSearch")?.addEventListener("input", applyAlbumFilter);
+    $("#albumsRetry")?.addEventListener("click", refreshAlbums);
+    const albumsTrack = $("#albumsGalleryCards");
    albumsTrack?.addEventListener("click", (e) => {
       const actionBtn = e.target.closest(".song-card-action");
       const card = e.target.closest(".song-card");
       if (!card) return;
       const albumId = card.dataset.albumId;
-      if (actionBtn) {
-         e.stopPropagation();
-         const act = actionBtn.dataset.act;
+       if (actionBtn) {
+          e.stopPropagation();
+          actionBtn.closest("details")?.removeAttribute("open");
+          const act = actionBtn.dataset.act;
          if (act === "edit") navigate(`#/albums/${encodeURIComponent(albumId)}`);
          else if (act === "details") openEditAlbumDialog(albumId);
          else if (act === "delete") {
             const album = cachedAlbums.find((a) => a.albumId === albumId);
             if (album) confirmDeleteAlbum(album);
-         }
-         return;
-      }
-      // Phones: tap reveals the action overlay; opening is the explicit Edit tap.
-      if (window.matchMedia("(max-width: 680px)").matches) {
-         const wasSelected = card.classList.contains("is-selected");
-         document.querySelectorAll("#albumsGalleryCards .song-card.is-selected").forEach((c) => c.classList.remove("is-selected"));
-         if (!wasSelected) card.classList.add("is-selected");
-         return;
-      }
-      navigate(`#/albums/${encodeURIComponent(albumId)}`);
-   });
-   // Phones: tapping off a card dismisses its action overlay.
-   $("#albumsPanel")?.addEventListener("click", (e) => {
-      if (!window.matchMedia("(max-width: 680px)").matches) return;
-      if (e.target.closest(".song-card")) return;
-      document.querySelectorAll("#albumsGalleryCards .song-card.is-selected").forEach((c) => c.classList.remove("is-selected"));
-   });
-   // Keyboard + nudge buttons + live edge-blur (identical to My Songs).
-   albumsTrack?.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowRight") { e.preventDefault(); nudgeAlbumsCarousel(1); }
-      else if (e.key === "ArrowLeft") { e.preventDefault(); nudgeAlbumsCarousel(-1); }
-      else if (e.key === "Enter" || e.key === " ") {
-         const card = e.target.closest(".song-card");
-         if (card) { e.preventDefault(); navigate(`#/albums/${encodeURIComponent(card.dataset.albumId)}`); }
-      }
-   });
-   $("#albumsGalleryPrev")?.addEventListener("click", () => nudgeAlbumsCarousel(-1));
-   $("#albumsGalleryNext")?.addEventListener("click", () => nudgeAlbumsCarousel(1));
-   albumsTrack?.addEventListener("scroll", () => { updateAlbumEdgeBlur(); updateAlbumNudgeVisibility(); }, { passive: true });
-   window.addEventListener("resize", () => { updateAlbumEdgeBlur(); updateAlbumNudgeVisibility(); });
+          }
+          return;
+       }
+       if (e.target.closest(".song-row-menu")) return;
+       navigate(`#/albums/${encodeURIComponent(albumId)}`);
+    });
+    albumsTrack?.addEventListener("keydown", (e) => {
+       if ((e.key === "Enter" || e.key === " ") && !e.target.closest("button, summary, input, a")) {
+          const card = e.target.closest(".song-card");
+          if (card) { e.preventDefault(); navigate(`#/albums/${encodeURIComponent(card.dataset.albumId)}`); }
+       }
+    });
 
    // Album detail header actions.
    $("#albumBackBtn")?.addEventListener("click", () => navigate("#/albums"));
@@ -3805,53 +3993,46 @@ function initAlbums() {
       const card = e.target.closest(".song-card");
       if (!card) return;
       if (card.classList.contains("is-dim")) return; // blurred cards aren't interactive
-      if (actionBtn) {
-         e.stopPropagation();
-         const act = actionBtn.dataset.act;
+       if (actionBtn) {
+          e.stopPropagation();
+          actionBtn.closest("details")?.removeAttribute("open");
+          const act = actionBtn.dataset.act;
          if (act === "edit") openAlbumSongInEditor(currentAlbum.albumId, card.dataset.id);
          else if (act === "pdf") openAlbumSongPdf(card.dataset.id);
          else if (act === "delete") confirmRemoveAlbumSong(card.dataset.id);
-         else if (act === "copy") copyAlbumSong(card.dataset.id);
-         return;
-      }
-      // Phones: tap reveals the action overlay; opening is the explicit Edit tap.
-      if (window.matchMedia("(max-width: 680px)").matches) {
-         const wasSelected = card.classList.contains("is-selected");
-         document.querySelectorAll("#albumSongCards .song-card.is-selected").forEach((c) => c.classList.remove("is-selected"));
-         if (!wasSelected) card.classList.add("is-selected");
-         return;
-      }
-      openAlbumSongInEditor(currentAlbum.albumId, card.dataset.id);
-   });
-   // Phones: tapping off a card dismisses its action overlay.
-   $("#albumModal")?.addEventListener("click", (e) => {
-      if (!window.matchMedia("(max-width: 680px)").matches) return;
-      if (e.target.closest(".song-card")) return;
-      document.querySelectorAll("#albumSongCards .song-card.is-selected").forEach((c) => c.classList.remove("is-selected"));
-   });
-   // Keyboard + nudge buttons + live edge-blur (identical to the home carousels).
-   albumTrack?.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowRight") { e.preventDefault(); nudgeAlbumSongsCarousel(1); }
-      else if (e.key === "ArrowLeft") { e.preventDefault(); nudgeAlbumSongsCarousel(-1); }
-      else if (e.key === "Enter" || e.key === " ") {
-         const card = e.target.closest(".song-card");
-         if (card && !card.classList.contains("is-dim")) {
-            e.preventDefault();
-            openAlbumSongInEditor(currentAlbum.albumId, card.dataset.id);
-         }
-      }
-   });
-   $("#albumSongsGalleryPrev")?.addEventListener("click", () => nudgeAlbumSongsCarousel(-1));
-   $("#albumSongsGalleryNext")?.addEventListener("click", () => nudgeAlbumSongsCarousel(1));
-   albumTrack?.addEventListener("scroll", () => { updateAlbumSongEdgeBlur(); updateAlbumSongNudgeVisibility(); }, { passive: true });
-   window.addEventListener("resize", () => { updateAlbumSongEdgeBlur(); updateAlbumSongNudgeVisibility(); });
-   $("#albumSongSearch")?.addEventListener("input", applyAlbumSongFilter);
+          else if (act === "copy") copyAlbumSong(card.dataset.id);
+          return;
+       }
+       if (e.target.closest(".song-row-menu")) return;
+       openAlbumSongInEditor(currentAlbum.albumId, card.dataset.id);
+    });
+    albumTrack?.addEventListener("keydown", (e) => {
+       if ((e.key === "Enter" || e.key === " ") && !e.target.closest("button, summary, input, a")) {
+          const card = e.target.closest(".song-card");
+          if (card) {
+             e.preventDefault();
+             openAlbumSongInEditor(currentAlbum.albumId, card.dataset.id);
+          }
+       }
+    });
+    $("#albumSongSearch")?.addEventListener("input", applyAlbumSongFilter);
+    $("#albumRetry")?.addEventListener("click", refreshAlbumSongs);
 
    // Join dialog.
    $("#joinAlbumOk")?.addEventListener("click", submitJoinAlbum);
    $("#joinAlbumCancel")?.addEventListener("click", () => closeJoinAlbumDialog(null));
    $("#joinAlbumDialog")?.addEventListener("click", (e) => { if (e.target.closest("[data-joinalbum-dismiss]")) closeJoinAlbumDialog(null); });
    $("#joinAlbumCode")?.addEventListener("keydown", (e) => { if (e.key === "Enter") submitJoinAlbum(); });
+   // Live-format the join code as XXXX-XXXX: uppercase, strip separators, cap
+   // at 8 chars. Cosmetic only — normalizeInviteCode remains the source of
+   // truth on submit. Typing also clears a stale error state.
+   $("#joinAlbumCode")?.addEventListener("input", () => {
+      const input = $("#joinAlbumCode");
+      if (!input) return;
+      const token = input.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+      input.value = token.length > 4 ? `${token.slice(0, 4)}-${token.slice(4)}` : token;
+      input.classList.remove("is-invalid");
+   });
 
    // New album dialog.
    $("#newAlbumOk")?.addEventListener("click", submitNewAlbum);
@@ -3871,9 +4052,10 @@ function initAlbums() {
    $("#inviteCodeRotate")?.addEventListener("click", rotateInviteInDialog);
    $("#inviteDialog")?.addEventListener("click", (e) => { if (e.target.closest("[data-invite-dismiss]")) closeInviteDialog(); });
 
-   // Add-song dialog.
-   $("#addSongSearch")?.addEventListener("input", applyAddSongFilter);
-   $("#addSongOk")?.addEventListener("click", submitAddSong);
+    // Add-song dialog.
+    $("#addSongSearch")?.addEventListener("input", applyAddSongFilter);
+    $("#addSongRetry")?.addEventListener("click", () => openAddSongDialog(addSongDialogTrigger));
+    $("#addSongOk")?.addEventListener("click", submitAddSong);
    $("#addSongCancel")?.addEventListener("click", () => closeAddSongDialog(null));
    $("#addSongDialog")?.addEventListener("click", (e) => { if (e.target.closest("[data-addsong-dismiss]")) closeAddSongDialog(null); });
 

@@ -427,6 +427,34 @@ record(
    "Time signature updates beat count",
    (await evaluate("document.querySelectorAll('.drop-target').length")) === 12,
 );
+// 1/4 is a real one-beat bar. Check the live grid, its singular caption, and the
+// print-layout geometry that PDF export reuses (one `.beat-column` per bar).
+await evaluate(
+   "(()=>{const meter=document.querySelector('#timeSignature');meter.value='1/4';meter.dispatchEvent(new Event('change',{bubbles:true}));return true})()",
+);
+record(
+   "1/4 meter renders one beat per bar",
+   (await evaluate("document.querySelectorAll('.drop-target').length")) === 4 &&
+      (await evaluate(
+         "[...document.querySelectorAll('.bar')].every(bar=>bar.querySelectorAll('.beat-column').length===1)",
+      )),
+);
+record("1/4 meter caption uses the singular beat", (await text(".bar-caption")).includes("1 beat per bar"));
+const oneBeatPrint = await evaluate(
+   "(()=>{const root=document.documentElement;root.classList.add('is-print-layout');const bars=[...document.querySelectorAll('#previewCard .bar')];const result={count:bars.length,beats:bars.map(bar=>bar.querySelectorAll('.beat-column').length),meter:document.querySelector('#previewMeter').textContent.trim(),widths:bars.map(bar=>Math.round(bar.getBoundingClientRect().width))};root.classList.remove('is-print-layout');return result})()",
+);
+record(
+   "1/4 PDF layout keeps one beat per bar",
+   oneBeatPrint.count === 4 &&
+      oneBeatPrint.beats.every((count) => count === 1) &&
+      oneBeatPrint.meter === "1/4" &&
+      oneBeatPrint.widths.every((width) => width > 0),
+   JSON.stringify(oneBeatPrint),
+);
+// Restore 3/4 so the following metadata-edit assertions keep their fixture.
+await evaluate(
+   "(()=>{const meter=document.querySelector('#timeSignature');meter.value='3/4';meter.dispatchEvent(new Event('change',{bubbles:true}));return true})()",
+);
 await click("#previewTitle");
 await evaluate(
    "(async()=>{const input=document.querySelector('#previewTitle input');input.value='Mobile Grace';input.dispatchEvent(new FocusEvent('blur'));await new Promise(resolve=>setTimeout(resolve,20));return true})()",

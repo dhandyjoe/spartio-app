@@ -525,20 +525,21 @@ body[data-editor-mode="chordpro"] .editor-mode-badge-icon {
 }
 
 /* ---- Library card (My Songs / Albums) --------------------------------------
-   Mirrors the pattern of `.song-card.is-chords` / `.is-numbers` in ui.css (tinted
-   background + soft corner glow + faint watermark glyph), in a DARK GOLD accent.
-   cloudUI.js already emits `is-chordpro` via normalizeEditorMode(). */
+   Mirrors the pattern of the motif covers in ui.css (tinted cover + watermark
+   glyph), in a DARK GOLD accent. cloudUI.js already emits `is-chordpro` via
+   normalizeEditorMode(). The card chrome itself stays neutral; the tint lives
+   on the cover, where the mode's colour is carried.
+   The lobby (My Songs / Albums) is ALWAYS dark now (ui.css LOBBY THEME), so the
+   card carries the dark-gold look in both themes — the pale-gold light variant
+   would glare against the dark-green shell. #e8c668 on #241f10 is ≈8:1 (AA). */
 .song-card.is-chordpro {
-   background: #fbf3df;
+   background: #241f10;
 }
-.song-card.is-chordpro::before {
-   background: radial-gradient(circle, color-mix(in srgb, #8a6a10 26%, transparent), transparent 70%);
+.song-card.is-chordpro .song-card-cover.is-motif {
+   background: #241f10;
 }
 .song-card.is-chordpro .song-card-mode-mark {
-   color: #8a6a10;
-}
-html[data-theme="dark"] .song-card.is-chordpro {
-   background: #2a2415;
+   color: #e8c668;
 }
 
 /* ---- Mode picker card (New Song dialog) ------------------------------------
@@ -810,4 +811,100 @@ html.is-print-layout .cp-signature {
 }
 .pdf-preview-page > #cpPreviewCard .cp-signature {
    display: none !important;
+}
+
+/* ============================================================================
+   CHORDPRO EDITOR PANEL — framed-sheet refresh (screen only)
+   ----------------------------------------------------------------------------
+   Only the LEFT writing panel changes. The paper (.cp-card*), every print rule
+   and the pinned stage-bar/editor-foot geometry are untouched on purpose.
+   ========================================================================== */
+@media screen {
+   .cp-editor,
+   .cp-stage-bar {
+      font-family: var(--editor-font, "Sora", "Inter", system-ui, sans-serif);
+   }
+   .cp-editor {
+      border-color: var(--editor-line, var(--line));
+      border-radius: 16px;
+      background: var(--editor-surface, var(--surface));
+      box-shadow: none;
+   }
+   .cp-field-label,
+   .cp-tool-label {
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--editor-muted, var(--muted));
+   }
+   .cp-input,
+   .cp-textarea {
+      border-color: var(--editor-line, var(--line));
+      border-radius: 8px;
+      background: var(--editor-surface, var(--surface));
+      color: var(--editor-ink, var(--ink));
+   }
+   .cp-input:focus-visible,
+   .cp-textarea:focus-visible {
+      border-color: var(--editor-accent, var(--green));
+      box-shadow: 0 0 0 2px var(--editor-accent, var(--green));
+   }
+   .cp-icon-btn,
+   .cp-text-btn,
+   .cp-row-btn {
+      border-radius: 8px;
+      border-color: var(--editor-line, var(--line));
+      background: var(--editor-surface, var(--surface));
+      color: var(--editor-ink, var(--ink));
+   }
+   .cp-icon-btn:hover,
+   .cp-text-btn:hover {
+      border-color: var(--editor-control, var(--muted));
+      background: var(--editor-raised, var(--soft));
+   }
+   .cp-text-btn.is-strong {
+      border-color: var(--editor-accent, var(--green));
+      background: transparent;
+      color: var(--editor-accent, var(--green));
+   }
+   .cp-text-btn.is-strong:hover {
+      background: var(--editor-raised, var(--soft));
+   }
+   .cp-section-row {
+      border-color: var(--editor-line, var(--line));
+      border-radius: 12px;
+      background: var(--editor-raised, var(--cream));
+   }
+   .cp-section-row:focus-within {
+      border-color: var(--editor-accent, var(--green));
+      box-shadow: 0 0 0 2px var(--editor-accent, var(--green));
+   }
+   .cp-section-name-input {
+      color: var(--editor-ink, var(--ink));
+   }
+   .cp-editor-hint code {
+      background: var(--editor-raised, var(--soft));
+      color: var(--editor-ink, var(--ink));
+   }
+   .cp-textarea[readonly] {
+      background: var(--editor-raised, var(--soft));
+   }
+   html[data-theme="dark"] .cp-editor {
+      border-color: var(--editor-line);
+      background: var(--editor-surface);
+   }
+   html[data-theme="dark"] .cp-input,
+   html[data-theme="dark"] .cp-textarea,
+   html[data-theme="dark"] .cp-icon-btn,
+   html[data-theme="dark"] .cp-text-btn,
+   html[data-theme="dark"] .cp-row-btn {
+      border-color: var(--editor-line);
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+   }
+   html[data-theme="dark"] .cp-section-row {
+      border-color: var(--editor-line);
+      background: var(--editor-raised);
+   }
 }
