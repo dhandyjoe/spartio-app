@@ -540,6 +540,23 @@ test("resolveEntryFrequencies converts the resolved notes to Hz", () => {
    assert.deepEqual(resolveEntryFrequencies({ chord: "1" }, "C"), [261.6255653005986]);
 });
 
+test("buildPlaybackQueue can start at a chosen section and continues to the end", () => {
+   const sections = [
+      { id: "s1", bars: 1, beats: {} },
+      { id: "s2", bars: 1, beats: {} },
+      { id: "s3", bars: 1, beats: {} },
+   ];
+   const fromSecond = buildPlaybackQueue(sections, 4, { fromSectionId: "s2" });
+   assert.equal(fromSecond.length, 8, "s1 is skipped, s2+s3 remain");
+   assert.equal(fromSecond[0].sectionId, "s2");
+   assert.ok(fromSecond.every((entry) => entry.sectionId !== "s1"));
+   const fallback = buildPlaybackQueue(sections, 4, { fromSectionId: "missing" });
+   assert.equal(fallback.length, 12, "unknown section falls back to the beginning");
+   assert.equal(fallback[0].sectionId, "s1");
+   const fromFirst = buildPlaybackQueue(sections, 4, { fromSectionId: "s1" });
+   assert.deepEqual(fromFirst, buildPlaybackQueue(sections, 4));
+});
+
 test("buildPlaybackQueue carries the chord row into subdivisions", () => {
    const section = {
       id: "s1",

@@ -360,6 +360,7 @@ export async function listVersions(songId) {
          editorMode: normalizeEditorMode(data.editorMode),
          key: data.key || "",
          meter: data.meter || "",
+         bpm: Number(data.bpm) || "",
       };
    });
    // Paling baru di-update dulu (bukan nomor versi terbesar) supaya version yang
@@ -415,6 +416,7 @@ async function recomputeLatestMeta(songId) {
       latest.youtubeId,
       latest.key,
       latest.meter,
+      latest.bpm,
    );
    return { versionId: latest.versionId };
 }
@@ -430,6 +432,7 @@ async function writeLatestMeta(
    latestYoutubeId,
    latestKey,
    latestMeter,
+   latestBPM,
 ) {
    const { dbFns } = sdk;
    await dbFns.setDoc(
@@ -442,6 +445,8 @@ async function writeLatestMeta(
          ...(latestYoutubeId ? { latestYoutubeId } : { latestYoutubeId: dbFns.deleteField() }),
          latestKey: latestKey || "",
          latestMeter: latestMeter || "",
+         latestBPM: Number(latestBPM) || "",
+         latestSummaryRev: SUMMARY_REV,
          updatedAt: Date.now(),
       },
       { merge: true },
@@ -450,10 +455,10 @@ async function writeLatestMeta(
 
 // Public wrapper for writeLatestMeta — used when a (first) version is created and
 // must immediately become the song's "latest" on the metadata.
-export async function updateLatestVersion(songId, versionId, label, count, editorMode, youtubeId, key, meter) {
+export async function updateLatestVersion(songId, versionId, label, count, editorMode, youtubeId, key, meter, bpm) {
    await ensureFirebase();
    requireUser();
-   await writeLatestMeta(songId, versionId, label || "", count, editorMode, youtubeId, key, meter);
+   await writeLatestMeta(songId, versionId, label || "", count, editorMode, youtubeId, key, meter, bpm);
 }
 // ---- Legacy flat-document upgrade ----
 
@@ -489,6 +494,7 @@ async function migrateLegacySong(songId, legacyData) {
       latestEditorMode: normalizeEditorMode(legacyData.editorMode),
       latestKey: legacyData.key || "",
       latestMeter: legacyData.meter || "",
+      latestBPM: Number(legacyData.bpm) || "",
    });
 }
 
@@ -530,15 +536,87 @@ export async function saveSong(project = {}, { versionLabel } = {}) {
          // Song exists but currently has no versions (last one was deleted) —
          // this save becomes its (new) first version.
          const created = await saveVersion(songId, null, data, { label: versionLabel || "Version 1" });
-         await writeLatestMeta(songId, created.versionId, created.label, 1, data.editorMode, undefined, data.key, data.meter);
+         await writeLatestMeta(songId, created.versionId, created.label, 1, data.editorMode, undefined, data.key, data.meter, data.bpm);
       }
       await updateSongMeta(songId, { title, artist });
       return songId;
    }
    const createdSong = await createSong({ title, artist });
    const createdVersion = await saveVersion(createdSong.songId, null, data, { label: versionLabel || "Version 1" });
-   await writeLatestMeta(createdSong.songId, createdVersion.versionId, createdVersion.label, 1, data.editorMode, undefined, data.key, data.meter);
+   await writeLatestMeta(createdSong.songId, createdVersion.versionId, createdVersion.label, 1, data.editorMode, undefined, data.key, data.meter, data.bpm);
    return createdSong.songId;
+}
+
+// The song document carries a denormalized summary of its latest arrangement
+// (mode, key, meter, tempo). Documents written before a field existed — or
+// before the summary was refreshed — can disagree with the arrangement that is
+// actually stored. `SUMMARY_REV` marks a summary that has been verified against
+// the latest version; songs without the marker are checked once, then repaired
+// in place, so the library shows the real mode and tempo of every arrangement.
+const SUMMARY_REV = "3";
+
+/**
+ * Fold the latest arrangement's own fields into a song summary. The VERSION
+ * document is the source of truth: a Nashville arrangement stored under an old
+ * mode id is repaired to "numbers" here instead of falling back to "chords".
+ * Pure and exported so the rule is unit-tested.
+ * Returns the patch to write back to the song document.
+ */
+export function applyVersionSummary(song, version = {}) {
+   const patch = {};
+   if (version.editorMode) {
+      const mode = normalizeEditorMode(version.editorMode);
+      if (song.latestEditorMode !== mode) {
+         song.latestEditorMode = mode;
+         patch.latestEditorMode = mode;
+      }
+   }
+   // 120 is the editor's default tempo, so a version that never stored one is
+   // reported as 120 — the same value the editor shows.
+   const bpm = Number(version.bpm ?? version.BPM) || 120;
+   if (Number(song.latestBPM) !== bpm) {
+      song.latestBPM = bpm;
+      patch.latestBPM = bpm;
+   }
+   if (version.key && song.latestKey !== version.key) {
+      song.latestKey = version.key;
+      patch.latestKey = version.key;
+   }
+   if (version.meter && song.latestMeter !== version.meter) {
+      song.latestMeter = version.meter;
+      patch.latestMeter = version.meter;
+   }
+   return patch;
+}
+
+async function backfillLatestSummary(songs, readVersion, writeSong) {
+   const missing = songs.filter(
+      (song) =>
+         song.latestVersionId &&
+         (song.latestSummaryRev !== SUMMARY_REV ||
+            song.latestBPM === undefined ||
+            song.latestBPM === null ||
+            song.latestBPM === "" ||
+            song.latestEditorMode === undefined ||
+            !song.latestKey ||
+            !song.latestMeter),
+   );
+   if (!missing.length) return songs;
+   await Promise.all(
+      missing.map(async (song) => {
+         try {
+            const data = await readVersion(song);
+            if (!data) return;
+            const patch = applyVersionSummary(song, data);
+            song.latestSummaryRev = SUMMARY_REV;
+            patch.latestSummaryRev = SUMMARY_REV;
+            await writeSong(song, patch);
+         } catch {
+            /* offline or rules deny the read — the list stays usable without it */
+         }
+      }),
+   );
+   return songs;
 }
 
 // List all songs for the current user, newest-updated first. Returns metadata +
@@ -565,6 +643,8 @@ export async function listSongs() {
                versionCount: 1,
                latestVersionId: VERSION_ONE_ID,
                latestVersionLabel: "Version 1",
+               latestBPM: data.bpm,
+               latestSummaryRev: data.latestSummaryRev,
             });
          } else {
             // Upgrade not possible yet (rules not covering the subcollection):
@@ -578,6 +658,7 @@ export async function listSongs() {
                sections: data.sections,
                key: data.key,
                meter: data.meter,
+               bpm: data.bpm ?? data.BPM,
                editorMode: data.editorMode,
             });
          }
@@ -595,9 +676,21 @@ export async function listSongs() {
                latestEditorMode: data.latestEditorMode,
                latestKey: data.latestKey,
                latestMeter: data.latestMeter,
+               latestBPM: data.latestBPM,
+               latestSummaryRev: data.latestSummaryRev,
             });
       }
    }
+   await backfillLatestSummary(
+      songs,
+      async (song) => {
+         const snap = await dbFns.getDoc(versionRef(song.cloudId, song.latestVersionId));
+         return snap.exists() ? snap.data() : null;
+      },
+      async (song, patch) => {
+         await dbFns.setDoc(songRef(song.cloudId), patch, { merge: true });
+      },
+   );
    return songs;
 }
 // Load a song for the editor: metadata + the latest version, composed into the
@@ -680,7 +773,7 @@ export async function duplicateSong(cloudId) {
       // card shows the same mode as the source's topmost version).
       const top = (await listVersions(newSongId))[0];
       if (top) {
-         await writeLatestMeta(newSongId, top.versionId, top.label || "", count, top.editorMode, top.youtubeId, top.key, top.meter);
+         await writeLatestMeta(newSongId, top.versionId, top.label || "", count, top.editorMode, top.youtubeId, top.key, top.meter, top.bpm);
       }
    } else {
       await updateSongMeta(newSongId, { versionCount: 0 });
@@ -855,6 +948,7 @@ export async function listAlbumVersions(albumId, songId) {
          editorMode: normalizeEditorMode(data.editorMode),
          key: data.key || "",
          meter: data.meter || "",
+         bpm: Number(data.bpm) || "",
       };
    });
    return sortVersionsByRecency(versions);
@@ -871,6 +965,7 @@ async function writeAlbumLatestMeta(
    latestYoutubeId,
    latestKey,
    latestMeter,
+   latestBPM,
 ) {
    const { dbFns } = sdk;
    await dbFns.setDoc(
@@ -883,6 +978,8 @@ async function writeAlbumLatestMeta(
          ...(latestYoutubeId ? { latestYoutubeId } : { latestYoutubeId: dbFns.deleteField() }),
          latestKey: latestKey || "",
          latestMeter: latestMeter || "",
+         latestBPM: Number(latestBPM) || "",
+         latestSummaryRev: SUMMARY_REV,
          updatedAt: Date.now(),
       },
       { merge: true },
@@ -891,10 +988,10 @@ async function writeAlbumLatestMeta(
 
 // Public wrapper for writeAlbumLatestMeta — used when a (first) album version is
 // created and must immediately become the song's "latest" on the metadata.
-export async function updateAlbumLatestVersion(albumId, songId, versionId, label, count, editorMode, youtubeId, key, meter) {
+export async function updateAlbumLatestVersion(albumId, songId, versionId, label, count, editorMode, youtubeId, key, meter, bpm) {
    await ensureFirebase();
    requireUser();
-   await writeAlbumLatestMeta(albumId, songId, versionId, label || "", count, editorMode, youtubeId, key, meter);
+   await writeAlbumLatestMeta(albumId, songId, versionId, label || "", count, editorMode, youtubeId, key, meter, bpm);
 }
 
 async function recomputeAlbumLatestMeta(albumId, songId) {
@@ -926,6 +1023,7 @@ async function recomputeAlbumLatestMeta(albumId, songId) {
       latest.youtubeId,
       latest.key,
       latest.meter,
+      latest.bpm,
    );
    return { versionId: latest.versionId };
 }
@@ -1080,6 +1178,9 @@ export async function getAlbum(albumId) {
       createdAt: data.createdAt || 0,
       updatedAt: data.updatedAt || 0,
       songCount: typeof data.songCount === "number" ? data.songCount : 0,
+      // The album card shows the live invite code to its MDs only (the code is
+      // also the one thing a member would need to bypass the MD's control).
+      activeInviteCode: typeof data.activeInviteCode === "string" ? data.activeInviteCode : "",
       role: member.role === "owner" ? "owner" : "member",
    };
 }
@@ -1143,6 +1244,44 @@ function isFirestoreDeny(error) {
    return code === "permission-denied" || /Missing or insufficient permissions/i.test(message);
 }
 // ---- Album songs ----
+
+// Home-card preview: the newest few arrangement titles + keys of one album.
+// Deliberately separate from listAlbumSongs() so merely opening the Albums tab
+// never pays for full song lists (or the latest-summary backfill that goes with
+// them). Returns plain data, newest first.
+export async function listAlbumSongPreview(albumId, max = 3) {
+   await ensureFirebase();
+   requireUser();
+   const { dbFns } = sdk;
+   const limitTo = Math.max(1, Math.min(10, Number(max) || 3));
+   const snapshot = await dbFns.getDocs(
+      dbFns.query(
+         albumSongsCollection(albumId),
+         dbFns.orderBy("updatedAt", "desc"),
+         dbFns.limit(limitTo),
+      ),
+   );
+   return snapshot.docs.map((snap) => {
+      const data = snap.data();
+      return {
+         title: data.title || "Untitled",
+         key: data.latestKey || data.key || "",
+      };
+   });
+}
+
+// Member count for an album card. A server-side count() is one read no matter
+// how many members the album has; the member list itself stays in the Members
+// dialog (where names and roles are actually needed).
+export async function countAlbumMembers(albumId) {
+   await ensureFirebase();
+   requireUser();
+   const { dbFns } = sdk;
+   if (typeof dbFns.getCountFromServer !== "function") return null;
+   const snapshot = await dbFns.getCountFromServer(membersCollection(albumId));
+   return snapshot.data().count;
+}
+
 export async function listAlbumSongs(albumId) {
    await ensureFirebase();
    requireUser();
@@ -1150,7 +1289,7 @@ export async function listAlbumSongs(albumId) {
    const snapshot = await dbFns.getDocs(
       dbFns.query(albumSongsCollection(albumId), dbFns.orderBy("updatedAt", "desc")),
    );
-   return snapshot.docs.map((snap) => {
+   const songs = snapshot.docs.map((snap) => {
       const data = snap.data();
       return {
          cloudId: snap.id,
@@ -1165,8 +1304,21 @@ export async function listAlbumSongs(albumId) {
          latestEditorMode: data.latestEditorMode,
          latestKey: data.latestKey,
          latestMeter: data.latestMeter,
+         latestBPM: data.latestBPM,
+         latestSummaryRev: data.latestSummaryRev,
       };
    });
+   await backfillLatestSummary(
+      songs,
+      async (song) => {
+         const snap = await dbFns.getDoc(albumVersionRef(albumId, song.cloudId, song.latestVersionId));
+         return snap.exists() ? snap.data() : null;
+      },
+      async (song, patch) => {
+         await dbFns.setDoc(albumSongRef(albumId, song.cloudId), patch, { merge: true });
+      },
+   );
+   return songs;
 }
 
 // Load a song for the editor: metadata + the latest version, composed into the
@@ -1223,14 +1375,14 @@ export async function saveToAlbum(albumId, project = {}, ctx = {}) {
             await saveAlbumVersion(albumId, songId, nextVersionId, data, { label: nextLabel });
          } else {
             const created = await saveAlbumVersion(albumId, songId, null, data, { label: ctx.versionLabel || "Version 1" });
-            await writeAlbumLatestMeta(albumId, songId, created.versionId, created.label, 1, data.editorMode, undefined, data.key, data.meter);
+            await writeAlbumLatestMeta(albumId, songId, created.versionId, created.label, 1, data.editorMode, undefined, data.key, data.meter, data.bpm);
             nextVersionId = created.versionId;
             nextLabel = created.label;
          }
       } else {
          // Song exists in the album but has no versions (last deleted) → first save becomes v1.
          const created = await saveAlbumVersion(albumId, songId, null, data, { label: ctx.versionLabel || "Version 1" });
-         await writeAlbumLatestMeta(albumId, songId, created.versionId, created.label, 1, data.editorMode, undefined, data.key, data.meter);
+         await writeAlbumLatestMeta(albumId, songId, created.versionId, created.label, 1, data.editorMode, undefined, data.key, data.meter, data.bpm);
          nextVersionId = created.versionId;
          nextLabel = created.label;
       }
@@ -1245,13 +1397,14 @@ export async function saveToAlbum(albumId, project = {}, ctx = {}) {
          latestEditorMode: normalizeEditorMode(data.editorMode),
          latestKey: data.key || "",
          latestMeter: data.meter || "",
+         latestBPM: Number(data.bpm) || "",
       });
    } else {
       // Brand-new song created directly IN the album (no My Songs copy).
       const createdSong = await createAlbumSong(albumId, { title, artist });
       songId = createdSong.songId;
       const created = await saveAlbumVersion(albumId, songId, null, data, { label: ctx.versionLabel || "Version 1" });
-      await writeAlbumLatestMeta(albumId, songId, created.versionId, created.label, 1, data.editorMode, undefined, data.key, data.meter);
+      await writeAlbumLatestMeta(albumId, songId, created.versionId, created.label, 1, data.editorMode, undefined, data.key, data.meter, data.bpm);
       nextVersionId = created.versionId;
       nextLabel = created.label;
    }
@@ -1313,7 +1466,7 @@ export async function addSongToAlbum(albumId, mySongId) {
             createdAt: meta.createdAt,
             updatedAt: meta.updatedAt,
          });
-         await writeAlbumLatestMeta(albumId, newSongId, version.versionId, version.label, 1, payload.editorMode, undefined, payload.key, payload.meter);
+         await writeAlbumLatestMeta(albumId, newSongId, version.versionId, version.label, 1, payload.editorMode, undefined, payload.key, payload.meter, payload.bpm);
          versionCount = 1;
       } else {
          const versions = await listVersions(mySongId);
@@ -1362,6 +1515,7 @@ export async function addSongToAlbum(albumId, mySongId) {
             latest?.youtubeId,
             latest?.key,
             latest?.meter,
+            latest?.bpm,
          );
       }
    } catch (error) {
@@ -1417,7 +1571,7 @@ export async function copyAlbumSongToMySongs(albumId, songId, { preferVersionId 
    // private copy's card shows the same mode as the album song's topmost version).
    const top = (await listVersions(newSongId))[0] || null;
    if (top) {
-      await writeLatestMeta(newSongId, top.versionId, top.label || "", count, top.editorMode, top.youtubeId, top.key, top.meter);
+      await writeLatestMeta(newSongId, top.versionId, top.label || "", count, top.editorMode, top.youtubeId, top.key, top.meter, top.bpm);
    } else {
       await updateSongMeta(newSongId, { versionCount: count });
    }

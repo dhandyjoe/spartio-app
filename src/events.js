@@ -42,6 +42,7 @@ import {
    barHasContent,
    syllabifyLyrics,
    MAX_SECTIONS,
+   nextSectionName,
    normalizeEditorMode,
    isSingleBeatMeter,
    barUnitWord,
@@ -51,7 +52,16 @@ import {
    transposeChordProText,
 } from "./chordPro.js?v=__BUILD__";
 import { $, prefersTap, isPhone, toast } from "./dom.js?v=__BUILD__";
-import { clearHistory, saveState, undo, redo, canUndo, canRedo } from "./history.js?v=__BUILD__";
+import {
+   clearHistory,
+   saveState,
+   undo,
+   redo,
+   canUndo,
+   canRedo,
+   getPastLength,
+   getFutureLength,
+} from "./history.js?v=__BUILD__";
 import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=__BUILD__";
 import {
    getState,
@@ -636,6 +646,7 @@ function applyReadOnlyAffordances() {
    // Drives the `body[data-view-only="1"]` stylesheet (phone view-only).
    document.body.dataset.viewOnly = phone ? "1" : "0";
    const lockedSelector = [
+      ".add-section",
       ".add-bar",
       ".delete-bar",
       ".copy-bar",
@@ -1114,6 +1125,12 @@ function bindPreview() {
          toast(`1 ${scoreUnit().unit} added to ${section.name}`);
       }),
    );
+   document.querySelectorAll(".add-section").forEach((button) =>
+      button.addEventListener("click", (event) => {
+         event.stopPropagation();
+         insertSectionAfter(button.dataset.section);
+      }),
+   );
    document.querySelectorAll(".delete-bar").forEach((button) =>
       button.addEventListener("click", (event) => {
          event.stopPropagation();
@@ -1356,7 +1373,11 @@ function applyPreviewZoom() {
    const card = $("#previewCard");
    if (!card) return;
    const liveZoom = prefersTap() ? 1 : FIXED_PREVIEW_ZOOM;
-   card.style.zoom = printLayoutPreview ? 1 : liveZoom;
+   const zoom = printLayoutPreview ? 1 : liveZoom;
+   // The loading sheet mirrors the paper frame; keep the same scale so it does
+   // not jump when the real #previewCard comes back.
+   document.documentElement.style.setProperty("--live-preview-zoom", String(zoom));
+   card.style.zoom = zoom;
    requestAnimationFrame(updateViewportOverflow);
 }
 function setPrintLayoutPreview(enabled, { announce = true } = {}) {
@@ -1438,11 +1459,31 @@ function transposeSheet(semitones) {
 // save() call inside applyProject doesn't record the restore as a fresh edit.
 let isRestoring = false;
 
+function historyStepLabel(count) {
+   return `${count} step${count === 1 ? "" : "s"} available`;
+}
+
 function updateUndoRedoButtons() {
    const undoBtn = $("#undoBtn");
    const redoBtn = $("#redoBtn");
-   if (undoBtn) undoBtn.disabled = !canUndo();
-   if (redoBtn) redoBtn.disabled = !canRedo();
+   if (undoBtn) {
+      const available = canUndo();
+      undoBtn.disabled = !available;
+      undoBtn.title = available ? `Undo (⌘Z / Ctrl+Z) · ${historyStepLabel(getPastLength())}` : "Nothing to undo";
+      undoBtn.setAttribute(
+         "aria-label",
+         available ? `Undo previous action — ${historyStepLabel(getPastLength())}` : "Nothing to undo",
+      );
+   }
+   if (redoBtn) {
+      const available = canRedo();
+      redoBtn.disabled = !available;
+      redoBtn.title = available ? `Redo (⌘⇧Z / Ctrl+Shift+Z) · ${historyStepLabel(getFutureLength())}` : "Nothing to redo";
+      redoBtn.setAttribute(
+         "aria-label",
+         available ? `Redo next action — ${historyStepLabel(getFutureLength())}` : "Nothing to redo",
+      );
+   }
 }
 
 function undoSheet() {
@@ -1465,6 +1506,70 @@ function redoSheet() {
    });
    isRestoring = false;
    updateUndoRedoButtons();
+}
+
+// ---- Playback --------------------------------------------------------------
+// One play button in the topbar starts at the ACTIVE section and continues to
+// the end. Per-section buttons start at their own section. Both share the same
+// pending guard so a slow sample load can never start two timelines.
+let playPending = false;
+
+function selectedPlaybackSection() {
+   const state = getState();
+   return state.sections.find((section) => section.id === state.activeId) || state.sections[0] || null;
+}
+
+function updatePlayButton() {
+   const playBtn = $("#playBtn");
+   if (!playBtn) return;
+   const playing = getIsPlaying();
+   playBtn.classList.toggle("is-playing", playing);
+   playBtn.classList.toggle("is-preparing", playPending);
+   playBtn.disabled = playPending;
+   playBtn.setAttribute("aria-busy", playPending ? "true" : "false");
+   playBtn.setAttribute("aria-pressed", playing ? "true" : "false");
+   const label = playing ? "Stop playback" : "Play from selected section";
+   playBtn.title = label;
+   playBtn.setAttribute("aria-label", label);
+}
+
+async function playFromSection(sectionId) {
+   if (playPending) return;
+   const state = getState();
+   const section = state.sections.find((item) => item.id === sectionId);
+   if (!section) return;
+   if (getIsPlaying()) stopPlayback();
+   playPending = true;
+   updatePlayButton();
+   let started = false;
+   try {
+      started = await startPlayback({
+         fromSectionId: section.id,
+         onBeat: highlightBeat,
+         onEnd: () => {
+            playPending = false;
+            updatePlayButton();
+         },
+      });
+   } catch (error) {
+      console.error("Playback failed:", error);
+      started = false;
+   } finally {
+      playPending = false;
+      updatePlayButton();
+   }
+   if (started === false) toast("Playback didn't start");
+}
+
+async function togglePlayback() {
+   if (playPending) return;
+   if (getIsPlaying()) {
+      stopPlayback();
+      updatePlayButton();
+      return;
+   }
+   const section = selectedPlaybackSection();
+   if (section) await playFromSection(section.id);
 }
 
 // ---- Copy / paste (sections & bars) ----
@@ -1566,6 +1671,33 @@ function isSelectionActiveFor(sectionId) {
 function scoreUnit() {
    const unit = barUnitWord(getState().meter);
    return { unit, Unit: unit === "beat" ? "Beat" : "Bar" };
+}
+
+// Insert a new section immediately AFTER the one whose + button was pressed.
+// The footer button keeps the append-at-end behaviour; this is the mid-song
+// insertion path (e.g. a Bridge between Verse and Chorus).
+function insertSectionAfter(sectionId) {
+   if (blockedForEdit()) return;
+   const state = getState();
+   const index = state.sections.findIndex((section) => section.id === sectionId);
+   if (index === -1) return;
+   if (state.sections.length >= MAX_SECTIONS) {
+      toast(`Maximum of ${MAX_SECTIONS} sections reached`);
+      return;
+   }
+   const anchorName = state.sections[index].name;
+   const section = newSection(nextSectionName(state.sections));
+   state.sections.splice(index + 1, 0, section);
+   state.activeId = section.id;
+   syncEditor();
+   renderPreview();
+   save();
+   toast(`Section added after ${anchorName}`);
+   requestAnimationFrame(() => {
+      document
+         .querySelector(`.preview-section[data-section="${CSS.escape(section.id)}"]`)
+         ?.scrollIntoView({ block: "center" });
+   });
 }
 
 // Enter selection mode for a section. The selection is a SET of bar indices (a block can become non-contiguous once bars are toggled off).
@@ -1887,9 +2019,10 @@ function applyTheme(theme, { persist = true, announce = false } = {}) {
       dark = activeTheme === "dark";
    toggle.setAttribute("aria-pressed", String(dark));
    toggle.title = `Switch to ${dark ? "light" : "dark"} mode`;
-   toggle.querySelector(".theme-toggle-icon").textContent = dark ? "☀" : "☾";
+   // The icon itself is CSS-driven (moon in light, sun in dark), so only the
+   // accessible label changes here.
    toggle.querySelector(".theme-toggle-label").textContent = dark ? "Light mode" : "Dark mode";
-   document.querySelector('meta[name="theme-color"]').content = dark ? "#101110" : "#1f704a";
+   document.querySelector('meta[name="theme-color"]').content = dark ? "#101110" : "#121711";
    if (persist) localStorage.setItem("chordSheetTheme", activeTheme);
    if (announce) toast(`${dark ? "Dark" : "Light"} mode enabled`);
 }
@@ -2079,36 +2212,11 @@ function bindControlListeners() {
    $("#transposeDown").addEventListener("click", () => transposeSheet(-1));
    $("#transposeUp").addEventListener("click", () => transposeSheet(1));
 
-   // Playback controls: play/stop button + BPM input + metronome toggle.
-   const playBtn = $("#playBtn");
+   // Playback controls: the topbar transport starts from the ACTIVE section;
+   // section play buttons start at their own section. Both share playPending.
    const bpmInput = $("#bpmInput");
-
-   function updatePlayButton() {
-      const playing = getIsPlaying();
-      playBtn.textContent = playing ? "⏸" : "▶";
-      playBtn.classList.toggle("playing", playing);
-      playBtn.setAttribute("aria-label", playing ? "Pause score" : "Play score");
-      playBtn.setAttribute("title", playing ? "Pause score" : "Play score");
-   }
-
-   playBtn?.addEventListener("click", async () => {
-      if (getIsPlaying()) {
-         stopPlayback();
-         updatePlayButton();
-      } else {
-         // Optimistic: show the "playing" state immediately so the button reacts
-         // while samples are being loaded/downloaded, not only after playback begins.
-         playBtn.textContent = "⏸";
-         playBtn.classList.add("playing");
-         playBtn.setAttribute("aria-label", "Pause score");
-         playBtn.setAttribute("title", "Pause score");
-         // startPlayback is async (may await a sample download). After it resolves,
-         // sync the button to the real playback state (playing / fallback / error).
-         const started = await startPlayback({ onBeat: highlightBeat, onEnd: updatePlayButton });
-         // Never leave the user with a silent no-op: say so when nothing started.
-         if (started === false) toast("Playback didn't start");
-         updatePlayButton();
-      }
+   $("#playBtn")?.addEventListener("click", () => {
+      void togglePlayback();
    });
 
    bpmInput?.addEventListener("input", (event) => {
@@ -2119,6 +2227,16 @@ function bindControlListeners() {
       save();
       renderControls();
    });
+   // The BPM input sits in the sticky header now, so a wheel gesture meant for
+   // the page must never nudge the tempo. Blur first; the wheel then scrolls.
+   bpmInput?.addEventListener(
+      "wheel",
+      () => {
+         if (document.activeElement === bpmInput) bpmInput.blur();
+      },
+      { passive: true },
+   );
+   updatePlayButton();
 
 
    // Undo/Redo stay available to members: the history stack is cleared whenever a
@@ -2240,13 +2358,13 @@ function bindControlListeners() {
          toast(`Maximum of ${MAX_SECTIONS} sections reached`);
          return;
       }
-      const section = newSection(`Section ${currentState.sections.length + 1}`);
+      const section = newSection(nextSectionName(currentState.sections));
       currentState.sections.push(section);
       currentState.activeId = section.id;
       syncEditor();
       renderPreview();
       save();
-      toast("New section added");
+      toast("Section added at the end");
    });
    $("#resetSheetBtn").addEventListener("click", () => {
       // Wiping the whole score is never available to a member.
@@ -2569,6 +2687,28 @@ function bindBarToolReveal() {
    );
 }
 
+// ---- Sticky editor topbar -------------------------------------------------
+// Only the document bar follows the scroll: the paper itself keeps scrolling
+// normally. The `is-stuck` class adds the single tone line that separates the
+// bar from the sheet; it is screen-only and never part of print/PDF geometry.
+function initStickyTopbar() {
+   const topbar = document.querySelector(".topbar");
+   if (!topbar) return;
+   let queued = false;
+   const sync = () => {
+      queued = false;
+      topbar.classList.toggle("is-stuck", window.scrollY > 2);
+   };
+   const schedule = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(sync);
+   };
+   sync();
+   window.addEventListener("scroll", schedule, { passive: true });
+   window.addEventListener("resize", schedule, { passive: true });
+}
+
 export function initEvents() {
    // Inject rendering hooks so render.js never needs to import this module (keeps graph acyclic).
    initRender({
@@ -2605,6 +2745,7 @@ export function initEvents() {
    updateViewportOverflow();
    if (document.fonts && document.fonts.ready) document.fonts.ready.then(updateViewportOverflow);
    window.addEventListener("load", updateViewportOverflow, { once: true });
+   initStickyTopbar();
    initDeviceHint();
    // ChordPro workspace (editor panel + palette + section list). Bridged the same
    // way as the other UI modules so it never imports this file. Bound BEFORE the
@@ -2613,10 +2754,6 @@ export function initEvents() {
       save,
       renderPreview,
       onTranspose: (semitones) => transposeSheet(semitones),
-      onUndo: () => undoSheet(),
-      onRedo: () => redoSheet(),
-      canUndo,
-      canRedo,
       isReadOnly: () => memberReadOnly(),
       toast,
    });

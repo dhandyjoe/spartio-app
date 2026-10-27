@@ -163,16 +163,28 @@ export function nashvilleAccidentalOf(raw) {
 // Import hardening limits (guard against oversized/hostile project files).
 export const MAX_BARS = 96;
 export const MAX_SECTIONS = 40;
+
+/**
+ * Next free "Section N" label. Inserting a section in the middle of a song must
+ * not reuse the number of a section that already exists, so scan the current
+ * labels instead of trusting the array length.
+ */
+export function nextSectionName(sections = []) {
+   const used = new Set((sections || []).map((section) => String(section?.name || "").trim()));
+   let number = (sections?.length || 0) + 1;
+   while (used.has(`Section ${number}`)) number += 1;
+   return `Section ${number}`;
+}
 // Fermata (hold) bounds: an extra-beats pause of 1..32 per beat. Shared by the
 // editor popover, the import sanitizer and the playback timeline.
 export const MAX_FERMATA = 32;
 
 // ---- Editor modes ----
 // Single source of truth for the three writing modes. `dataset` drives the
-// `body[data-editor-mode]` attribute (mode-specific CSS), `badge` is the label in
-// the topbar pill and `cardMark` is the glyph used on library cards. Keeping this
-// in the pure module means the mode mapping is unit-tested and render.js /
-// cloudUI.js can never drift apart.
+// `body[data-editor-mode]` attribute (mode-specific CSS), `badge` is the full
+// product label, and `cardMark` remains the compact text fallback used by tests
+// and legacy surfaces. The visual marks themselves come from modeIconSvg /
+// modeIconMarkup below, so render.js and cloudUI.js can never drift apart.
 export const editorModeMeta = {
    chords: { id: "chords", badge: "Chord Chart", cardMark: "♪" },
    // The number grid + its lyrics row. Named for what you actually write (not angka + lyrics)
@@ -186,9 +198,41 @@ export const editorModeMeta = {
  * Normalise a stored/imported mode id. Anything unknown (including legacy files
  * with no `editorMode` at all) falls back to "chords", which is exactly what the
  * app did before the third mode existed.
+ *
+ * Two exact legacy spellings are folded in so an older document cannot make a
+ * Nashville/ChordPro arrangement look like a Chord Chart in the library:
+ * "numeric" (the id used before the mode was renamed) and "chord-pro".
  */
 export function normalizeEditorMode(value) {
-   return value === "numbers" || value === "chordpro" ? value : "chords";
+   if (value === "numbers" || value === "numeric") return "numbers";
+   if (value === "chordpro" || value === "chord-pro") return "chordpro";
+   return "chords";
+}
+
+// ---- Mode marks ------------------------------------------------------------
+// One SVG set for every place that names a writing mode: the library rows,
+// the version popover and the editor topbar. Keeping the paths here means the
+// mode cannot look like a music note in one screen and a hash in another.
+// Chord Chart uses the app's stroke note; Nashville and ChordPro use the
+// filled Material Symbols glyphs from the Stitch light-mode set.
+const MODE_ICON_SVG = {
+   chords:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>',
+   numbers:
+      '<svg class="is-filled" viewBox="0 -960 960 960" aria-hidden="true"><path d="m240-160 40-160H120l20-80h160l40-160H180l20-80h160l40-160h80l-40 160h160l40-160h80l-40 160h160l-20 80H660l-40 160h160l-20 80H600l-40 160h-80l40-160H360l-40 160h-80Zm140-240h160l40-160H420l-40 160Z"/></svg>',
+   chordpro:
+      '<svg class="is-filled" viewBox="0 -960 960 960" aria-hidden="true"><path d="M160-320v-480 480ZM80-80v-720q0-33 23.5-56.5T160-880h440q33 0 56.5 23.5T680-800v17q-24 11-44 27t-36 36v-80H160v480h440v-160q16 20 36 36t44 27v97q0 33-23.5 56.5T600-240H240L80-80Zm160-320h160v-80H240v80Zm520-80q-50 0-85-35t-35-85q0-50 35-85t85-35q11 0 21 2t19 5v-207h160v80h-80v240q0 50-35 85t-85 35Zm-520-40h280v-80H240v80Zm0-120h280v-80H240v80Z"/></svg>',
+};
+
+/** Raw SVG for a mode mark (no wrapper), for the topbar tile. */
+export function modeIconSvg(value) {
+   return MODE_ICON_SVG[normalizeEditorMode(value)];
+}
+
+/** The shared `.mode-mark` wrapper used by the library and version popover. */
+export function modeIconMarkup(value, className = "") {
+   const mode = normalizeEditorMode(value);
+   return `<span class="mode-mark is-${mode} ${className}">${MODE_ICON_SVG[mode]}</span>`;
 }
 
 export const escapeHTML = (value) =>

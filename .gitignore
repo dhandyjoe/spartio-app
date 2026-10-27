@@ -23,3 +23,6 @@ tests/Pasted*
 
 # Dependencies (if ever added)
 node_modules/
+
+# Local OpenCode config (contains Stitch MCP credentials)
+opencode.json

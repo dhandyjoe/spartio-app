@@ -39,9 +39,12 @@ import {
    restoreCollapsedBeat,
    sectionHasFermata,
    MAX_FERMATA,
+   nextSectionName,
    meters,
    editorModeMeta,
    normalizeEditorMode,
+   modeIconSvg,
+   modeIconMarkup,
    isSingleBeatMeter,
    barUnitWord,
 } from "../src/notation.js";
@@ -53,6 +56,7 @@ import {
    normalizeInviteCode,
    versionCopyPayload,
    sortVersionsByRecency,
+   applyVersionSummary,
 } from "../src/cloud.js";
 import { friendlyName } from "../src/identity.js";
 import { parseYoutubeUrl, canonicalUrl, thumbnailUrl, youtubeFields, parseStartTime, formatStartTime, youtubeChipMeta } from "../src/youtube.js";
@@ -64,6 +68,7 @@ import {
    defaultPdfOptions,
    sanitize,
    applyPdfOptions,
+   computePreviewScale,
 } from "../src/pdfOptions.js";
 import { getState, setState } from "../src/store.js";
 import {
@@ -580,8 +585,8 @@ test("the app is branded Spartio.app everywhere it shows", () => {
       "manifest.webmanifest",
       "README.md",
       "docs/FIREBASE-SETUP.md",
-      "assets/favicon.svg",
-      "assets/icon-maskable.svg",
+      "assets/logo-mark.png",
+      "assets/icon-maskable-1024.png",
       "src/pdf.js",
       "src/events.js",
    ]) {
@@ -1822,14 +1827,90 @@ test("editorModeMeta keeps the mode labels and glyphs in one place", () => {
    assert.match(readProjectFile("README.md"), /\*\*Numeric Notation \+ Lyrics\*\*/);
 });
 
+test("mode marks come from one shared SVG set", () => {
+   assert.match(modeIconSvg("chords"), /M9 18V5l10-2v13/);
+   assert.match(modeIconSvg("numbers"), /m240-160 40-160H120/);
+   assert.match(modeIconSvg("chordpro"), /M160-320v-480/);
+   assert.equal(modeIconSvg("numeric"), modeIconSvg("numbers"), "legacy mode ids fold in");
+   assert.equal(modeIconSvg("chord-pro"), modeIconSvg("chordpro"));
+   assert.match(modeIconMarkup("numbers", "topbar-mark"), /class="mode-mark is-numbers topbar-mark"/);
+   assert.match(modeIconMarkup("unknown"), /mode-mark is-chords/);
+});
+
+test("editor header keeps the title on the sheet and utility controls in the sticky bar", () => {
+   const html = readProjectFile("index.html");
+   const css = readProjectFile("styles/ui.css");
+   const events = readProjectFile("src/events.js");
+   const render = readProjectFile("src/render.js");
+
+   assert.doesNotMatch(html, /editor-breadcrumb|editorSongName/, "the duplicate topbar title is gone");
+   assert.match(html, /<h1 id="previewTitle"/, "the sheet title is the page heading");
+   assert.match(html, /<h1 class="cp-card-title" id="cpPreviewTitle"/);
+   assert.match(html, /class="transport-control" role="group" aria-label="Playback and tempo"/);
+   assert.match(html, /id="playBtn"/);
+   assert.match(html, /id="bpmInput"/);
+   assert.doesNotMatch(html, /id="cpUndoBtn"|id="cpRedoBtn"/, "ChordPro uses the one global history control");
+
+   const topbarActions = html.slice(html.indexOf('<div class="topbar-actions">'), html.indexOf("</header>"));
+   assert.match(topbarActions, /id="bpmInput"/);
+   assert.match(topbarActions, /class="history-toolbar"[\s\S]*id="undoBtn"[\s\S]*id="redoBtn"/);
+   assert.ok(
+      html.indexOf('id="bpmInput"') > html.indexOf('<div class="topbar-actions">'),
+      "tempo lives in the topbar, not in the printable sheet",
+   );
+
+   assert.match(css, /position: sticky;[\s\S]{0,120}?z-index: 60;/, "the topbar follows the scroll");
+   assert.match(css, /\.topbar\.is-stuck \{[\s\S]{0,120}?box-shadow: 0 1px 0 var\(--editor-line\)/);
+   assert.match(events, /function initStickyTopbar\(/);
+   assert.match(events, /initStickyTopbar\(\);/);
+   assert.match(events, /getPastLength\(\)/);
+   assert.match(events, /getFutureLength\(\)/);
+   assert.match(render, /modeIconSvg\(mode\)/);
+});
+
+test("the sheet h1 keeps the PDF title geometry", () => {
+   const preview = readProjectFile("styles/preview.css");
+   const css = readProjectFile("styles/ui.css");
+   // The old h2 carried a 5px/4px margin and a 30px print size. Moving the
+   // heading to h1 must not change either the screen or the paper metrics.
+   assert.match(css, /\.preview-header h1 \{[\s\S]{0,220}?margin: 5px 0 4px;[\s\S]{0,220}?font-size: 31px;/);
+   assert.match(preview, /\.preview-header h1 \{[\s\S]{0,220}?margin: 5px 0 4px;[\s\S]{0,220}?font-size: 30px;/);
+   assert.match(preview, /html\.is-print-layout #previewCard \.preview-header h1 \{/);
+   assert.doesNotMatch(preview, /\.preview-header h2/, "print selectors follow the h1");
+});
+
 test("normalizeEditorMode accepts the three modes and falls back to chords", () => {
    assert.equal(normalizeEditorMode("chordpro"), "chordpro");
    assert.equal(normalizeEditorMode("numbers"), "numbers");
    assert.equal(normalizeEditorMode("chords"), "chords");
+   // Legacy documents may carry the older spelling of the mode ids.
+   assert.equal(normalizeEditorMode("numeric"), "numbers");
+   assert.equal(normalizeEditorMode("chord-pro"), "chordpro");
    // Legacy projects have no editorMode at all — they must stay Chord Chart.
    for (const bad of [undefined, null, "", "Chords", "CHORDPRO", "nashville", 0, {}, []]) {
       assert.equal(normalizeEditorMode(bad), "chords", `expected chords for ${JSON.stringify(bad)}`);
    }
+});
+
+test("the library summary is repaired from the arrangement it describes", () => {
+   const song = { latestEditorMode: "chords", latestKey: "C", latestMeter: "4/4", latestBPM: "" };
+   // A Nashville arrangement stored under the old mode id must be repaired to
+   // "numbers" — never silently shown as a Chord Chart.
+   const patch = applyVersionSummary(song, { editorMode: "numeric", key: "G", meter: "6/8", bpm: 72 });
+   assert.equal(song.latestEditorMode, "numbers");
+   assert.equal(patch.latestEditorMode, "numbers");
+   assert.equal(song.latestKey, "G");
+   assert.equal(song.latestMeter, "6/8");
+   assert.equal(song.latestBPM, 72);
+   // A version without a tempo falls back to the editor default (120).
+   const bare = { latestEditorMode: "numbers" };
+   applyVersionSummary(bare, { editorMode: "numbers" });
+   assert.equal(bare.latestBPM, 120);
+   // A version with no mode at all leaves the summary's mode alone.
+   const unknown = { latestEditorMode: "chordpro" };
+   applyVersionSummary(unknown, { key: "D" });
+   assert.equal(unknown.latestEditorMode, "chordpro");
+   assert.equal(unknown.latestKey, "D");
 });
 
 // ============================================================================
@@ -3305,7 +3386,8 @@ test("an album owner is labelled MD (Music Director), never co-owner", () => {
    assert.match(cloudUI, /function roleShortLabel\(role\) \{\n\s+return role === "owner" \? MD_LABEL : "Member";/);
    // …used by the Members dialog, the album header, the album card and the picker.
    assert.match(cloudUI, /const roleLabel = roleShortLabel\(currentAlbum\.role\);/);
-   assert.match(cloudUI, /const roleLabel = album\.role === "owner" \? MD_LABEL : "Member · read-only";/);
+   assert.match(cloudUI, /const isOwner = album\.role === "owner";/);
+   assert.match(cloudUI, /\$\{isOwner \? MD_LABEL : "Member"\}/);
    assert.match(cloudUI, /song\$\{a\.songCount === 1 \? "" : "s"\} · \$\{MD_LABEL\}<\/small>/);
    // No screen may print the old naming (the only mentions left are the comment
    // that explains the rename and the DB-side word "owner").
@@ -3427,7 +3509,7 @@ test("the sheet opens from the row's ⋮ (desktop) or a row tap (phone)", () => 
    assert.match(cloudUI, /const manageable = isOwner && !self;/);
    assert.match(cloudUI, /class="member-row\$\{manageable \? " is-manageable" : ""\}"/);
    // The sheet's dialog markup + its own dismiss hook.
-   assert.match(html, /<div class="confirm-dialog" id="memberActionsDialog" hidden role="dialog" aria-modal="true"/);
+   assert.match(html, /<div class="confirm-dialog(?: library-dialog)?" id="memberActionsDialog" hidden role="dialog" aria-modal="true"/);
    assert.match(html, /data-memberactions-dismiss/);
    assert.match(html, /<div class="member-actions-body" id="memberActionsBody"><\/div>/);
    // A row's ⋮ opens the sheet on EVERY width; isPhone() only WIDENS the hit area
@@ -3718,37 +3800,281 @@ test("the library separates its topbar, view heading, actions, and search", () =
 // doesn't. A failed thumbnail repaints as the motif, so offline never shows a
 // broken-image glyph.
 
-test("song rows use real video art or a notation motif and expose arrangement metadata", () => {
+test("song rows lead with a notation motif and keep video references in the Media column", () => {
    const cloudUI = readProjectFile("src/cloudUI.js");
    // Cover helper validates the raw id through parseYoutubeUrl (field can be
    // absent / legacy / stale), and reuses thumbnailUrl — no duplicated URL math.
    assert.match(cloudUI, /function songCoverId\(song\)/);
    assert.match(cloudUI, /parseYoutubeUrl\(raw\.trim\(\)\)\?\.videoId \|\| ""/);
-   assert.match(cloudUI, /coverMarkup\(song, mode\)/);
+   assert.match(cloudUI, /coverMarkup\(song, mode/);
+   assert.match(cloudUI, /coverMarkup\(song, mode, true\)/, "the My Songs index forces the notation motif");
    assert.match(cloudUI, /thumbnailUrl\(videoId\)/, "the photo cover reuses youtube.js");
    // Rows use a consistent cover, identity, arrangement summary, and data columns.
    assert.match(cloudUI, /class="song-card-cover is-photo" data-mode/);
-   assert.match(cloudUI, /class="song-card-cover is-motif" data-mode/);
+   assert.match(cloudUI, /class="song-card-cover is-motif[^"]*" data-mode/);
    assert.match(cloudUI, /class="song-card-cover-img" src/);
    assert.match(cloudUI, /class="song-card-identity"/);
    const rowRenderer = cloudUI.slice(cloudUI.indexOf("function cardMarkup"), cloudUI.indexOf("// Keep the middle columns", cloudUI.indexOf("function cardMarkup")));
-   assert.match(rowRenderer, /\$\{song\.versionCount\} version/);
-   assert.ok(!rowRenderer.includes("latestVersionLabel"), "the current arrangement name is omitted from the row");
-   assert.match(rowRenderer, /Time Signature/);
-   assert.match(rowRenderer, /editorModeMeta\[mode\]\?\.cardMark/);
-   assert.match(rowRenderer, /class="song-card-mode-symbol"/);
+   assert.match(rowRenderer, /arrangementLabel\(song\)/);
+   assert.match(cloudUI, /latestVersionLabel/, "the arrangement label comes from the latest version");
+   assert.match(rowRenderer, /songMediaMarkup\(song\)/);
+   assert.match(cloudUI, /class="song-card-media/);
+   assert.match(rowRenderer, /song-card-open/);
+   assert.match(rowRenderer, /song-card-chip is-key/);
+   assert.match(rowRenderer, /song-card-chip is-meter/);
+   assert.match(rowRenderer, /song-card-bpm/);
+   assert.match(cloudUI, /latestBPM/);
+   assert.match(cloudUI, /function libraryModeIcon\(mode/);
+   assert.match(cloudUI, /libraryModeIcon\(mode,/);
+   assert.match(cloudUI, /song-card-mode-icon/);
+   assert.ok(!rowRenderer.includes("song-card-mode-chip"), "rows never repeat the mode as a text chip");
+   assert.ok(!rowRenderer.includes("song-card-mode\""), "rows never repeat the mode as a text badge");
    // Motif tokens are derived from the song's own content.
    assert.match(cloudUI, /function motifTokens\(song, mode\)/);
    assert.match(cloudUI, /class="song-card-cover-tokens"/);
    // Song and album lists render actual data, not a fixed demo order.
    assert.match(cloudUI, /songs\.map\(\(song\) => cardMarkup\(song\)\)/);
    assert.match(cloudUI, /\(list \|\| \[\]\)\.map\(\(album\) => albumCardMarkup\(album\)\)/);
-   assert.match(cloudUI, /list\.map\(\(song\) => albumSongCardMarkup\(song, role\)\)/);
+   assert.match(cloudUI, /list\.map\(\(song\) => albumSongRowMarkup\(song, role\)\)/);
    assert.match(cloudUI, /typeof album\.songCount === "number" && Number\.isFinite\(album\.songCount\)/);
-   assert.match(cloudUI, /songCount === null \? "— songs"/);
-   // Album marker is typographic and never uses fabricated cover art.
-   assert.match(cloudUI, /data-mode="album"/);
+   assert.match(cloudUI, /const songsLabel = songCount === null \? "" :/);
+   // Album cards are a typographic index (no cover art): role tag, invite code
+   // (MDs only), name, description, arrangement preview, counts.
+   assert.doesNotMatch(cloudUI, /data-mode="album"/, "album cards no longer fake a cover mode");
+   assert.match(cloudUI, /class="album-index-card"/);
+   assert.match(cloudUI, /class="album-index-code"/);
+   assert.match(cloudUI, /const code = isOwner \? String\(album\.activeInviteCode/);
    assert.ok(!/>💿</.test(cloudUI), "the album card glyph is typographic now");
+});
+
+test("the Albums index is a card grid with a role filter, sort and lazy extras", () => {
+   const html = readProjectFile("index.html");
+   const ui = readProjectFile("src/cloudUI.js");
+   const cloud = readProjectFile("src/cloud.js");
+   const css = readProjectFile("styles/ui.css");
+
+   // Markup: one grid, a search, a role filter and a sort. The horizontal
+   // nudge carousel is gone from this screen.
+   assert.match(html, /class="album-index-grid" id="albumsGalleryCards" role="list"/);
+   assert.match(html, /data-album-role="owner"/);
+   assert.match(html, /data-album-role="member"/);
+   assert.match(html, /id="albumSort"/);
+   assert.match(html, /class="album-index-toolbar"/);
+   assert.doesNotMatch(html, /albumsGalleryPrev|albumsGalleryNext/);
+
+   // The view is computed client-side; the segment counts describe the WHOLE
+   // album list, so they stay stable while the search narrows the grid.
+   assert.match(ui, /function visibleAlbums\(\)/);
+   assert.match(ui, /function syncAlbumFilterCounts\(\)/);
+   assert.match(ui, /const counts = \{ all: cachedAlbums\.length, owner: 0, member: 0 \}/);
+   assert.match(ui, /setAlbumRoleFilter\(role\)/);
+
+   // Extras (arrangement preview + member count) are read lazily, one card at a
+   // time, and cached; a filter re-render must not re-query Firestore.
+   assert.match(ui, /function hydrateAlbumCard\(card\)/);
+   assert.match(ui, /new IntersectionObserver/);
+   assert.match(ui, /listAlbumSongPreview\(album\.albumId, ALBUM_TRACK_PREVIEW\)/);
+   assert.match(ui, /countAlbumMembers\(album\.albumId\)/);
+   assert.match(ui, /const ALBUM_EXTRA_TTL = 60_000;/);
+
+   // The invite code is the MD's lever: members never see it on the card.
+   assert.match(ui, /const code = isOwner \? String\(album\.activeInviteCode/);
+   assert.match(ui, /album-index-code-copy" type="button" data-act="copy-code"/);
+
+   // Cloud contract: the summary carries the code, and the two card reads are
+   // deliberately small (limit(3) + count), not full album reads.
+   assert.match(cloud, /export async function listAlbumSongPreview\(albumId, max = 3\)/);
+   assert.match(cloud, /dbFns\.limit\(limitTo\)/);
+   assert.match(cloud, /export async function countAlbumMembers\(albumId\)/);
+   assert.match(cloud, /dbFns\.getCountFromServer/);
+   assert.match(cloud, /activeInviteCode: typeof data\.activeInviteCode === "string"/);
+
+   // Layout: one column by default, two columns on desktop, and the MD tag has
+   // a light-theme colour that holds on its own tint.
+   assert.match(css, /#albumsPanel \.album-index-grid \{\n\s+display: grid;\n\s+grid-template-columns: minmax\(0, 1fr\);/);
+   assert.match(css, /#albumsPanel \.album-index-grid \{\n\s+grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
+   assert.match(css, /html:not\(\[data-theme="dark"\]\) #albumsPanel \.album-index-role\.is-md/);
+});
+
+test("album card recent-arrangement keys are bold and green", () => {
+   const css = readProjectFile("styles/ui.css");
+   const ui = readProjectFile("src/cloudUI.js");
+   assert.match(
+      css,
+      /#albumsPanel \.album-index-track-key \{[^}]*color: var\(--library-accent\);[^}]*font-weight: 700;/,
+      "the key value is the green accent and bolder than the title",
+   );
+   assert.match(ui, /class="album-index-track-key"/);
+});
+
+test("album detail uses the My Songs index under a Stitch-style summary", () => {
+   const html = readProjectFile("index.html");
+   const ui = readProjectFile("src/cloudUI.js");
+   const css = readProjectFile("styles/ui.css");
+
+   // Header: role / members / invite chips and the real album actions.
+   assert.match(html, /class="album-detail-summary"/);
+   assert.match(html, /id="albumRoleLabel"/);
+   assert.match(html, /id="albumMemberCount"/);
+   assert.match(html, /id="albumInviteCode"/);
+   assert.match(html, /id="albumInviteCopyBtn"/);
+   assert.match(html, /id="albumTabMySongs"/);
+   assert.match(html, /id="albumTabAlbums"/);
+   assert.match(html, /id="albumAccountBtn"/);
+   assert.match(html, /id="albumSignOutBtn"/);
+   assert.match(html, /id="albumInviteChip"[\s\S]{0,500}?id="albumInviteBtn"/);
+   assert.doesNotMatch(html, /class="button button-ghost" id="albumInviteBtn"/);
+   assert.match(html, /←<\/span> Back to Albums/);
+
+   // The list is the My Songs sheet, not a new row language.
+   assert.match(html, /class="library-sheet album-detail-sheet"/);
+   assert.match(html, /class="library-table-head album-detail-tablehead"/);
+   assert.match(html, /library-table-head album-detail-tablehead[\s\S]{0,700}?class="library-sheet album-detail-sheet"/);
+   assert.match(html, /id="albumSongCards" role="list"/);
+   assert.match(html, /data-album-song-mode="chords"/);
+   assert.match(html, /data-album-song-mode="numbers"/);
+   assert.match(html, /data-album-song-mode="chordpro"/);
+   assert.match(html, /id="albumSongSearchClear"/);
+   assert.match(html, /id="albumReadonlyNote"/);
+   assert.match(html, /data-album-song-icon="chords"/);
+   assert.match(html, /data-album-song-icon="numbers"/);
+   assert.match(html, /data-album-song-icon="chordpro"/);
+   assert.doesNotMatch(html, /albumAddSongFooter|Add another song to this album/);
+
+   // Rows reuse the index anatomy and only swap the menu actions.
+   assert.match(ui, /function albumSongRowMarkup\(song, role\)/);
+   assert.match(ui, /class="song-card library-song-row is-index-row is-\$\{mode\}"/);
+   assert.match(ui, /coverMarkup\(song, mode, true\)/);
+   assert.match(ui, /songMediaMarkup\(song\)/);
+   assert.match(ui, /song-card-chip is-key/);
+   assert.match(ui, /song-card-chip is-meter/);
+   assert.match(ui, /song-card-open is-open/);
+   assert.match(ui, /data-act="delete">Remove from album/);
+   assert.match(ui, /data-act="copy">Save a copy/);
+
+   // Search covers the facts the row shows; filter counts describe the album.
+   assert.match(ui, /function foldAlbumSearch\(value\)/);
+   assert.match(ui, /song\.latestBPM \|\| song\.bpm/);
+   assert.match(ui, /song\.latestMeter \|\| song\.meter/);
+   assert.match(ui, /function syncAlbumSongFilterCounts\(\)/);
+   assert.match(ui, /counts\[albumSongMode\(song\)\] \+= 1/);
+   assert.match(ui, /function setAlbumSongFilterMode\(mode\)/);
+
+   // No drag reorder / numbering, and the dead carousel is gone.
+   assert.doesNotMatch(ui, /draggable="true"|drag_indicator|nudgeAlbumSongsCarousel|albumSongsGalleryPrev/);
+   assert.doesNotMatch(html, /albumSongsGalleryPrev|albumSongsGalleryNext/);
+   assert.doesNotMatch(ui, /function albumSongCardMarkup/);
+
+   // Member count is a lazy, fail-soft read; the invite chip copies the code.
+   assert.match(ui, /countAlbumMembers\(albumId\)/);
+   assert.match(ui, /hydrateAlbumMemberCount\(albumId\)/);
+   assert.match(ui, /copyTextToClipboard\(code\)/);
+   assert.match(ui, /function renderAlbumInviteChip\(\)/);
+   assert.match(ui, /readonlyNote\.hidden = isOwner/);
+   assert.match(ui, /actions\.classList\.toggle\("is-member", !isOwner\)/);
+   assert.match(ui, /function albumSongFilterIcon\(mode\)/);
+   assert.match(ui, /libraryModeIcon\(mode, "album-song-filter-mark"\)/);
+
+   // The sheet and the summary keep one frame at every width.
+   assert.match(css, /\.album-detail-summary \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) 360px/);
+   assert.match(css, /\.album-detail-sheet \.song-card\.is-index-row/);
+   assert.match(css, /\.album-detail-actions \.button/);
+   assert.match(css, /\.album-detail-actions\.is-member/);
+   assert.match(css, /\.album-song-filter\.is-active/);
+   assert.match(css, /\.album-detail-tablehead \{[\s\S]*?position: sticky/);
+   assert.match(css, /\.album-detail-actions \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+   assert.match(css, /#albumAddFromBtn \{[\s\S]*?color: var\(--library-accent\)/);
+   assert.match(css, /#albumLeaveBtn \{\n\s+grid-column: 1 \/ -1;/);
+   assert.match(css, /\.album-song-search \.cloud-search-icon svg \{[\s\S]*?width: 16px/);
+   assert.match(html, /id="addSongDialog"[\s\S]{0,600}?library-dialog-head has-media/);
+   assert.match(html, /id="albumMembersDialog"[\s\S]{0,600}?library-dialog-head has-media/);
+   assert.doesNotMatch(html, /confirm-dialog-icon" aria-hidden="true">👥/);
+});
+
+test("the My Songs index follows the Stitch component contract", () => {
+   const ui = readProjectFile("src/cloudUI.js");
+   const cloud = readProjectFile("src/cloud.js");
+   const css = readProjectFile("styles/ui.css");
+   const html = readProjectFile("index.html");
+   // One brand green for every primary action, light and dark alike.
+   assert.match(css, /--primary-fill: #237a50/);
+   assert.match(css, /\.button-primary,\s*\n\.button-save \{[^}]*background: var\(--primary-fill\)/);
+   // Search field is a fill, not a bordered box.
+   assert.match(
+      css,
+      /\.cloud-gallery\.library-redesign \.library-toolbar \.cloud-search input \{[^}]*border: 1px solid transparent/,
+   );
+   // Secondary header action is borderless.
+   assert.match(css, /\.library-view-actions \.button-ghost[\s\S]{0,160}?border-color: transparent/);
+   // Row mode mark and filter option share one helper and one icon set.
+   const notation = readProjectFile("src/notation.js");
+   assert.match(ui, /function libraryModeIcon\(mode/);
+   assert.match(ui, /modeIconMarkup\(mode, className\)/);
+   assert.match(notation, /mode-mark is-\$\{mode\}/);
+   assert.match(html, /class="mode-mark is-chords mode-tile library-filter-option-mark"/);
+   assert.match(css, /\.mode-tile \{/);
+   assert.match(ui, /class="song-card-cover is-motif mode-tile is-\$\{mode\}"/);
+   assert.match(css, /\.mode-mark svg \{/);
+   // Nashville and ChordPro follow the Stitch light-mode Material Symbols,
+   // drawn as filled inline paths; Chord Chart keeps the stroke note.
+   assert.match(notation, /m240-160 40-160H120/);
+   assert.match(notation, /M160-320v-480/);
+   assert.match(notation, /svg class="is-filled"/);
+   assert.match(css, /\.mode-mark svg\.is-filled \{[^}]*fill: currentColor/);
+   assert.match(html, /mode-mark is-numbers mode-tile[\s\S]{0,120}?svg class="is-filled"/);
+   assert.match(html, /mode-mark is-chordpro mode-tile[\s\S]{0,120}?svg class="is-filled"/);
+   // Row action uses the secondary colour, key value is large and bold.
+   assert.match(css, /\.song-card\.is-index-row \.song-card-open \{[^}]*background: var\(--library-secondary\)/);
+   assert.match(css, /--library-secondary: #426653/);
+   assert.match(css, /\.library-sheet \.song-card\.is-index-row \.song-card-chip\.is-key strong \{[^}]*font-size: 16px/);
+   assert.match(css, /\.song-card-chip\.is-key strong \{[^}]*font-weight: 800/);
+   // The video cell sits under the centred Video header.
+   assert.match(css, /\.library-sheet \.song-card\.is-index-row \.song-card-media \{[^}]*justify-self: center/);
+   // The row no longer repeats the mode as a chip or a text badge.
+   assert.doesNotMatch(css, /\.song-card-mode-chip/);
+   assert.doesNotMatch(ui, /song-card-mode-chip/);
+   assert.doesNotMatch(ui, /class="song-card-mode"/);
+   // Meter stacks the time signature above the tempo.
+   assert.match(css, /\.song-card\.is-index-row \.song-card-meter \{[^}]*flex-direction: column/);
+   assert.match(ui, /class="song-card-meter"/);
+   // The tempo lives in the project as `bpm` (lower case) — the library summary
+   // reads THAT field, never an invented `BPM` key.
+   assert.match(ui, /Number\(song\.latestBPM \|\| song\.bpm\)/);
+   assert.match(ui, /project\.editorMode, project\.youtubeId \|\| undefined, project\.key, project\.meter, project\.bpm/);
+   assert.match(cloud, /latestBPM: Number\(data\.bpm\) \|\| ""/);
+   assert.match(cloud, /data\.bpm \?\? data\.BPM/, "only legacy documents may use the old BPM key");
+   // A song saved before the summary carried the tempo is repaired from its
+   // latest version, so the library can show BPM right away.
+   assert.match(cloud, /async function backfillLatestSummary\(/);
+   assert.match(cloud, /await backfillLatestSummary\(/);
+   // Each writing mode owns a tinted tile (green / purple / amber), and the
+   // row tile, the filter tile and the editor badge read the SAME tokens.
+   assert.match(css, /--mode-numbers-fill: #f3effc/);
+   assert.match(css, /--mode-chords-fill: #eef8f3/);
+   assert.match(css, /--mode-chordpro-fill: #fef7ec/);
+   assert.match(css, /--mode-numbers-fill: rgba\(99, 102, 241, 0\.22\)/);
+   assert.match(css, /--mode-chordpro-fill: rgba\(245, 158, 11, 0\.22\)/);
+   assert.match(css, /\.mode-tile\.is-numbers[\s\S]{0,200}?var\(--mode-numbers-fill\)/);
+   assert.match(css, /\.mode-tile\.is-chords[\s\S]{0,200}?var\(--mode-chords-fill\)/);
+   assert.match(css, /\.mode-tile\.is-chordpro[\s\S]{0,200}?var\(--mode-chordpro-fill\)/);
+});
+
+test("mode-mark ink follows its tile in both My Songs and Album detail", () => {
+   const css = readProjectFile("styles/ui.css");
+   // The shared SVG mark must keep its own mode token. Only the legacy text
+   // fallback gets the generic library accent.
+   assert.match(
+      css,
+      /\.cloud-gallery\.library-redesign \.song-card-mode-mark:not\(\.mode-mark\),[\s\S]{0,140}?\.cloud-album\.library-redesign \.song-card-mode-mark:not\(\.mode-mark\) \{[\s\S]{0,120}?color: var\(--library-accent\)/,
+   );
+   assert.match(css, /\.mode-mark\.is-chords \{[\s\S]{0,80}?color: var\(--mode-chords-ink\)/);
+   assert.match(css, /\.mode-mark\.is-numbers \{[\s\S]{0,80}?color: var\(--mode-numbers-ink\)/);
+   assert.match(css, /\.mode-mark\.is-chordpro \{[\s\S]{0,80}?color: var\(--mode-chordpro-ink\)/);
+   // Both lists render the same coverMarkup → mode-tile + libraryModeIcon.
+   const ui = readProjectFile("src/cloudUI.js");
+   assert.match(ui, /class="song-card-cover is-motif mode-tile is-\$\{mode\}"/);
+   assert.match(ui, /coverMarkup\(song, mode, true\)/);
+   assert.match(ui, /albumSongRowMarkup\(song, role\)/);
 });
 
 test("a failed thumbnail repaints its cover as the motif (delegated, no inline handlers)", () => {
@@ -3783,18 +4109,103 @@ test("state icons are inline stroke SVGs, not emoji", () => {
    assert.ok(!/>♪<|>⌕<|>⚠</.test(cloudUI.replace(/\/\/[^\n]*/g, "")), "no emoji state icons in markup helpers");
 });
 
-test("the loading skeleton mirrors library rows without shimmer", () => {
+test("loading skeletons mirror their final layouts without shimmer", () => {
+   const html = readProjectFile("index.html");
    const cloudUI = readProjectFile("src/cloudUI.js");
-   assert.match(cloudUI, /class="sk-cover"/);
-   assert.ok(!/class="sk-mark"/.test(cloudUI), "the old mark placeholder is gone");
    const css = readProjectFile("styles/ui.css");
-   const at = css.indexOf(".cloud-gallery.library-redesign .skeleton-card,", css.indexOf("LIBRARY REDESIGN"));
-   const block = css.slice(at, at + 600);
-   assert.match(block, /grid-template-columns:/);
-   assert.match(block, /min-height:\s*82px/);
-   assert.match(block, /animation:\s*none/);
-   const bars = css.slice(css.lastIndexOf(".cloud-gallery.library-redesign .skeleton-card > span"));
-   assert.match(bars, /background:\s*var\(--library-raised\)/);
+
+   // Rows reuse the real index-row classes, so their columns/responsive rules
+   // cannot drift; albums keep the card frame; the editor keeps the paper.
+   assert.match(cloudUI, /song-card library-song-row is-index-row library-skeleton-row/);
+   assert.match(cloudUI, /song-card-cover sk-cover/);
+   assert.match(cloudUI, /skeleton-card is-album/);
+   assert.match(cloudUI, /renderSkeletonRows/);
+   assert.match(cloudUI, /renderSkeletonAlbums/);
+   assert.match(cloudUI, /aria-busy/);
+   assert.match(html, /id="editorSkeleton"/);
+   assert.match(html, /id="editorLoadingStatus"/);
+   assert.match(html, /id="galleryLoadingStatus"/);
+   assert.match(html, /id="albumsLoadingStatus"/);
+   assert.match(html, /id="albumLoadingStatus"/);
+   assert.match(cloudUI, /function setEditorLoading/);
+   assert.match(cloudUI, /function revealEditorLoadingSurface/);
+   assert.match(cloudUI, /beginEditorLoading\("Loading song…"\)/);
+   assert.match(cloudUI, /setLoadStatus\("galleryLoadingStatus", "Loading your songs…"\)/);
+   assert.match(css, /html\[data-editor-loading="1"\] #previewCard,/);
+
+   // Flat tone bars, no shimmer / gradient / entrance animation anywhere.
+   assert.ok(!/skeleton-shimmer/.test(css), "the shimmer keyframes are gone");
+   const bar = css.slice(css.indexOf(".skeleton-bar {"), css.indexOf(".skeleton-bar {") + 180);
+   assert.match(bar, /background:\s*var\(--library-skeleton\)/);
+   assert.match(bar, /animation:\s*none/);
+   assert.match(css, /--library-skeleton:\s*#dfe7e1/);
+   assert.match(css, /--editor-skeleton:\s*#dfe7e1/);
+   const row = css.slice(css.indexOf(".library-skeleton-row {"), css.indexOf(".library-skeleton-row {") + 180);
+   assert.match(row, /pointer-events:\s*none/);
+   const album = css.slice(css.indexOf("#albumsPanel .album-index-grid .skeleton-card.is-album {"));
+   assert.match(album.slice(0, 600), /min-height:\s*236px/);
+
+   // Skeleton is a first-class list state, not a hidden spinner.
+   assert.match(cloudUI, /list\.hidden = state !== "ready" && state !== "skeleton"/);
+});
+
+test("skeleton stays through cold-load filtering and covers every editor mode", () => {
+   const html = readProjectFile("index.html");
+   const cloudUI = readProjectFile("src/cloudUI.js");
+   const css = readProjectFile("styles/ui.css");
+   const events = readProjectFile("src/events.js");
+
+   // A user filtering while a cold fetch is in flight must not replace the
+   // skeleton with "No songs yet". Success clears the skeleton before rendering.
+   assert.match(cloudUI, /function applyFilter\(\) \{[\s\S]{0,360}?dataset\.skeleton === "1"[\s\S]{0,240}?return;/);
+   assert.match(cloudUI, /function applyAlbumFilter\(\) \{[\s\S]{0,220}?dataset\.skeleton === "1"\) return;/);
+   assert.match(cloudUI, /function applyAlbumSongFilter\(\) \{[\s\S]{0,260}?dataset\.skeleton === "1"\) return;/);
+   assert.match(cloudUI, /cachedSongs = await listSongs\(\);[\s\S]{0,180}?clearSkeletonTrack\(track\);[\s\S]{0,120}?applyFilter\(\);/);
+   assert.match(cloudUI, /cachedAlbums = await listAlbums\(\);[\s\S]{0,180}?clearSkeletonTrack\(grid\);[\s\S]{0,120}?applyAlbumFilter\(\);/);
+   assert.match(
+      cloudUI,
+      /cachedAlbumSongs = await listAlbumSongs\(currentAlbum\.albumId\);[\s\S]{0,180}?clearSkeletonTrack\(track\);[\s\S]{0,120}?applyAlbumSongFilter\(\);/,
+   );
+
+   // Albums must show their own skeleton immediately, not after songs finish.
+   assert.match(cloudUI, /const jobs = \[refreshSongs\(\)\];[\s\S]{0,140}?refreshAlbums\(\)[\s\S]{0,100}?Promise\.all\(jobs\)/);
+
+   // ChordPro hides .preview-stage; the loading sheet has to override that and
+   // hide the old ChordPro document while the fetch is running.
+   assert.match(css, /\.editor-skeleton-sheet \{[\s\S]{0,420}?min-height:\s*620px[\s\S]{0,300}?border-radius:\s*18px/);
+   assert.match(css, /@media screen and \(max-width: 850px\) \{\s*\.editor-skeleton-sheet \{/);
+   assert.match(css, /html\[data-editor-loading="1"\] body\[data-editor-mode="chordpro"\] main > \.preview-stage/);
+   assert.match(css, /html\[data-editor-loading="1"\] body\[data-editor-mode="chordpro"\] \.cp-workspace/);
+
+   // The paper frame and the desktop live zoom are shared, not duplicated.
+   assert.match(css, /--live-preview-zoom/);
+   assert.match(events, /setProperty\("--live-preview-zoom"/);
+
+   // Placeholder tones stay skeleton tones even where the real row paints its
+   // own cover/chip surfaces.
+   assert.match(css, /\.cloud-gallery\.library-redesign \.library-skeleton-row \.song-card-cover/);
+   assert.match(css, /\.library-sheet \.song-card\.library-skeleton-row \.song-card-arrangement\.skeleton-bar/);
+
+   // The status sits outside the aria-busy viewport and is controlled by JS.
+   assert.match(html, /id="editorLoadingStatus" role="status" hidden/);
+   assert.match(cloudUI, /status\.hidden = false/);
+   assert.match(cloudUI, /status\.hidden = true/);
+   assert.match(cloudUI, /actions\.setAttribute\("inert", ""\)/);
+   assert.match(cloudUI, /if \(\$\("#editorSkeleton"\)\) revealEditorLoadingSurface\(\)/);
+
+   // Album skeletons keep the real card's height at both index bands.
+   assert.match(css, /min-height:\s*252px/);
+   assert.match(css, /min-height:\s*194px/);
+});
+
+test("a failed editor load restores the library surface", () => {
+   const cloudUI = readProjectFile("src/cloudUI.js");
+
+   assert.match(cloudUI, /Could not open that song[\s\S]{0,240}?navigate\(HOME_ROUTE, \{ replace: true \}\)/);
+   assert.match(
+      cloudUI,
+      /Could not open that song[\s\S]{0,280}?navigate\(`#\/albums\/\$\{encodeURIComponent\(albumId\)\}`, \{ replace: true \}\)/,
+   );
 });
 
 test("library rows do not animate in and keep restrained interaction feedback", () => {
@@ -3827,7 +4238,8 @@ test("the songbook index uses restrained surfaces and one brand accent", () => {
    assert.match(css, /\.cloud-gallery\.library-redesign \.song-card-cover\.is-motif,[\s\S]*?background:\s*var\(--library-raised\)/);
    assert.match(css, /\.cloud-gallery\.library-redesign,[\s\S]*?font-family: "Sora", "Inter", system-ui, sans-serif !important/);
    assert.match(css, /\.cloud-gallery\.library-redesign \.cloud-gallery-state p,[\s\S]*?font:\s*600 16px/);
-   assert.match(css, /\.cloud-gallery\.library-redesign \.song-card-cover\.is-motif\[data-mode="numbers"\] \.song-card-mode-mark/);
+   assert.match(css, /\.cloud-gallery\.library-redesign \.mode-tile\.is-numbers[\s\S]*?var\(--mode-numbers-fill\)/);
+   assert.match(css, /\.cloud-gallery\.library-redesign \.mode-tile\.is-chords[\s\S]*?var\(--mode-chords-fill\)/);
    assert.match(css, /\.cloud-gallery\.library-redesign \.song-card-chip strong,[\s\S]*?font:\s*700 13px/);
 });
 
@@ -4091,10 +4503,11 @@ test("copying the invite code confirms in place with a Copied flash", () => {
    assert.match(css, /#inviteCodeCopy\.is-copied \{/);
 });
 
-test("the redesigned profile menu keeps theme and sign-out actions", () => {
+test("the profile menu keeps sign-out and the theme toggle lives in the topbar", () => {
    const html = readProjectFile("index.html");
    assert.match(html, /id="accountBtn"[^>]*aria-controls="accountPopover"/);
-   assert.match(html, /id="themeToggle"/);
+   assert.match(html, /class="topbar-theme-toggle"[\s\S]*?id="themeToggle"/);
+   assert.ok(!html.includes('class="account-popover-item theme-toggle"'), "the theme action is not buried in the profile menu");
    assert.match(html, /id="signOutBtn"[^>]*role="menuitem"/);
    const css = readProjectFile("styles/ui.css");
    assert.match(css, /\.cloud-gallery\.library-redesign \.account-popover\s*\{[\s\S]*?box-shadow:/);
@@ -4144,4 +4557,70 @@ test("dialogs never reach paper: confirm dialogs join the print hide list", () =
    assert.match(block, /\.cloud-modal,/, "the print hide list is where we expect it");
    assert.match(block, /\.confirm-dialog \{/, "confirm dialogs are hidden in print");
    assert.match(block, /display: none !important;/);
+});
+
+test("nextSectionName skips names already used by a mid-song insertion", () => {
+   assert.equal(nextSectionName([]), "Section 1");
+   assert.equal(nextSectionName([{ name: "Intro" }, { name: "Verse" }]), "Section 3");
+   assert.equal(
+      nextSectionName([{ name: "Intro" }, { name: "Section 3" }]),
+      "Section 4",
+      "array length alone would collide with an existing Section 3",
+   );
+   assert.equal(
+      nextSectionName([{ name: "Section 1" }, { name: "Section 2" }, { name: "Section 3" }]),
+      "Section 4",
+   );
+});
+
+test("the editor can insert a section after any section, with read-only guards", () => {
+   const render = readProjectFile("src/render.js");
+   const events = readProjectFile("src/events.js");
+   const css = readProjectFile("styles/ui.css");
+   assert.match(render, /class="text-button add-section"[\s\S]{0,180}data-section="\$\{section\.id\}"/);
+   assert.doesNotMatch(render, /data-play-section|section-play/, "playback is centralized in the topbar");
+   assert.match(events, /function insertSectionAfter\(sectionId\) \{\s*if \(blockedForEdit\(\)\) return;/);
+   assert.match(events, /state\.sections\.splice\(index \+ 1, 0, section\)/);
+   assert.match(events, /nextSectionName\(state\.sections\)/);
+   assert.match(events, /\.add-section/);
+   assert.match(css, /body\[data-member-readonly="1"\] \.add-section/);
+   assert.match(css, /body\[data-view-only="1"\] \.add-section/);
+   const playback = readProjectFile("src/playback.js");
+   assert.match(playback, /buildPlaybackQueue\(state\.sections, beatsPerBar \|\| 4, \{ fromSectionId \}\)/);
+   assert.match(playback, /export async function startPlayback\(\{ fromSectionId = null/);
+});
+
+test("the topbar owns the play + BPM transport and the sheet does not", () => {
+   const html = readProjectFile("index.html");
+   const topbar = html.slice(html.indexOf('<div class="topbar-actions">'), html.indexOf("</header>"));
+   const preview = html.slice(html.indexOf('id="previewCard"'), html.indexOf("</section>", html.indexOf('id="previewCard"')));
+   assert.match(topbar, /class="transport-control"/);
+   assert.match(topbar, /id="playBtn"/);
+   assert.match(topbar, /id="bpmInput"/);
+   assert.doesNotMatch(preview, /id="playBtn"|id="bpmInput"/, "transport must not print with the sheet");
+   const css = readProjectFile("styles/ui.css");
+   assert.match(css, /\.transport-control \{/);
+   assert.match(css, /\.transport-play \.transport-icon-stop \{\s*display: none;/);
+   assert.match(css, /\.transport-play\.is-playing \.transport-icon-stop/);
+   assert.match(html, /transport-icon-stop/);
+   assert.match(readProjectFile("src/events.js"), /playing \? "Stop playback" : "Play from selected section"/);
+   assert.doesNotMatch(css, /\.section-play \{/, "no section-level play control");
+   assert.doesNotMatch(html, /data-play-section/);
+});
+
+test("PDF preview zoom is anchored to one page and ignores pageCount", () => {
+   // 54% is the one-page height fit at this pane size. The same call must stay
+   // 54% after the content grows to a second page — the old code dropped the
+   // height constraint when pageCount > 1 and jumped to the width fit (~98%).
+   const pane = { availableW: 700, availableH: 600, naturalWidth: 794, onePageHeight: 1123 };
+   const scale = computePreviewScale(pane);
+   assert.ok(Math.abs(scale - 600 / 1123) < 1e-9, `unexpected scale ${scale}`);
+   assert.equal(computePreviewScale({ ...pane, availableW: 900 }), scale, "page count is not an input");
+   // Width fit wins when the pane is short and wide; clamp keeps it sane.
+   assert.equal(computePreviewScale({ availableW: 300, availableH: 600, naturalWidth: 794, onePageHeight: 1123 }), 300 / 794);
+   assert.equal(computePreviewScale({ availableW: 10, availableH: 10, naturalWidth: 794, onePageHeight: 1123 }), 0.2);
+   assert.equal(computePreviewScale({ availableW: 5000, availableH: 5000, naturalWidth: 794, onePageHeight: 1123 }), 1);
+   const options = readProjectFile("src/pdfOptions.js");
+   assert.match(options, /const scale = computePreviewScale\(\{/);
+   assert.doesNotMatch(options, /pageCount === 1 && availableH > 0/, "page count must not gate the height fit");
 });

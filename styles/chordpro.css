@@ -110,9 +110,6 @@
    align-items: center;
    gap: 6px;
 }
-.cp-tool-group-history {
-   margin-left: auto;
-}
 .cp-tool-label {
    font-size: 10px;
    font-weight: 800;
@@ -509,37 +506,24 @@
    font-style: normal;
 }
 
-/* ---- Mode badge (topbar pill) ----------------------------------------------
-   Gold, matching the ChordPro library cards (#8a6a10 family). */
-body[data-editor-mode="chordpro"] .editor-mode-badge-icon::before {
-   content: "♬";
-}
-body[data-editor-mode="chordpro"] .editor-mode-badge {
-   border-color: color-mix(in srgb, #8a6a10 30%, transparent);
-   color: #8a6a10;
-   background: color-mix(in srgb, #d4a72c 12%, #fff);
-}
-body[data-editor-mode="chordpro"] .editor-mode-badge-icon {
-   background: color-mix(in srgb, #d4a72c 22%, #fff);
-   color: #8a6a10;
-}
-
 /* ---- Library card (My Songs / Albums) --------------------------------------
-   Mirrors the pattern of the motif covers in ui.css (tinted cover + watermark
-   glyph), in a DARK GOLD accent. cloudUI.js already emits `is-chordpro` via
-   normalizeEditorMode(). The card chrome itself stays neutral; the tint lives
-   on the cover, where the mode's colour is carried.
-   The lobby (My Songs / Albums) is ALWAYS dark now (ui.css LOBBY THEME), so the
-   card carries the dark-gold look in both themes — the pale-gold light variant
-   would glare against the dark-green shell. #e8c668 on #241f10 is ≈8:1 (AA). */
+   The mode marker is a shared `.mode-tile` component (ui.css): the song rows
+   and the filter list render the SAME tile, so a mode can never look different
+   in the two places. ChordPro owns the amber tint of that tile; the card row
+   itself stays neutral like every other mode. */
 .song-card.is-chordpro {
-   background: #241f10;
+   background: transparent;
 }
 .song-card.is-chordpro .song-card-cover.is-motif {
-   background: #241f10;
+   background: var(--mode-chordpro-fill);
+   border-color: var(--mode-chordpro-line);
+   color: var(--mode-chordpro-ink);
 }
 .song-card.is-chordpro .song-card-mode-mark {
-   color: #e8c668;
+   color: var(--mode-chordpro-ink);
+}
+html[data-theme="dark"] .song-card.is-chordpro .song-card-mode-mark {
+   color: #fcd34d;
 }
 
 /* ---- Mode picker card (New Song dialog) ------------------------------------
@@ -605,15 +589,6 @@ body[data-editor-mode="chordpro"] .editor-mode-badge-icon {
 }
 
 /* ---- Dark theme ------------------------------------------------------------ */
-html[data-theme="dark"] body[data-editor-mode="chordpro"] .editor-mode-badge {
-   color: #fcd34d;
-   border-color: rgba(252, 211, 77, 0.4);
-   background: rgba(252, 211, 77, 0.12);
-}
-html[data-theme="dark"] body[data-editor-mode="chordpro"] .editor-mode-badge-icon {
-   background: rgba(252, 211, 77, 0.2);
-   color: #fcd34d;
-}
 html[data-theme="dark"] .cp-mca-chord {
    /* The mode-picker accent stays gold in dark mode (matches the gold library card). */
    color: #d4a72c;

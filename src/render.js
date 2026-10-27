@@ -22,6 +22,7 @@ import {
    sectionHasFermata,
    editorModeMeta,
    normalizeEditorMode,
+   modeIconSvg,
    isSingleBeatMeter,
    barUnitWord,
    NASHVILLE_TOKEN_RE,
@@ -216,7 +217,7 @@ export function renderControls() {
    // overrides, so there is no song-wide switch left to keep in sync here.
    // Reflect the current editing mode on <body> so mode-specific UI (lyrics
    // toggle placement, suggestion hints, mode badge, the ChordPro workspace) can be
-   // driven purely by CSS. The label + glyph mapping lives in notation.js (pure and
+   // driven purely by CSS. The label + SVG mapping lives in notation.js (pure and
    // unit-tested) so the topbar pill and the library cards can never drift apart.
    const mode = normalizeEditorMode(state.editorMode);
    document.body.dataset.editorMode = mode;
@@ -243,8 +244,20 @@ export function renderControls() {
    const cpWorkspace = document.getElementById("cpWorkspace");
    if (cpWorkspace) cpWorkspace.style.display = chordproMode ? "grid" : "none";
    if (chordproMode) warnIfChordProCssMissing();
-   const modeBadgeText = $("#editorModeBadge .editor-mode-badge-text");
-   if (modeBadgeText) modeBadgeText.textContent = editorModeMeta[mode].badge;
+   // The topbar badge is the same mode mark as the library, not a second glyph
+   // vocabulary. The visible label is shortened only for the long Numeric name;
+   // the tooltip/accessible name keeps the full product wording.
+   const modeBadge = $("#editorModeBadge");
+   const modeBadgeText = modeBadge?.querySelector(".editor-mode-badge-text");
+   const modeBadgeIcon = modeBadge?.querySelector(".editor-mode-badge-icon");
+   const modeLabel = editorModeMeta[mode].badge;
+   if (modeBadgeText) modeBadgeText.textContent = mode === "numbers" ? "Numeric" : modeLabel;
+   if (modeBadgeIcon) modeBadgeIcon.innerHTML = modeIconSvg(mode);
+   if (modeBadge) {
+      const accessible = `${modeLabel} — writing mode`;
+      modeBadge.title = accessible;
+      modeBadge.setAttribute("aria-label", accessible);
+   }
    // YouTube chip (topbar): the link of the arrangement being edited, visible in EVERY mode, in
    // one of TWO states — "link" (thumbnail + start time) or "none" ("No YouTube link" + ✎).
    // The state attribute drives visibility in CSS, and every value is written on BOTH
@@ -491,6 +504,8 @@ function sectionHTML(section) {
       : "";
    const deleteDisabled = state.sections.length === 1;
    const sectionMenu = `<details class="section-menu"><summary title="Section options" aria-label="Options for ${escapeHTML(section.name)}">•••</summary><div class="section-menu-popover"><button class="select-bars" type="button" data-section="${section.id}">Copy ${unit}s</button><button class="copy-section" type="button" data-section="${section.id}">Copy section</button><button class="paste-section" type="button" data-section="${section.id}">Paste section</button><button class="delete-section" type="button" data-section="${section.id}" ${deleteDisabled ? "disabled" : ""}>Delete section</button></div></details>`;
+   // Insertion is a section-level edit; playback is centralized in the topbar.
+   const addSection = `<button class="text-button add-section" type="button" data-section="${section.id}" title="Add a section after ${escapeHTML(section.name)}">+ Add section</button>`;
    const typeClass = sectionTypeClass(section.name);
    const chip = `<span class="section-chip" aria-hidden="true"></span>`;
    // Selection action bar: shown above the grid only for the section being selected.
@@ -500,7 +515,7 @@ function sectionHTML(section) {
            selCount ? `${selCount} ${unit}${selCount === 1 ? "" : "s"} selected` : `No ${unit}s selected yet`
         }</span><span class="bar-selection-hint">Tap ${unit}s to build the block · tap a selected ${unit} to remove it</span><button class="bar-selection-copy" type="button" data-section="${section.id}" ${selCount ? "" : "disabled"}>Copy</button><button class="bar-selection-cancel" type="button">Cancel</button></div>`
       : "";
-   return `<section class="preview-section ${typeClass} ${section.id === state.activeId ? "is-active" : ""} ${hasLyricContent ? "has-lyric-content" : ""}${sectionFermata ? " has-fermata" : ""}${selecting ? " is-selecting" : ""}" data-section="${section.id}"><div class="section-preview-heading"><div>${chip}${title}</div><div class="section-tools">${chordAboveToggle}${lyricsToggle}<span class="bar-caption">${singleBeat ? `1 bar · ${section.bars} ${section.bars === 1 ? "beat" : "beats"}` : `${section.bars} ${section.bars === 1 ? "bar" : "bars"} · ${beats} ${beatWord} per bar`}</span><button class="text-button add-bar" data-section="${section.id}">${singleBeat ? "+ Add 1 beat" : "+ Add 1 bar"}</button>${sectionMenu}</div></div>${selectionBar}<div class="bar-grid">${batches}</div></section>`;
+   return `<section class="preview-section ${typeClass} ${section.id === state.activeId ? "is-active" : ""} ${hasLyricContent ? "has-lyric-content" : ""}${sectionFermata ? " has-fermata" : ""}${selecting ? " is-selecting" : ""}" data-section="${section.id}"><div class="section-preview-heading"><div>${chip}${title}</div><div class="section-tools">${chordAboveToggle}${lyricsToggle}<span class="bar-caption">${singleBeat ? `1 bar · ${section.bars} ${section.bars === 1 ? "beat" : "beats"}` : `${section.bars} ${section.bars === 1 ? "bar" : "bars"} · ${beats} ${beatWord} per bar`}</span>${addSection}<button class="text-button add-bar" data-section="${section.id}">${singleBeat ? "+ Add 1 beat" : "+ Add 1 bar"}</button>${sectionMenu}</div></div>${selectionBar}<div class="bar-grid">${batches}</div></section>`;
 }
 // ---- ChordPro rendering ----
 // Lyrics with a chord printed directly above the syllable it precedes. The layout
@@ -544,10 +559,6 @@ export function renderPreview() {
    renderPreview._cumulativeBarCount = 0;
    const artist = $("#artist").value || "Artist / Composer";
    $("#previewTitle").textContent = $("#songTitle").value || "Song Title";
-   // The editor header shows the document being edited (breadcrumb), so it has
-   // to track the title too — this runs on every title edit / project load.
-   const crumb = $("#editorSongName");
-   if (crumb) crumb.textContent = $("#songTitle").value || "Untitled";
    $("#previewArtist").innerHTML =
       `<span class="artist-label">Created by:</span> <em class="artist-value">${escapeHTML(artist)}</em>`;
    $("#previewKey").textContent = state.key;

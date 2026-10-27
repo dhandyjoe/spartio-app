@@ -119,6 +119,21 @@ const LEGACY_BAR_NUMBERS = { left: "line", right: "line" };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+/**
+ * Visual scale for the live PDF preview.
+ *
+ * Zoom is anchored to ONE physical page. It must not depend on how many pages
+ * the current chord/lyric/spacing settings produce: crossing from one page to
+ * two used to drop the height constraint and jump 54% → 98% while the user was
+ * only moving a slider. The caller still uses pageCount to size the scrollable
+ * paper; only the zoom calculation is page-count independent.
+ */
+export function computePreviewScale({ availableW, availableH, naturalWidth, onePageHeight }) {
+   const widthFit = naturalWidth > 0 && availableW > 0 ? availableW / naturalWidth : 1;
+   const heightFit = onePageHeight > 0 && availableH > 0 ? availableH / onePageHeight : 1;
+   return clamp(Math.min(widthFit, heightFit), 0.2, 1);
+}
+
 /** Normalise + clamp any partial/legacy stored object into a valid settings shape. */
 export function sanitize(raw) {
    const base = defaultPdfOptions();
@@ -301,15 +316,17 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport, getCard, bar
       // How many physical pages does the content need? Grow the paper so pages
       // 2+ are visible instead of clipped, mirroring the real multi-page PDF.
       previewHost.style.setProperty("--pdf-page-count", "1");
-      const onePageH = page.offsetHeight;
+      const onePageHeight = page.offsetHeight;
       const card = resolveCard();
       const styles = getComputedStyle(page);
       const usableH = page.clientHeight - parseFloat(styles.paddingTop) - parseFloat(styles.paddingBottom);
       const pageCount = usableH > 0 ? Math.max(1, Math.ceil((card?.offsetHeight || 0) / usableH)) : 1;
       previewHost.style.setProperty("--pdf-page-count", String(pageCount));
 
-      // Fit: scale the paper down so its full WIDTH fits the pane; tall multi-page
-      // documents then scroll vertically, like a real PDF viewer.
+      // Fit ONE physical page at a time, every time. The zoom must stay put while
+      // chord size / beat spacing / lyric size changes only the content; extra
+      // pages simply extend the paper and scroll. Page count never participates
+      // in this calculation.
       previewHost.style.setProperty("--pdf-preview-scale", "1");
       const naturalWidth = page.offsetWidth;
       // Subtract the pane's real padding so the paper never causes a scrollbar.
@@ -319,11 +336,12 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport, getCard, bar
       const availableW = previewScroll.clientWidth - padX;
       const availableH = previewScroll.clientHeight - padY;
       if (!naturalWidth || availableW <= 0) return;
-      let scale = Math.min(1, Math.max(0.2, availableW / naturalWidth));
-      // Single-page docs: also fit the height so the whole page is visible at once.
-      if (pageCount === 1 && availableH > 0) {
-         scale = Math.min(scale, Math.max(0.2, availableH / onePageH));
-      }
+      const scale = computePreviewScale({
+         availableW,
+         availableH,
+         naturalWidth,
+         onePageHeight,
+      });
       previewHost.style.setProperty("--pdf-preview-scale", String(scale));
       if (scaleLabel) scaleLabel.textContent = `${Math.round(scale * 100)}%`;
       // Match the REAL PDF: hide the redundant leading barline on any bar that

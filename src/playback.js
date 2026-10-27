@@ -242,9 +242,15 @@ const scheduleAheadTime = 0.1; // seconds — how far ahead to schedule
  * Traverses sections → bars → beats → subdivisions (depth-first), collecting
  * every slot that has a chord or is a leaf beat (for metronome click).
  */
-export function buildPlaybackQueue(sections, beatsPerBar) {
+export function buildPlaybackQueue(sections, beatsPerBar, { fromSectionId = null } = {}) {
    const queue = [];
-   for (const section of sections) {
+   const list = Array.isArray(sections) ? sections : [];
+   // Start at the requested section (and continue to the end). An unknown id
+   // falls back to the beginning so a stale button can never leave a silent
+   // no-op after a section is deleted.
+   const requestedIndex = fromSectionId ? list.findIndex((section) => section.id === fromSectionId) : 0;
+   const startIndex = requestedIndex >= 0 ? requestedIndex : 0;
+   for (const section of list.slice(startIndex)) {
       for (let bar = 0; bar < section.bars; bar++) {
          for (let beat = 0; beat < beatsPerBar; beat++) {
             const slot = `${bar}-${beat}`;
@@ -522,8 +528,11 @@ function schedulerWithSamples() {
 }
 
 /**
- * Start playback from the beginning of the score.
+ * Start playback from the chosen section (or the beginning when no section is
+ * supplied). From that point the queue continues to the end of the score.
  * @param {object} opts
+ * @param {string} [opts.fromSectionId] Section to start at; unknown ids fall back
+ *        to the beginning.
  * @param {(beat: {slot: string, sectionId: string}) => void} [opts.onBeat]
  *        Called ~when each beat plays, for visual highlighting.
  * @param {boolean} [opts.metronome=true] Whether metronome click is enabled.
@@ -535,7 +544,7 @@ function schedulerWithSamples() {
  *        not (no AudioContext, nothing to play, or the sample download was cancelled) —
  *        the caller surfaces that to the user instead of leaving a silent no-op.
  */
-export async function startPlayback({ onBeat, metronome = true, onProgress, onEnd } = {}) {
+export async function startPlayback({ fromSectionId = null, onBeat, metronome = true, onProgress, onEnd } = {}) {
    if (isPlaying) return;
    
    // Initialize AudioContext first. Assign the returned shared context so the
@@ -549,7 +558,7 @@ export async function startPlayback({ onBeat, metronome = true, onProgress, onEn
    
    const state = getState();
    const [beatsPerBar] = state.meter.split("/").map(Number);
-   playbackQueue = buildPlaybackQueue(state.sections, beatsPerBar || 4);
+   playbackQueue = buildPlaybackQueue(state.sections, beatsPerBar || 4, { fromSectionId });
    if (!playbackQueue.length) return false;
    
    // Decide how to source the piano samples:
@@ -648,7 +657,7 @@ export function stopPlayback() {
    }
    playbackQueue = [];
    currentBeatIndex = 0;
-   // Notify the UI (e.g. reset play/pause button) that playback has stopped,
+   // Notify the UI (e.g. reset the play/stop button) that playback has stopped,
    // whether that was from natural completion or being stopped manually.
    if (onEndCallback) {
       const cb = onEndCallback;

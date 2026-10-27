@@ -8,7 +8,7 @@
    "display": "standalone",
    "orientation": "any",
    "background_color": "#0f1110",
-   "theme_color": "#237a50",
+   "theme_color": "#121711",
    "categories": ["music", "productivity", "utilities"],
    "lang": "en",
    "dir": "ltr",
@@ -42,12 +42,6 @@
          "sizes": "1024x1024",
          "type": "image/png",
          "purpose": "maskable"
-      },
-      {
-         "src": "assets/favicon.svg",
-         "sizes": "any",
-         "type": "image/svg+xml",
-         "purpose": "any"
       }
    ]
 }

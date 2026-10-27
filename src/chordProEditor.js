@@ -26,10 +26,6 @@ const deps = {
    save() {},
    renderPreview() {},
    onTranspose() {},
-   onUndo() {},
-   onRedo() {},
-   canUndo: () => false,
-   canRedo: () => false,
    isReadOnly: () => false,
    toast: () => {},
 };
@@ -98,7 +94,6 @@ export function syncChordProWorkspace() {
    if (normalizeEditorMode(state.editorMode) !== "chordpro") return;
    const readOnly = deps.isReadOnly();
    syncMeta(state, readOnly);
-   syncHistoryButtons();
    const signature = signatureOf(state.sections);
    if (signature !== renderedSignature) {
       host.innerHTML = state.sections
@@ -163,13 +158,6 @@ function syncMeta(state, readOnly) {
    if (previewMeter) previewMeter.textContent = state.meter;
 }
 
-function syncHistoryButtons() {
-   const undoBtn = $("#cpUndoBtn");
-   if (undoBtn) undoBtn.disabled = !deps.canUndo();
-   const redoBtn = $("#cpRedoBtn");
-   if (redoBtn) redoBtn.disabled = !deps.canRedo();
-}
-
 // ---- Section rows ----
 function sectionRowHTML(section, index, total, readOnly) {
    const name = escapeHTML(section.name || "Section");
@@ -199,8 +187,6 @@ function bindOnce() {
    // Transpose stays available to album members too (album role rules).
    $("#cpTransposeDown")?.addEventListener("click", () => deps.onTranspose(-1));
    $("#cpTransposeUp")?.addEventListener("click", () => deps.onTranspose(1));
-   $("#cpUndoBtn")?.addEventListener("click", () => deps.onUndo());
-   $("#cpRedoBtn")?.addEventListener("click", () => deps.onRedo());
    $("#cpTitleInput")?.addEventListener("input", (event) => pushMeta("#songTitle", event.target.value));
    $("#cpArtistInput")?.addEventListener("input", (event) => pushMeta("#artist", event.target.value));
    $("#cpKeySelect")?.addEventListener("change", onKeyChange);

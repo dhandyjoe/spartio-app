@@ -6,7 +6,7 @@
 // keeps the module graph acyclic: cloudUI → { cloud, dom }, and events.js → cloudUI.
 import { $, isPhone, toast } from "./dom.js?v=__BUILD__";
 import { friendlyName } from "./identity.js?v=__BUILD__";
-import { editorModeMeta, normalizeEditorMode } from "./notation.js?v=__BUILD__";
+import { editorModeMeta, normalizeEditorMode, modeIconMarkup } from "./notation.js?v=__BUILD__";
 import {
    isConfigured,
    onAuth,
@@ -36,6 +36,8 @@ import {
    getAlbum,
    listAlbums,
    listAlbumSongs,
+   listAlbumSongPreview,
+   countAlbumMembers,
    loadAlbumSong,
    loadAlbumSongMeta,
    updateAlbumSongMeta,
@@ -85,6 +87,12 @@ function isFirestorePermissionsError(error) {
 }
 
 let cachedSongs = []; // last-fetched list (for client-side search filtering)
+// My Songs index filters (desktop toolbar). Kept in memory only: the library is
+// a working screen, so a fresh visit starts from "everything, newest first".
+let songFilterMode = "all"; // all | chords | numbers | chordpro
+let songFilterVideo = false;
+let songSort = "updated"; // updated | title | artist
+const SONG_FILTER_EMPTY_LABEL = "All";
 
 // Test mode (regression harness appends ?test=...): skip the auth gate entirely
 // so the editor suite runs without a real Firebase sign-in.
@@ -433,7 +441,19 @@ let homeTab = "songs"; // active home tab: "songs" | "albums"
 let pendingHomeTab = "songs"; // tab to activate when showing the home screen
 let currentAlbum = null; // { ..., role } being viewed in #albumModal
 let cachedAlbums = []; // albums of the current user (Albums tab)
+// Albums index working state. Role filter + sort live in memory only (a fresh
+// visit starts from "all albums, newest first"), and the per-card extras
+// (recent arrangements + member count) are cached so re-filtering or typing in
+// the search never re-queries Firestore for every keystroke.
+let albumRoleFilter = "all"; // all | owner | member
+let albumSortMode = "updated"; // updated | title
+const ALBUM_TRACK_PREVIEW = 3;
+const ALBUM_EXTRA_TTL = 60_000;
+const albumCardExtras = new Map(); // albumId -> { stamp, at, tracks, members }
+const albumExtraInFlight = new Set();
 let cachedAlbumSongs = []; // songs of the open album (for search filtering)
+let albumSongFilterMode = "all"; // all | chords | numbers | chordpro
+let albumSongsReady = false;
 let hasLoadedSongs = false;
 let hasLoadedAlbums = false;
 let albumSelectedSongId = null; // candidate song in #addSongDialog
@@ -632,15 +652,11 @@ function flashSavedState() {
 // ======================================================================
 // Auth state → topbar reflection
 // ======================================================================
-function reflectAuth(user) {
-   const btn = $("#accountBtn");
-   const avatar = $("#accountAvatar");
-   const label = $("#accountLabel");
-   if (btn) {
-      // One derived name for the whole account UI: Auth displayName when present
-      // (Google), otherwise a readable name from the email's local part — an
-      // email/password account has no displayName at all.
-      const accountName = friendlyName(user || {}) || user?.email || "";
+function paintAccount(ids, user, accountName) {
+   const btn = $(ids.btn);
+   const avatar = $(ids.avatar);
+   const label = $(ids.label);
+   if (btn && avatar && label) {
       if (user) {
          btn.classList.add("is-authed");
          const initial = (accountName || "?").trim().charAt(0).toUpperCase();
@@ -648,24 +664,23 @@ function reflectAuth(user) {
             avatar.innerHTML = `<img src="${escapeHtml(user.photoURL)}" alt="" referrerpolicy="no-referrer" />`;
          } else {
             avatar.textContent = initial || "●";
-          }
-          label.textContent = accountName || "Account";
-          btn.title = "Your account";
-          btn.setAttribute("aria-label", `Account menu for ${accountName || "your account"}`);
-          btn.setAttribute("aria-haspopup", "true");
-       } else {
-          btn.classList.remove("is-authed");
-          avatar.replaceChildren();
-          label.textContent = "Sign in";
-          btn.title = "Sign in to sync your songs";
-          btn.setAttribute("aria-label", "Sign in to sync your songs");
-          btn.setAttribute("aria-haspopup", "false");
-          btn.setAttribute("aria-expanded", "false");
+         }
+         label.textContent = accountName || "Account";
+         btn.title = "Your account";
+         btn.setAttribute("aria-label", `Account menu for ${accountName || "your account"}`);
+         btn.setAttribute("aria-haspopup", "true");
+      } else {
+         btn.classList.remove("is-authed");
+         avatar.replaceChildren();
+         label.textContent = "Sign in";
+         btn.title = "Sign in to sync your songs";
+         btn.setAttribute("aria-label", "Sign in to sync your songs");
+         btn.setAttribute("aria-haspopup", "false");
+         btn.setAttribute("aria-expanded", "false");
       }
-      // Mirror the identity into the profile card.
-      const pAvatar = $("#accountPopoverAvatar");
-      const pName = $("#accountPopoverName");
-      const pEmail = $("#accountPopoverEmail");
+      const pAvatar = $(ids.popAvatar);
+      const pName = $(ids.popName);
+      const pEmail = $(ids.popEmail);
       if (pAvatar) pAvatar.innerHTML = avatar.innerHTML;
       if (pName) pName.textContent = user ? accountName || "Signed in" : "Not signed in";
       if (pEmail) {
@@ -673,9 +688,34 @@ function reflectAuth(user) {
          pEmail.textContent = email;
          pEmail.hidden = !email;
       }
-      const signOut = $("#signOutBtn");
+      const signOut = $(ids.signOut);
       if (signOut) signOut.hidden = !user;
    }
+}
+
+function reflectAuth(user) {
+   // One derived name for every account UI: Auth displayName when present
+   // (Google), otherwise a readable name from the email's local part — an
+   // email/password account has no displayName at all.
+   const accountName = user ? friendlyName(user || {}) || user?.email || "" : "";
+   paintAccount({
+      btn: "#accountBtn",
+      avatar: "#accountAvatar",
+      label: "#accountLabel",
+      popAvatar: "#accountPopoverAvatar",
+      popName: "#accountPopoverName",
+      popEmail: "#accountPopoverEmail",
+      signOut: "#signOutBtn",
+   }, user, accountName);
+   paintAccount({
+      btn: "#albumAccountBtn",
+      avatar: "#albumAccountAvatar",
+      label: "#albumAccountLabel",
+      popAvatar: "#albumAccountPopoverAvatar",
+      popName: "#albumAccountPopoverName",
+      popEmail: "#albumAccountPopoverEmail",
+      signOut: "#albumSignOutBtn",
+   }, user, accountName);
 
    // Cloud availability just changed (sign in/out): re-evaluate the unsaved
    // badge so it only shows when the user can actually save to the cloud.
@@ -966,11 +1006,18 @@ function initLogin() {
 let renderedCount = 0; // how many cards are currently in the DOM
 
 function setGalleryState(state) {
-   // state: "loading" | "empty" | "no-results" | "error" | "ready"
+   // state: "loading" | "skeleton" | "empty" | "no-results" | "error" | "ready"
    $("#galleryLoading").hidden = state !== "loading";
    $("#galleryEmpty").hidden = state !== "empty";
    $("#galleryNoResults").hidden = state !== "no-results";
    $("#galleryError").hidden = state !== "error";
+}
+
+// Skeleton rows are aria-hidden; a small polite status carries the same news
+// to assistive tech without putting list-item roles on placeholders.
+function setLoadStatus(id, text) {
+   const el = document.getElementById(id);
+   if (el) el.textContent = text;
 }
 
 // ---- Card cover (Hook #1) ----------------------------------------------------
@@ -1005,55 +1052,116 @@ function motifTokens(song, mode) {
    return tokens.join(" · ");
 }
 
-function coverMarkup(song, mode) {
-   const videoId = songCoverId(song);
+// Library mode marks come from the shared notation helper so the index, the
+// version popover and the editor topbar always draw the same icon for a mode.
+function libraryModeIcon(mode, className = "") {
+   return modeIconMarkup(mode, className);
+}
+
+function coverMarkup(song, mode, forceMotif = false) {
+   // The My Songs index always leads with the notation mode; a YouTube
+   // thumbnail belongs in the Video column, not in place of the mode glyph.
+   const videoId = forceMotif ? "" : songCoverId(song);
+   const modeName = mode === "numbers" ? "Numeric Notation + Lyrics" : editorModeMeta[mode]?.badge || "Chord Chart";
    if (videoId) {
       return `<div class="song-card-cover is-photo" data-mode="${mode}">
          <img class="song-card-cover-img" src="${thumbnailUrl(videoId)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
       </div>`;
    }
    const tokens = motifTokens(song, mode);
-   return `<div class="song-card-cover is-motif" data-mode="${mode}">
-      <span class="song-card-mode-mark" aria-hidden="true">${editorModeMeta[mode].cardMark}</span>
+   return `<div class="song-card-cover is-motif mode-tile is-${mode}" data-mode="${mode}" title="${escapeHtml(modeName)}" aria-label="${escapeHtml(modeName)}">
+      ${libraryModeIcon(mode, "song-card-mode-mark song-card-mode-icon")}
       ${tokens ? `<span class="song-card-cover-tokens" aria-hidden="true">${escapeHtml(tokens)}</span>` : ""}
    </div>`;
+}
+
+// Firestore timestamps can arrive as millis, a Timestamp object, or a string;
+// normalise once so relative labels and sorting agree.
+function songTimestamp(value) {
+   if (typeof value === "number" && Number.isFinite(value)) return value;
+   if (value && typeof value.toMillis === "function") return value.toMillis();
+   if (value && typeof value.seconds === "number") return value.seconds * 1000;
+   const parsed = Date.parse(value);
+   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function relativeUpdated(value) {
+   const ms = songTimestamp(value);
+   if (!ms) return "";
+   const diff = Math.max(0, Date.now() - ms);
+   const minutes = Math.floor(diff / 60000);
+   if (minutes < 1) return "Just now";
+   if (minutes < 60) return `${minutes} min ago`;
+   const hours = Math.floor(minutes / 60);
+   if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+   const days = Math.floor(hours / 24);
+   if (days === 1) return "Yesterday";
+   if (days < 7) return `${days} days ago`;
+   const weeks = Math.floor(days / 7);
+   if (days < 30) return `${weeks} week${weeks === 1 ? "" : "s"} ago`;
+   return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+// The library summary carries the latest version's label. That is more useful
+// in the index than a raw count, and it is real data (never invented).
+function arrangementLabel(song) {
+   const label = String(song.latestVersionLabel || "").trim();
+   if (label) return label;
+   if (typeof song.versionCount === "number" && song.versionCount > 0) {
+      return `${song.versionCount} version${song.versionCount === 1 ? "" : "s"}`;
+   }
+   const sections = Array.isArray(song.sections) ? song.sections.length : 0;
+   return sections ? `${sections} section${sections === 1 ? "" : "s"}` : "Draft";
+}
+
+function songMediaMarkup(song) {
+   if (!songCoverId(song)) {
+      return `<span class="song-card-media is-empty" title="No video reference" aria-label="No video reference">—</span>`;
+   }
+   return `<span class="song-card-media is-video" role="img" aria-label="YouTube reference" title="YouTube reference">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3z" fill="currentColor" stroke="none"/></svg>
+   </span>`;
 }
 
 function cardMarkup(song) {
    const title = escapeHtml(song.title || "Untitled");
    const creator = escapeHtml(song.artist || "Unknown");
-   const sectionCount = Array.isArray(song.sections) ? song.sections.length : 0;
-   const updated = song.updatedAt ? new Date(song.updatedAt).toLocaleDateString() : "";
-   const versioned = typeof song.versionCount === "number";
+   const updated = relativeUpdated(song.updatedAt);
    const mode = normalizeEditorMode(song.latestEditorMode || song.editorMode);
-   const modeLabel = mode === "numbers" ? "Numeric" : editorModeMeta[mode]?.badge || editorModeMeta.chords.badge;
-   const modeBadge = `<span class="song-card-mode" title="${escapeHtml(editorModeMeta[mode]?.badge || editorModeMeta.chords.badge)}" aria-label="${escapeHtml(editorModeMeta[mode]?.badge || editorModeMeta.chords.badge)}"><span class="song-card-mode-symbol" aria-hidden="true">${editorModeMeta[mode]?.cardMark || editorModeMeta.chords.cardMark}</span><span>${escapeHtml(modeLabel)}</span></span>`;
-   const arrangement = versioned
-      ? `${song.versionCount} version${song.versionCount === 1 ? "" : "s"}`
-      : `${sectionCount} section${sectionCount === 1 ? "" : "s"}`;
+   const modeLabel = editorModeMeta[mode]?.badge || "Chord Chart";
+   const arrangement = arrangementLabel(song);
    const key = song.latestKey || song.key || "";
    const timeSignature = song.latestMeter || song.meter || "";
+   const bpm = Number(song.latestBPM || song.bpm) || "";
+   const keyCell = key
+      ? `<span class="song-card-chip is-key"><small>Key</small><strong>${escapeHtml(key)}</strong></span>`
+      : `<span class="song-card-chip is-key is-empty"><small>Key</small><strong>—</strong></span>`;
+   const meterValue = `<span class="song-card-meter"><strong>${timeSignature ? escapeHtml(timeSignature) : "—"}</strong>${bpm ? `<span class="song-card-bpm">${bpm} BPM</span>` : ""}</span>`;
+   const meterCell = `<span class="song-card-chip is-meter${timeSignature ? "" : " is-empty"}"><small>Meter</small>${meterValue}</span>`;
    return `
-      <article class="song-card library-song-row is-${mode}" role="listitem" tabindex="0" data-id="${escapeHtml(song.cloudId)}"
-               aria-label="${escapeHtml(title)} by ${creator}">
-         ${coverMarkup(song, mode)}
+      <article class="song-card library-song-row is-index-row is-${mode}" role="listitem" tabindex="0" data-id="${escapeHtml(song.cloudId)}"
+               aria-label="${title} by ${creator}, ${escapeHtml(modeLabel)}${key ? `, key ${escapeHtml(key)}` : ""}">
+         ${coverMarkup(song, mode, true)}
          <div class="song-card-identity">
             <h3 class="song-card-title">${title}</h3>
             <div class="song-card-creator">${creator}</div>
          </div>
          <div class="song-card-detail">
-            <span class="song-card-arrangement">${escapeHtml(arrangement)}</span>
-            ${updated ? `<span class="song-card-updated">Updated ${escapeHtml(updated)}</span>` : ""}
+            <span class="song-card-arrangement" title="${escapeHtml(arrangement)}">${escapeHtml(arrangement)}</span>
+            <span class="song-card-updated${updated ? "" : " is-empty"}"><span class="song-card-updated-label">Updated </span>${updated ? escapeHtml(updated) : "—"}</span>
          </div>
+         ${songMediaMarkup(song)}
          <div class="song-card-dock">
             <div class="song-card-meta">
-               ${modeBadge}
-               ${key ? `<span class="song-card-chip"><small>Key</small><strong>${escapeHtml(key)}</strong></span>` : ""}
-               ${timeSignature ? `<span class="song-card-chip"><small>Time Signature</small><strong>${escapeHtml(timeSignature)}</strong></span>` : ""}
+               ${keyCell}
+               ${meterCell}
             </div>
             <div class="song-card-actions">
+               <button class="song-card-action song-card-open is-open" type="button" data-act="edit">Open</button>
                <details class="song-row-menu">
-                  <summary class="song-row-menu-trigger" aria-label="Actions for ${title}">More</summary>
+                  <summary class="song-row-menu-trigger" aria-label="Actions for ${title}">
+                     <svg class="song-row-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+                  </summary>
                   <div class="song-row-menu-items" role="group" aria-label="Song actions">
                      <button class="song-card-action" type="button" data-act="edit">Open song</button>
                      <button class="song-card-action" type="button" data-act="pdf">Export PDF</button>
@@ -1122,6 +1230,8 @@ function renderCards(songs) {
    const track = $("#songCards");
    if (!track) return;
    track.innerHTML = songs.map((song) => cardMarkup(song)).join("");
+   track.removeAttribute("aria-busy");
+   delete track.dataset.skeleton;
    track.scrollLeft = 0;
    renderedCount = track.querySelectorAll(".song-card").length;
    updateEdgeBlur();
@@ -1154,16 +1264,148 @@ document.addEventListener(
       if (card && mode && !img.previousElementSibling) {
          img.insertAdjacentHTML(
             "beforebegin",
-            `<span class="song-card-mode-mark" aria-hidden="true">${editorModeMeta[mode].cardMark}</span>`,
+            libraryModeIcon(mode, "song-card-mode-mark song-card-mode-icon"),
          );
       }
    },
    true,
 );
 
+function normalizeSongSearch(value) {
+   return String(value ?? "")
+      .toLowerCase()
+      .replace(/♭/g, "b")
+      .replace(/♯/g, "#")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+}
+
+function compareSongs(a, b) {
+   const title = String(a.title || "").localeCompare(String(b.title || ""), undefined, { sensitivity: "base" });
+   const artist = String(a.artist || "").localeCompare(String(b.artist || ""), undefined, { sensitivity: "base" });
+   if (songSort === "title") return title || artist;
+   if (songSort === "artist") return artist || title;
+   return songTimestamp(b.updatedAt) - songTimestamp(a.updatedAt) || title;
+}
+
+function songFilterCounts() {
+   const counts = { all: cachedSongs.length, chords: 0, numbers: 0, chordpro: 0, video: 0 };
+   cachedSongs.forEach((song) => {
+      const mode = normalizeEditorMode(song.latestEditorMode || song.editorMode);
+      if (counts[mode] !== undefined) counts[mode] += 1;
+      if (songCoverId(song)) counts.video += 1;
+   });
+   return counts;
+}
+
+function updateSongFilterCounts() {
+   const counts = songFilterCounts();
+   document.querySelectorAll("[data-filter-count]").forEach((el) => {
+      const key = el.dataset.filterCount;
+      el.textContent = String(counts[key] ?? 0);
+   });
+}
+
+function updateSongFilterState() {
+   document.querySelectorAll("[data-filter-mode]").forEach((btn) => {
+      const active = btn.dataset.filterMode === songFilterMode;
+      btn.classList.toggle("is-active", active);
+      btn.setAttribute("aria-checked", active ? "true" : "false");
+   });
+   const videoBtn = $("[data-filter-video]");
+   if (videoBtn) {
+      videoBtn.classList.toggle("is-active", songFilterVideo);
+      videoBtn.setAttribute("aria-checked", songFilterVideo ? "true" : "false");
+   }
+   const badge = $("[data-song-filter-badge]");
+   if (badge) {
+      const labels = { all: SONG_FILTER_EMPTY_LABEL, chords: "Chords", numbers: "Numeric", chordpro: "ChordPro" };
+      let text = labels[songFilterMode] || SONG_FILTER_EMPTY_LABEL;
+      if (songFilterVideo) text = text === SONG_FILTER_EMPTY_LABEL ? "Video" : `${text} + video`;
+      badge.textContent = text;
+   }
+}
+
+function updateSongResultLine(shown) {
+   const el = $("#libraryResultCount");
+   if (!el) return;
+   const total = cachedSongs.length;
+   const term = ($("#songSearch")?.value || "").trim();
+   const active = !!term || songFilterMode !== "all" || songFilterVideo;
+   const line = el.closest(".library-result-line");
+   if (line) line.hidden = !(active && total);
+   el.textContent = active && total ? `Showing ${shown} of ${total} song${total === 1 ? "" : "s"}` : "";
+}
+
+function isSongFilterMenuOpen() {
+   const menu = $("#songFilterMenu");
+   return !!menu && !menu.hidden;
+}
+
+function openSongFilterMenu() {
+   const menu = $("#songFilterMenu");
+   const btn = $("#songFilterBtn");
+   if (!menu || !btn) return;
+   menu.hidden = false;
+   btn.setAttribute("aria-expanded", "true");
+}
+
+function closeSongFilterMenu() {
+   const menu = $("#songFilterMenu");
+   const btn = $("#songFilterBtn");
+   if (!menu || !btn) return;
+   menu.hidden = true;
+   btn.setAttribute("aria-expanded", "false");
+}
+
+function syncSongSearchClear() {
+   const input = $("#songSearch");
+   const clear = $("#songSearchClear");
+   if (clear) clear.hidden = !(input && input.value);
+}
+
+function resetSongFilters() {
+   songFilterMode = "all";
+   songFilterVideo = false;
+   songSort = "updated";
+   const sort = $("#songSort");
+   if (sort) sort.value = "updated";
+   updateSongFilterState();
+   syncSongSearchClear();
+}
+
 function applyFilter() {
-   const term = ($("#songSearch")?.value || "").trim().toLowerCase();
-   const filtered = term ? cachedSongs.filter((s) => (s.title || "").toLowerCase().includes(term)) : cachedSongs;
+   const track = $("#songCards");
+   // A cold fetch owns the list until it settles. Searching or changing a
+   // filter must not replace the skeleton with the empty state mid-request.
+   if (track?.dataset.skeleton === "1") {
+      updateSongFilterCounts();
+      updateSongFilterState();
+      syncSongSearchClear();
+      return;
+   }
+   const term = normalizeSongSearch($("#songSearch")?.value || "").trim();
+   let filtered = cachedSongs.slice();
+   if (term) {
+      filtered = filtered.filter((song) =>
+         normalizeSongSearch(
+            `${song.title || ""} ${song.artist || ""} ${song.latestKey || song.key || ""}`,
+         ).includes(term),
+      );
+   }
+   if (songFilterMode !== "all") {
+      filtered = filtered.filter(
+         (song) => normalizeEditorMode(song.latestEditorMode || song.editorMode) === songFilterMode,
+      );
+   }
+   if (songFilterVideo) {
+      filtered = filtered.filter((song) => !!songCoverId(song));
+   }
+   filtered.sort(compareSongs);
+   updateSongFilterCounts();
+   updateSongFilterState();
+   updateSongResultLine(filtered.length);
+   syncSongSearchClear();
    if (!cachedSongs.length) {
       setGalleryState("empty");
       renderCards([]);
@@ -1182,38 +1424,69 @@ function applyFilter() {
 // & phone the tabs live inside the floating quick menu, so the title + count
 // follow the ACTIVE view (songs vs albums). Called on tab switch and after each
 // refresh, so the line is never stale.
+function setLibraryCount(text) {
+   const count = $("#libraryCount");
+   if (!count) return;
+   count.textContent = text;
+   // An empty pill would render as a stray grey dot beside the page title
+   // while the first fetch is still in flight.
+   const pill = count.closest(".library-count-pill");
+   if (pill) pill.hidden = !text;
+}
+
 function updateHomeHeading() {
    const title = $("#mySongsTitle");
-   const count = $("#libraryCount");
    if (homeTab === "albums") {
       if (title) title.textContent = "Albums";
-      if (count) {
-         const n = cachedAlbums.length;
-         count.textContent = hasLoadedAlbums ? `${n} album${n === 1 ? "" : "s"}` : "";
-      }
+      const n = cachedAlbums.length;
+      setLibraryCount(hasLoadedAlbums ? `${n} album${n === 1 ? "" : "s"}` : "");
       return;
    }
    if (title) title.textContent = "My Songs";
-   if (count) {
-      const n = cachedSongs.length;
-      count.textContent = hasLoadedSongs ? `${n} song${n === 1 ? "" : "s"}` : "";
-   }
+   const n = cachedSongs.length;
+   setLibraryCount(hasLoadedSongs ? `${n} song${n === 1 ? "" : "s"}` : "");
 }
 
 async function refreshSongs() {
-   // Modern skeleton loader: shimmer cards while the library is being fetched.
-   setGalleryState("skeleton");
-   renderSkeletonCards($("#songCards"));
+   const track = $("#songCards");
+   // A warm refresh keeps the last good rows on screen; only a cold start gets
+   // skeleton rows, so switching tabs never blanks a library that is already
+   // readable.
+   const warm = hasLoadedSongs && cachedSongs.length > 0;
+   if (!warm) {
+      setGalleryState("skeleton");
+      renderSkeletonRows(track);
+      setLoadStatus("galleryLoadingStatus", "Loading your songs…");
+   } else {
+      setLoadStatus("galleryLoadingStatus", "");
+   }
    updateNudgeVisibility();
    try {
       cachedSongs = await listSongs();
       hasLoadedSongs = true;
+      clearSkeletonTrack(track);
       // The header title + count reflect the active view (songs vs albums).
       updateHomeHeading();
       applyFilter();
+      setLoadStatus("galleryLoadingStatus", "");
    } catch (error) {
-      setGalleryState("error");
-      toast(isFirestorePermissionsError(error) ? "Could not load — check Firestore security rules" : "Could not load your songs");
+      const code = String(error?.code || "");
+      console.error(`[cloudUI] listSongs failed [code=${code}]`, error);
+      const message = isFirestorePermissionsError(error)
+         ? "Could not load — check Firestore security rules"
+         : code === "unauthenticated"
+            ? "Your session expired — sign in again"
+            : code === "unavailable"
+               ? "Could not reach Firestore — check your connection"
+               : warm
+                  ? "Could not refresh your songs"
+                  : "Could not load your songs";
+      if (!warm) {
+         clearSkeletonTrack(track);
+         setGalleryState("error");
+         setLoadStatus("galleryLoadingStatus", "");
+      }
+      toast(message);
    }
 }
 
@@ -1221,6 +1494,7 @@ async function refreshSongs() {
 function setHomeTab(tab) {
    const isAlbums = tab === "albums";
    homeTab = isAlbums ? "albums" : "songs";
+   closeSongFilterMenu();
    const songsPanel = $("#songsPanel");
    const albumsPanel = $("#albumsPanel");
    const btnSongs = $("#tabMySongs");
@@ -1267,10 +1541,15 @@ async function showGalleryScreen(tab) {
    setHomeTab(pendingHomeTab);
    const search = $("#songSearch");
    if (search) search.value = "";
-   await refreshSongs();
-   if (pendingHomeTab === "albums" && !TEST_MODE) await refreshAlbums();
-    updateEdgeBlur();
-    updateNudgeVisibility();
+   resetSongFilters();
+   closeSongFilterMenu();
+   // Start both lists together. Waiting for songs before albums left the
+   // Albums panel blank on a cold visit instead of showing its skeleton.
+   const jobs = [refreshSongs()];
+   if (pendingHomeTab === "albums" && !TEST_MODE) jobs.push(refreshAlbums());
+   await Promise.all(jobs);
+   updateEdgeBlur();
+   updateNudgeVisibility();
 }
 
 function openGallery() {
@@ -1407,6 +1686,7 @@ function blankProject(mode, { title = "New Song", artist = "Artist / Composer" }
       artist,
       key: "C",
       meter: "4/4",
+      bpm: 120,
       sections: chordpro
          ? [
               { name: "Intro", chordPro: CHORDPRO_INTRO_STARTER },
@@ -1818,7 +2098,7 @@ async function renderVersionList() {
          // Each version keeps its own writing mode; show it so the dropdown makes
          // the mode of every arrangement obvious (glyph + tooltip = full badge).
          const mode = normalizeEditorMode(v.editorMode);
-         const modeMark = `<span class="version-item-mode" title="${editorModeMeta[mode].badge}" aria-label="${editorModeMeta[mode].badge}">${editorModeMeta[mode].cardMark}</span>`;
+         const modeMark = `<span class="version-item-mode" title="${editorModeMeta[mode].badge}" aria-label="${editorModeMeta[mode].badge}">${libraryModeIcon(mode, "version-item-mode-icon")}</span>`;
          const ytIcon = v.youtubeId ? `<span class="version-item-yt" title="Has YouTube link">▶</span>` : "";
          const currentMark = current ? `<span class="version-item-current">Current</span>` : "";
          const editBtn = canEditDetails
@@ -1854,16 +2134,20 @@ async function selectVersion(versionId) {
    }
    await guardUnsavedThen(async () => {
       closeVersionPopover();
+      const loading = beginEditorLoading("Loading version…");
       try {
          const meta = await loadSongMetaFor(ctx);
          const version = await loadVersionFor(ctx, versionId);
          bridge.applyProject(composeSong(meta, version));
          bridge.setCloudContext(nextCtx(ctx, { versionId, versionLabel: version.label || "" }));
+         endEditorLoading(loading);
          navigate(ctxEditorUrl({ ...ctx, versionId }));
          syncVersionPill();
          toast(`Opened "${meta.title || "Untitled"}" — ${version.label || "Version"}`);
       } catch (error) {
          toast("Could not open that version");
+      } finally {
+         endEditorLoading(loading);
       }
    });
 }
@@ -1898,7 +2182,7 @@ async function onNewVersion() {
          const blank = blankFor(input.mode || currentMode);
          const payload = { ...blank, youtubeUrl: input.youtubeUrl, youtubeId: input.youtubeId };
          const created = await saveVersionFor(ctx, null, payload, { label: input.label });
-         await updateLatestFor(ctx, created.versionId, created.label, 1, blank.editorMode, input.youtubeId, blank.key, blank.meter);
+         await updateLatestFor(ctx, created.versionId, created.label, 1, blank.editorMode, input.youtubeId, blank.key, blank.meter, blank.bpm);
          bridge.applyProject(blank);
          bridge.setCloudContext(nextCtx(ctx, { versionId: created.versionId, versionLabel: created.label }));
          navigate(ctxEditorUrl({ ...ctx, versionId: created.versionId }));
@@ -1925,7 +2209,7 @@ async function onNewVersion() {
          const blank = blankFor(input.mode || currentMode);
          const payload = { ...blank, youtubeUrl: input.youtubeUrl, youtubeId: input.youtubeId };
          const created = await saveVersionFor(ctx, null, payload, { label: input.label });
-         await updateLatestFor(ctx, created.versionId, created.label, count + 1, blank.editorMode, input.youtubeId, blank.key, blank.meter);
+         await updateLatestFor(ctx, created.versionId, created.label, count + 1, blank.editorMode, input.youtubeId, blank.key, blank.meter, blank.bpm);
          bridge.applyProject(blank);
          bridge.setCloudContext(nextCtx(ctx, { versionId: created.versionId, versionLabel: created.label }));
          navigate(ctxEditorUrl({ ...ctx, versionId: created.versionId }));
@@ -2049,6 +2333,7 @@ async function openSongInEditor(songId, versionId) {
    // Guarded so replacing the open document (e.g. opening another song while
    // one is already loaded with edits) can't silently discard unsaved work.
    await guardUnsavedThen(async () => {
+      const loading = beginEditorLoading("Loading song…");
       try {
          const meta = await loadSongMeta(songId);
          if (meta.legacy) {
@@ -2056,6 +2341,7 @@ async function openSongInEditor(songId, versionId) {
             // legacy flat arrangement directly so nothing looks lost.
             bridge.applyProject(meta);
             bridge.setCloudContext({ songId, versionId: null, versionLabel: "" });
+            endEditorLoading(loading);
             navigate(`#/song/${encodeURIComponent(songId)}`);
             toast(`Opened "${meta.title || "Untitled"}"`);
             return;
@@ -2070,12 +2356,14 @@ async function openSongInEditor(songId, versionId) {
          if (version) {
             bridge.applyProject(composeSong(meta, version));
             bridge.setCloudContext({ songId, versionId: version.versionId, versionLabel: version.label || "" });
+            endEditorLoading(loading);
             navigate(`#/song/${encodeURIComponent(songId)}/v/${encodeURIComponent(version.versionId)}`);
             toast(`Opened "${meta.title || "Untitled"}" — ${version.label || "Version"}`);
          } else {
             // The song has no versions yet (e.g. the last one was deleted) →
             // require a version name FIRST (Opsi A), then land in the editor in
             // "add first version" mode.
+            endEditorLoading(loading);
             const created = await openNewSongDialog({
                title: "Add First Version",
                desc: `"${meta.title || "Untitled"}" has no versions yet. Enter a version name, then pick a writing mode to start.`,
@@ -2094,6 +2382,11 @@ async function openSongInEditor(songId, versionId) {
          }
       } catch (error) {
          toast("Could not open that song");
+         // The loading surface has replaced the library; return there instead
+         // of leaving an empty editor behind a failed fetch.
+         navigate(HOME_ROUTE, { replace: true });
+      } finally {
+         endEditorLoading(loading);
       }
    });
 }
@@ -2110,10 +2403,12 @@ async function handleCardAction(act, cloudId, card) {
       // Load the song into the editor first, then hand over to the editor's PDF
       // options dialog — its live preview renders the real #previewCard, so the
       // user sees THIS song's score (not whatever was open before).
+      const loading = beginEditorLoading("Preparing PDF…");
       try {
          const full = await loadSong(cloudId);
          bridge.applyProject(full);
          bridge.setCloudContext({ songId: cloudId, versionId: full.versionId || null, versionLabel: full.label || "" });
+         endEditorLoading(loading);
          navigate(
             full.versionId
                ? `#/song/${encodeURIComponent(cloudId)}/v/${encodeURIComponent(full.versionId)}`
@@ -2124,6 +2419,9 @@ async function handleCardAction(act, cloudId, card) {
          setTimeout(() => bridge.openPdfOptions(), 340);
       } catch (error) {
          toast("Could not open that song");
+         navigate(HOME_ROUTE, { replace: true });
+      } finally {
+         endEditorLoading(loading);
       }
       return;
    }
@@ -2277,6 +2575,75 @@ function initGallery() {
 
    $("#galleryRetry")?.addEventListener("click", () => refreshSongs());
    $("#songSearch")?.addEventListener("input", applyFilter);
+   $("#songSearchClear")?.addEventListener("click", () => {
+      const input = $("#songSearch");
+      if (!input) return;
+      input.value = "";
+      applyFilter();
+      input.focus();
+   });
+   $("#songFilterBtn")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (isSongFilterMenuOpen()) closeSongFilterMenu();
+      else openSongFilterMenu();
+   });
+   $("#songFilterMenu")?.addEventListener("click", (event) => {
+      const modeBtn = event.target.closest("[data-filter-mode]");
+      if (modeBtn) {
+         songFilterMode = modeBtn.dataset.filterMode || "all";
+         closeSongFilterMenu();
+         applyFilter();
+         return;
+      }
+      const videoBtn = event.target.closest("[data-filter-video]");
+      if (videoBtn) {
+         songFilterVideo = !songFilterVideo;
+         closeSongFilterMenu();
+         applyFilter();
+      }
+   });
+   $("#songSort")?.addEventListener("change", (event) => {
+      songSort = event.target.value || "updated";
+      applyFilter();
+   });
+   $("#galleryClearFilters")?.addEventListener("click", () => {
+      const input = $("#songSearch");
+      if (input) input.value = "";
+      resetSongFilters();
+      applyFilter();
+      input?.focus();
+   });
+   document.addEventListener("click", (event) => {
+      if (!event.target.closest("#songFilter")) closeSongFilterMenu();
+   });
+   document.addEventListener("keydown", (event) => {
+      if (modal.hidden || homeTab !== "songs") return;
+      if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+         const target = event.target;
+         const typing =
+            target &&
+            (target.tagName === "INPUT" ||
+               target.tagName === "TEXTAREA" ||
+               target.tagName === "SELECT" ||
+               target.isContentEditable);
+         if (!typing) {
+            event.preventDefault();
+            $("#songSearch")?.focus();
+         }
+         return;
+      }
+      if (event.key === "Escape") {
+         if (isSongFilterMenuOpen()) {
+            closeSongFilterMenu();
+            return;
+         }
+         const input = $("#songSearch");
+         if (document.activeElement === input) {
+            input.value = "";
+            applyFilter();
+         }
+      }
+   });
 
     // Rows open on click. Their native disclosure menu owns the secondary actions.
     track?.addEventListener("click", (e) => {
@@ -2515,7 +2882,7 @@ async function saveToCloud() {
             // Song exists but currently has no versions (add-state): this save
             // becomes its (new) first version.
             const created = await saveVersion(songId, null, project, { label: ctx.versionLabel || "Version 1" });
-            await updateLatestVersion(songId, created.versionId, created.label, 1, project.editorMode, project.youtubeId || undefined, project.key, project.meter);
+            await updateLatestVersion(songId, created.versionId, created.label, 1, project.editorMode, project.youtubeId || undefined, project.key, project.meter, project.bpm);
             nextContext = { songId, versionId: created.versionId, versionLabel: created.label };
          }
          await updateSongMeta(songId, {
@@ -2528,6 +2895,7 @@ async function saveToCloud() {
             latestEditorMode: normalizeEditorMode(project.editorMode),
             latestKey: project.key || "",
             latestMeter: project.meter || "",
+            latestBPM: Number(project.bpm) || "",
          });
       } else {
          // Brand-new song: metadata + its first version are created together.
@@ -2539,7 +2907,7 @@ async function saveToCloud() {
          }
          const createdSong = await createSong({ title, artist });
          const created = await saveVersion(createdSong.songId, null, project, { label: ctx.versionLabel || "Version 1" });
-         await updateLatestVersion(createdSong.songId, created.versionId, created.label, 1, project.editorMode, project.youtubeId || undefined, project.key, project.meter);
+         await updateLatestVersion(createdSong.songId, created.versionId, created.label, 1, project.editorMode, project.youtubeId || undefined, project.key, project.meter, project.bpm);
          nextContext = { songId: createdSong.songId, versionId: created.versionId, versionLabel: created.label };
       }
       // Version details (rename / YouTube link) are written by the dialog itself.
@@ -2564,6 +2932,17 @@ async function saveToCloud() {
 function closeAccountMenu() {
    const pop = $("#accountPopover");
    const btn = $("#accountBtn");
+   if (!pop || pop.hidden) return;
+   pop.classList.remove("is-open");
+   btn?.setAttribute("aria-expanded", "false");
+   setTimeout(() => {
+      pop.hidden = true;
+   }, 160);
+}
+
+function closeAlbumAccountMenu() {
+   const pop = $("#albumAccountPopover");
+   const btn = $("#albumAccountBtn");
    if (!pop || pop.hidden) return;
    pop.classList.remove("is-open");
    btn?.setAttribute("aria-expanded", "false");
@@ -2622,36 +3001,85 @@ function initAccountButton() {
    // so the user can see the result (events.js handles the actual theming).
    $("#themeToggle")?.addEventListener("click", (e) => e.stopPropagation());
 
-    $("#signOutBtn")?.addEventListener("click", async (event) => {
-       const signOutButton = event.currentTarget;
-       if (signOutButton.disabled) return;
-       const confirmed = await openConfirmDialog({
-         title: "Sign out?",
-         message: "You'll need to sign in again to open your cloud library.",
-         confirmLabel: "Sign out",
-         cancelLabel: "Cancel",
-         icon: "⇥",
-         danger: true,
-       });
-       if (!confirmed) return;
-       const originalMarkup = signOutButton.innerHTML;
-       signOutButton.disabled = true;
-       signOutButton.setAttribute("aria-busy", "true");
-       signOutButton.textContent = "Signing out…";
-       try {
-          await signOutUser();
-          bridge.setCloudContext(null);
-          setActiveAlbumCtx(null);
-          closeAccountMenu();
-          toast("Signed out");
-       } catch (error) {
-          toast("Could not sign out");
-       } finally {
-          signOutButton.disabled = false;
-          signOutButton.innerHTML = originalMarkup;
-          signOutButton.removeAttribute("aria-busy");
-       }
-    });
+   // Album-detail profile button. Same menu contract as the library's account
+   // button, with its own popover instance so the album screen never depends on
+   // the hidden My Songs modal.
+   const albumBtn = $("#albumAccountBtn");
+   const albumPop = $("#albumAccountPopover");
+   albumPop?.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      const items = [...albumPop.querySelectorAll('[role="menuitem"]:not([hidden]):not(:disabled)')];
+      if (!items.length) return;
+      event.preventDefault();
+      const current = items.indexOf(document.activeElement);
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      const nextIndex = (current + delta + items.length) % items.length;
+      items[nextIndex].focus();
+   });
+   albumBtn?.addEventListener("click", (event) => {
+      if (!getCurrentUser()) {
+         showLoginPage();
+         return;
+      }
+      if (!albumPop) return;
+      event.stopPropagation();
+      if (!albumPop.hidden) {
+         closeAlbumAccountMenu();
+         return;
+      }
+      albumPop.hidden = false;
+      void albumPop.offsetHeight;
+      albumPop.classList.add("is-open");
+      albumBtn.setAttribute("aria-expanded", "true");
+      setTimeout(() => albumPop.querySelector('[role="menuitem"]:not([hidden])')?.focus(), 0);
+   });
+   document.addEventListener("click", (event) => {
+      if (!albumPop || albumPop.hidden) return;
+      if (event.target.closest(".album-detail-account")) return;
+      closeAlbumAccountMenu();
+   });
+   document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && albumPop && !albumPop.hidden) {
+         closeAlbumAccountMenu();
+         albumBtn?.focus();
+      }
+   });
+
+    $("#signOutBtn")?.addEventListener("click", (event) => signOutFrom(event.currentTarget, closeAccountMenu));
+    $("#albumSignOutBtn")?.addEventListener("click", (event) => signOutFrom(event.currentTarget, closeAlbumAccountMenu));
+}
+
+// One sign-out flow for both profile buttons (My Songs and album detail). The
+// button passed in is the one that shows the busy state; the close callback
+// closes the matching popover.
+async function signOutFrom(signOutButton, closeMenu) {
+   if (!signOutButton || signOutButton.disabled) return;
+   const confirmed = await openConfirmDialog({
+      title: "Sign out?",
+      message: "You'll need to sign in again to open your cloud library.",
+      confirmLabel: "Sign out",
+      cancelLabel: "Cancel",
+      icon: "⇥",
+      danger: true,
+   });
+   if (!confirmed) return;
+   const originalMarkup = signOutButton.innerHTML;
+   signOutButton.disabled = true;
+   signOutButton.setAttribute("aria-busy", "true");
+   signOutButton.textContent = "Signing out…";
+   try {
+      await signOutUser();
+      bridge.setCloudContext(null);
+      setActiveAlbumCtx(null);
+      closeMenu?.();
+      toast("Signed out");
+   } catch (error) {
+      toast("Could not sign out");
+   } finally {
+      signOutButton.disabled = false;
+      signOutButton.innerHTML = originalMarkup;
+      signOutButton.removeAttribute("aria-busy");
+   }
 }
 
 // ======================================================================
@@ -2682,19 +3110,154 @@ function setAlbumsState(state) {
    if (none) none.hidden = state !== "no-results";
 }
 
-// Modern skeleton loader: shimmer placeholder cards shown while the library /
-// albums are still being fetched. Replaced by the real cards on success.
-const SKELETON_COUNT = 10;
-function renderSkeletonCards(track, count = SKELETON_COUNT) {
+// Loading placeholders keep the final geometry instead of drawing a generic
+// "card": the library row reuses the real `.song-card.is-index-row` classes, so
+// its columns and responsive breakpoints cannot drift from the data it stands
+// in for. Flat tone bars only — the DESIGN doc's no-shimmer loading rule.
+const SKELETON_ROW_COUNT = 8;
+const SKELETON_ALBUM_COUNT = 4;
+
+function skeletonRowMarkup() {
+   return `
+      <div class="song-card library-song-row is-index-row library-skeleton-row" aria-hidden="true">
+         <span class="song-card-cover sk-cover"></span>
+         <div class="song-card-identity">
+            <span class="skeleton-bar sk-title-bar"></span>
+            <span class="skeleton-bar sk-sub-bar"></span>
+         </div>
+         <div class="song-card-detail">
+            <span class="song-card-arrangement skeleton-bar"></span>
+            <span class="song-card-updated skeleton-bar"></span>
+         </div>
+         <span class="song-card-media"><span class="skeleton-bar skeleton-media-bar"></span></span>
+         <div class="song-card-dock">
+            <div class="song-card-meta">
+               <span class="song-card-chip is-key"><span class="skeleton-bar sk-key-bar"></span></span>
+               <span class="song-card-chip is-meter"><span class="song-card-meter"><span class="skeleton-bar sk-meter-bar"></span><span class="skeleton-bar sk-bpm-bar"></span></span></span>
+            </div>
+            <div class="song-card-actions">
+               <span class="skeleton-bar sk-open-bar"></span>
+               <span class="skeleton-bar sk-menu-bar"></span>
+            </div>
+         </div>
+      </div>`;
+}
+
+function renderSkeletonRows(track, count = SKELETON_ROW_COUNT) {
    if (!track) return;
-   track.innerHTML = Array.from({ length: count }, (_, i) => `
-      <div class="skeleton-card" aria-hidden="true" style="--card-i:${i}">
-         <span class="sk-cover"></span>
-         <span class="sk-title"></span>
-         <span class="sk-sub"></span>
-         <span class="sk-detail"></span>
-         <span class="sk-footer"></span>
-      </div>`).join("");
+   track.dataset.skeleton = "1";
+   track.setAttribute("aria-busy", "true");
+   track.innerHTML = Array.from({ length: count }, skeletonRowMarkup).join("");
+}
+
+function skeletonAlbumMarkup() {
+   return `
+      <div class="skeleton-card is-album" aria-hidden="true">
+         <div class="skeleton-album-head">
+            <span class="skeleton-bar sk-role"></span>
+            <span class="skeleton-bar sk-menu"></span>
+         </div>
+         <span class="skeleton-bar sk-album-title"></span>
+         <span class="skeleton-bar sk-album-sub"></span>
+         <span class="skeleton-bar sk-album-sub is-short"></span>
+         <div class="skeleton-album-tracks">
+            <span class="skeleton-bar sk-track"></span>
+            <span class="skeleton-bar sk-track is-short"></span>
+            <span class="skeleton-bar sk-track is-short"></span>
+         </div>
+         <div class="skeleton-album-foot">
+            <span class="skeleton-bar sk-stats"></span>
+            <span class="skeleton-bar sk-open"></span>
+         </div>
+      </div>`;
+}
+
+function renderSkeletonAlbums(track, count = SKELETON_ALBUM_COUNT) {
+   if (!track) return;
+   track.dataset.skeleton = "1";
+   track.setAttribute("aria-busy", "true");
+   track.innerHTML = Array.from({ length: count }, skeletonAlbumMarkup).join("");
+}
+
+// Drop the placeholder rows on success/error without touching real content that
+// may already be on screen during a warm refresh.
+function clearSkeletonTrack(track) {
+   if (!track) return;
+   track.removeAttribute("aria-busy");
+   if (track.dataset.skeleton === "1") {
+      track.innerHTML = "";
+      delete track.dataset.skeleton;
+   }
+}
+
+// ---- Editor loading sheet --------------------------------------------------
+// A ticket prevents a slower earlier fetch from hiding the skeleton while a
+// newer song/version is still loading. The default paper stays in the DOM but is
+// hidden by CSS only while data-editor-loading is set; print and the PDF pane
+// explicitly restore it.
+let editorLoadingTicket = 0;
+
+function setEditorLoading(active, label = "Loading song…") {
+   const root = document.documentElement;
+   const viewport = $("#previewViewport");
+   const skeleton = $("#editorSkeleton");
+   const status = $("#editorLoadingStatus");
+   const actions = document.querySelector(".topbar-actions");
+   if (active) {
+      // A stale HTML shell must never hide the real paper behind a skeleton
+      // that is not there.
+      if (!skeleton) return;
+      root.dataset.editorLoading = "1";
+      skeleton.hidden = false;
+      if (status) {
+         status.hidden = false;
+         status.textContent = label;
+      }
+      // The topbar still describes the document being replaced. Freeze its
+      // mutations (Save, Export, transport, history) until the fetch settles;
+      // Back stays available.
+      if (actions) actions.setAttribute("inert", "");
+      if (viewport) {
+         viewport.setAttribute("aria-busy", "true");
+         viewport.scrollLeft = 0;
+         viewport.scrollTop = 0;
+      }
+   } else {
+      delete root.dataset.editorLoading;
+      if (skeleton) skeleton.hidden = true;
+      if (status) status.hidden = true;
+      if (actions) actions.removeAttribute("inert");
+      if (viewport) viewport.removeAttribute("aria-busy");
+   }
+}
+
+// Bring the editor frame forward as soon as a song/version fetch starts. Without
+// this the library would stay on screen while Firestore answers, so the loading
+// sheet existed but nobody could see it.
+function revealEditorLoadingSurface() {
+   // Hard cut, not closeModal(): its 300ms hide timer could race a fast failure
+   // and hide the library again right after we navigate back to it.
+   for (const id of ["#mySongsModal", "#albumModal"]) {
+      const modal = $(id);
+      if (!modal) continue;
+      modal.classList.remove("is-open");
+      modal.hidden = true;
+   }
+   document.documentElement.dataset.screen = "editor";
+}
+
+function beginEditorLoading(label) {
+   const ticket = ++editorLoadingTicket;
+   // A stale HTML shell without the sheet must not hide the library behind a
+   // loading surface that cannot render.
+   if ($("#editorSkeleton")) revealEditorLoadingSurface();
+   setEditorLoading(true, label);
+   return ticket;
+}
+
+function endEditorLoading(ticket) {
+   if (ticket !== editorLoadingTicket) return;
+   setEditorLoading(false);
 }
 
 // ---- Role naming: an "owner" is shown as MD (Music Director) ------------
@@ -2717,51 +3280,122 @@ function roleMarker(role) {
       : "";
 }
 
-// Album cards use the SAME visual language as song cards (shares .song-card
-// + .cloud-cards CSS → identical carousel look as the My Songs list).
-// Recommended max characters for an album description shown on card hover;
-// longer descriptions are truncated with an ellipsis (…).
-const ALBUM_DESC_MAX = 500;
+// ---------------------------------------------------------------------------
+// ALBUMS INDEX (Albums tab)
+// A two-column card index: role tag, invite code (MDs only), name, description,
+// a preview of the newest arrangements, then the counts that decide whether the
+// album is worth opening. The words come from the project's own vocabulary
+// ("arrangements", "MD", "songs"), never "items"/"records".
+// ---------------------------------------------------------------------------
+const ALBUM_DESC_MAX = 220;
 
-function albumCardMarkup(album) {
-   const title = escapeHtml(album.name || "Untitled Album");
-   const roleLabel = album.role === "owner" ? MD_LABEL : "Member · read-only";
+// Cache key: the card's extras are only valid for the album revision that was
+// read (songCount/updatedAt move whenever the album's content changes).
+function albumExtraStamp(album) {
+   return `${album.songCount ?? "?"}:${album.updatedAt ?? 0}`;
+}
+
+function readCachedAlbumExtras(album) {
+   const cached = albumCardExtras.get(album.albumId);
+   if (!cached) return null;
+   if (cached.stamp !== albumExtraStamp(album)) return null;
+   if (Date.now() - cached.at > ALBUM_EXTRA_TTL) return null;
+   return cached;
+}
+
+function albumTrackChipsMarkup(tracks, total) {
+   const list = Array.isArray(tracks) ? tracks.slice(0, ALBUM_TRACK_PREVIEW) : [];
+   const chips = list.map((track) => {
+      const key = String(track.key || "").trim();
+      return `<span class="album-index-track">${escapeHtml(track.title || "Untitled")}${key ? ` <span class="album-index-track-key">(${escapeHtml(key)})</span>` : ""}</span>`;
+   });
+   const totalCount = Number.isFinite(total) ? Math.max(0, total) : list.length;
+   const remaining = Math.max(0, totalCount - list.length);
+   if (remaining > 0 && chips.length) chips.push(`<span class="album-index-track is-more">+${remaining} more</span>`);
+   return chips.join("");
+}
+
+// "Updated 2 hours ago" reads as a sentence: the two capitalised relative words
+// become lower case, while a real date ("Mar 3") keeps its capital.
+function relativeWhen(value) {
+   const rel = relativeUpdated(value);
+   if (rel === "Yesterday") return "yesterday";
+   if (rel === "Just now") return "just now";
+   return rel;
+}
+
+function albumTracksMarkup(album) {
+   const cached = readCachedAlbumExtras(album);
+   if (cached && Array.isArray(cached.tracks)) {
+      const chips = albumTrackChipsMarkup(cached.tracks, album.songCount);
+      if (!chips) return "";
+      return `<div class="album-index-tracks" data-album-tracks><span class="album-index-tracks-label">Recent arrangements</span><div class="album-index-track-row">${chips}</div></div>`;
+   }
+   if (!album.songCount) return "";
+   // Placeholder chips at the real size, so the card never jumps when the
+   // preview arrives. Hidden from assistive tech — it carries no information.
+   return `<div class="album-index-tracks" data-album-tracks aria-hidden="true">
+      <span class="album-index-tracks-label">Recent arrangements</span>
+      <div class="album-index-track-row"><span class="album-index-track is-pending"></span><span class="album-index-track is-pending is-short"></span></div>
+   </div>`;
+}
+
+// Exported for the card renderer's own tests/harness: pure string in, string out.
+export function albumCardMarkup(album) {
+   const title = escapeHtml(album.name || "Untitled album");
+   const isOwner = album.role === "owner";
+   const code = isOwner ? String(album.activeInviteCode || "").trim() : "";
+   const description = String(album.description || "").trim();
+   const shortDesc = description.length > ALBUM_DESC_MAX ? `${description.slice(0, ALBUM_DESC_MAX)}…` : description;
+   const updated = relativeWhen(album.updatedAt);
    const songCount = typeof album.songCount === "number" && Number.isFinite(album.songCount)
-      ? Math.max(0, album.songCount)
+      ? Math.max(0, Math.round(album.songCount))
       : null;
-   const count = songCount === null ? "— songs" : `${songCount} song${songCount === 1 ? "" : "s"}`;
-   const updated = album.updatedAt ? new Date(album.updatedAt).toLocaleDateString() : "";
-   const fullDesc = String(album.description || "").trim();
-   const description = fullDesc.length > ALBUM_DESC_MAX ? `${fullDesc.slice(0, ALBUM_DESC_MAX)}…` : fullDesc;
-   const initial = escapeHtml((album.name || "A").trim().charAt(0).toUpperCase() || "A");
-   const ownerActions = album.role === "owner"
-      ? `<button class="song-card-action" type="button" data-act="details">Edit details</button>
-         <button class="song-card-action is-delete" type="button" data-act="delete">Delete album</button>`
+   const songsLabel = songCount === null ? "" : `${songCount} song${songCount === 1 ? "" : "s"}`;
+   const cached = readCachedAlbumExtras(album);
+   const members = cached && Number.isFinite(cached.members) ? Math.max(0, Math.round(cached.members)) : null;
+   const ownerMenu = isOwner
+      ? `<details class="song-row-menu album-index-menu">
+            <summary class="song-row-menu-trigger" aria-label="More actions for ${title}">
+               <svg class="song-row-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+            </summary>
+            <div class="song-row-menu-items" role="group" aria-label="Album actions">
+               <button class="song-card-action" type="button" data-act="details">Edit details</button>
+               <button class="song-card-action is-delete" type="button" data-act="delete">Delete album</button>
+            </div>
+         </details>`
       : "";
    return `
-      <article class="song-card library-album-row is-album" role="listitem" tabindex="0" data-album-id="${escapeHtml(album.albumId)}"
-         aria-label="Open album ${title}">
-         <div class="song-card-cover is-motif" data-mode="album">
-            <span class="song-card-mode-mark" aria-hidden="true">${initial}</span>
+      <article class="album-index-card" role="listitem" tabindex="0"
+         data-album-id="${escapeHtml(album.albumId)}" aria-label="Open album ${title}">
+         <div class="album-index-head">
+            <span class="album-index-role${isOwner ? " is-md" : ""}"
+               title="${isOwner ? MD_TITLE : "Read-only member"}">
+               ${isOwner ? `<span class="album-index-role-dot" aria-hidden="true"></span>` : ""}
+               ${isOwner ? MD_LABEL : "Member"}
+            </span>
+            ${code ? `<span class="album-index-code" title="Invite code ${escapeHtml(code)}">
+               <span class="album-index-code-label">Code</span>
+               <span class="album-index-code-value">${escapeHtml(code)}</span>
+               <button class="album-index-code-copy" type="button" data-act="copy-code" data-code="${escapeHtml(code)}"
+                  aria-label="Copy invite code ${escapeHtml(code)}" title="Copy invite code">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+               </button>
+            </span>` : ""}
+            ${ownerMenu}
          </div>
-         <div class="song-card-identity">
-            <h3 class="song-card-title">${title}</h3>
-            <div class="song-card-creator">${escapeHtml(description || "No description")}</div>
-         </div>
-         <div class="song-card-detail">${escapeHtml(count)}${updated ? ` · Updated ${escapeHtml(updated)}` : ""}</div>
-         <div class="song-card-dock">
-            <div class="song-card-meta">
-               <span class="song-card-role${album.role === "owner" ? " is-md" : ""}">${escapeHtml(roleLabel)}</span>
-            </div>
-            <div class="song-card-actions">
-               <details class="song-row-menu">
-                  <summary class="song-row-menu-trigger" aria-label="Actions for ${title}">More</summary>
-                  <div class="song-row-menu-items" role="group" aria-label="Album actions">
-                     <button class="song-card-action" type="button" data-act="edit">Open album</button>
-                     ${ownerActions}
-                  </div>
-               </details>
-            </div>
+         <h3 class="album-index-title" title="${title}">${title}</h3>
+         <p class="album-index-desc"${description.length > ALBUM_DESC_MAX ? ` title="${escapeHtml(description)}"` : ""}>${shortDesc ? escapeHtml(shortDesc) : `<span class="album-index-desc-empty">No description yet</span>`}</p>
+         ${albumTracksMarkup(album)}
+         <div class="album-index-foot">
+            <p class="album-index-stats">
+               ${songsLabel ? `<strong class="album-index-songs">${escapeHtml(songsLabel)}</strong>` : ""}
+               <span class="album-index-members" data-album-members${members === null ? " hidden" : ""}>${members === null ? "" : `${members} member${members === 1 ? "" : "s"}`}</span>
+               ${updated ? `<span class="album-index-updated"><span class="album-index-updated-prefix">Updated </span>${escapeHtml(updated)}</span>` : ""}
+            </p>
+            <span class="album-index-open" aria-hidden="true">Open album
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+            </span>
          </div>
       </article>`;
 }
@@ -2770,114 +3404,137 @@ function renderAlbums(list) {
    const grid = $("#albumsGalleryCards");
    if (!grid) return;
    grid.innerHTML = (list || []).map((album) => albumCardMarkup(album)).join("");
-   updateAlbumEdgeBlur();
-   updateAlbumNudgeVisibility();
+   grid.removeAttribute("aria-busy");
+   delete grid.dataset.skeleton;
+   observeAlbumCards();
 }
 
-// Carousel helpers (shared by the Albums tab AND the Album-detail song list) —
-// mirrors of the My Songs updateEdgeBlur / updateNudgeVisibility / nudgeCarousel.
-function nudgeVisFor(track, prev, next) {
-   if (!track || !prev || !next) return;
-   const overflow = track.scrollWidth - track.clientWidth;
-   const many = overflow > 4;
-   prev.hidden = !many || track.scrollLeft <= 2;
-   next.hidden = !many || track.scrollLeft >= overflow - 2;
+// ---- Card extras (recent arrangements + member count) ---------------------
+// Read lazily and per visible card: opening the tab costs one count() and one
+// 3-document query per card that is actually on screen, never a full album read.
+let albumCardObserver = null;
+
+function paintAlbumExtras(card, extras) {
+   if (!card || !card.isConnected) return;
+   const tracksBox = card.querySelector("[data-album-tracks]");
+   if (tracksBox) {
+      const album = cachedAlbums.find((item) => item.albumId === card.dataset.albumId);
+      const chips = Array.isArray(extras.tracks) ? albumTrackChipsMarkup(extras.tracks, album?.songCount) : "";
+      if (chips) {
+         tracksBox.hidden = false;
+         tracksBox.removeAttribute("aria-hidden");
+         const row = tracksBox.querySelector(".album-index-track-row");
+         if (row) row.innerHTML = chips;
+      } else {
+         tracksBox.remove();
+      }
+   }
+   const membersEl = card.querySelector("[data-album-members]");
+   if (membersEl && Number.isFinite(extras.members)) {
+      const count = Math.max(0, Math.round(extras.members));
+      membersEl.textContent = `${count} member${count === 1 ? "" : "s"}`;
+      membersEl.hidden = false;
+   }
 }
-function edgeBlurFor(track) {
-   if (!track) return;
-   const cards = track.querySelectorAll(".song-card");
-   if (!cards.length) return;
-   if (window.matchMedia("(max-width: 680px)").matches) {
-      cards.forEach((card) => {
-         card.style.setProperty("--blur", "0px");
-         card.style.setProperty("--scale", "1");
-         card.style.opacity = "";
-         card.classList.remove("is-dim");
-         card.setAttribute("aria-hidden", "false");
-         card.tabIndex = 0;
-      });
+
+async function hydrateAlbumCard(card) {
+   const album = cachedAlbums.find((item) => item.albumId === card.dataset.albumId);
+   if (!album) return;
+   const cached = readCachedAlbumExtras(album);
+   if (cached) {
+      paintAlbumExtras(card, cached);
       return;
    }
-   const view = track.getBoundingClientRect();
-   const mid = view.left + view.width / 2;
-   cards.forEach((card) => {
-      const r = card.getBoundingClientRect();
-      const dist = Math.abs(r.left + r.width / 2 - mid);
-      const t = Math.min(1, Math.max(0, dist - CLEAR_BAND) / BLUR_SPAN);
-      card.style.setProperty("--blur", t <= 0 ? "0px" : `${(t * 4).toFixed(2)}px`);
-      card.style.setProperty("--scale", `${(1 - t * 0.08).toFixed(3)}`);
-      card.style.opacity = `${(1 - t * 0.45).toFixed(3)}`;
-      const active = t <= 0.04;
-      card.classList.toggle("is-dim", !active);
-      card.setAttribute("aria-hidden", active ? "false" : "true");
-      card.tabIndex = active ? 0 : -1;
-   });
-}
-let activeAlbumScrollTimer = 0;
-function nudgeFor(track, dir, refresh) {
-   if (!track) return;
-   const card = track.querySelector(".song-card");
-   const step = ((card ? card.offsetWidth : 210) + 28) * 1.4;
-   const max = track.scrollWidth - track.clientWidth;
-   const from = track.scrollLeft;
-   const to = Math.max(0, Math.min(max, from + dir * step));
-   if (activeAlbumScrollTimer) clearInterval(activeAlbumScrollTimer);
-   const start = Date.now();
-   const dur = 300;
-   const easeOut = (t) => 1 - Math.pow(1 - t, 3);
-   activeAlbumScrollTimer = setInterval(() => {
-      const t = Math.min(1, (Date.now() - start) / dur);
-      track.scrollLeft = from + (to - from) * easeOut(t);
-      if (refresh) refresh();
-      if (t >= 1) {
-         clearInterval(activeAlbumScrollTimer);
-         activeAlbumScrollTimer = 0;
-      }
-   }, 16);
+   if (albumExtraInFlight.has(album.albumId)) return;
+   albumExtraInFlight.add(album.albumId);
+   const [tracks, members] = await Promise.allSettled([
+      listAlbumSongPreview(album.albumId, ALBUM_TRACK_PREVIEW),
+      countAlbumMembers(album.albumId),
+   ]);
+   albumExtraInFlight.delete(album.albumId);
+   const extras = {
+      stamp: albumExtraStamp(album),
+      at: Date.now(),
+      tracks: tracks.status === "fulfilled" && Array.isArray(tracks.value) ? tracks.value : null,
+      members: members.status === "fulfilled" && Number.isFinite(members.value) ? members.value : null,
+   };
+   // Cache only a successful read, so a transient failure retries next time.
+   if (extras.tracks || extras.members !== null) albumCardExtras.set(album.albumId, extras);
+   // The grid may have re-rendered while the reads were in flight (search typing):
+   // paint whichever card is live now, not the detached node.
+   const live = [...document.querySelectorAll("#albumsGalleryCards [data-album-id]")].find(
+      (el) => el.dataset.albumId === album.albumId,
+   );
+   if (live) paintAlbumExtras(live, extras);
 }
 
-// Albums tab carousel.
-function updateAlbumNudgeVisibility() {
-   nudgeVisFor($("#albumsGalleryCards"), $("#albumsGalleryPrev"), $("#albumsGalleryNext"));
-}
-function updateAlbumEdgeBlur() {
-   edgeBlurFor($("#albumsGalleryCards"));
-}
-function nudgeAlbumsCarousel(dir) {
-   nudgeFor($("#albumsGalleryCards"), dir, () => {
-      updateAlbumEdgeBlur();
-      updateAlbumNudgeVisibility();
-   });
-}
-// Album-detail song list carousel.
-function updateAlbumSongNudgeVisibility() {
-   nudgeVisFor($("#albumSongCards"), $("#albumSongsGalleryPrev"), $("#albumSongsGalleryNext"));
-}
-function updateAlbumSongEdgeBlur() {
-   edgeBlurFor($("#albumSongCards"));
-}
-function nudgeAlbumSongsCarousel(dir) {
-   nudgeFor($("#albumSongCards"), dir, () => {
-      updateAlbumSongEdgeBlur();
-      updateAlbumSongNudgeVisibility();
-   });
+function observeAlbumCards() {
+   const grid = $("#albumsGalleryCards");
+   if (!grid) return;
+   const cards = [...grid.querySelectorAll(".album-index-card")];
+   if (!cards.length) return;
+   if (typeof IntersectionObserver !== "function") {
+      cards.forEach((card) => hydrateAlbumCard(card));
+      return;
+   }
+   if (!albumCardObserver) {
+      albumCardObserver = new IntersectionObserver(
+         (entries) => {
+            for (const entry of entries) {
+               if (!entry.isIntersecting) continue;
+               albumCardObserver.unobserve(entry.target);
+               hydrateAlbumCard(entry.target);
+            }
+         },
+         { root: grid.closest(".albums-body") || null, rootMargin: "160px 0px" },
+      );
+   }
+   cards.forEach((card) => albumCardObserver.observe(card));
 }
 
-// Client-side filter over cachedAlbums — same behaviour as the My Songs search.
-function applyAlbumFilter() {
+// ---- Filter + sort --------------------------------------------------------
+function albumMatchesRole(album) {
+   if (albumRoleFilter === "owner") return album.role === "owner";
+   if (albumRoleFilter === "member") return album.role !== "owner";
+   return true;
+}
+
+function visibleAlbums() {
    const term = ($("#albumSearch")?.value || "").trim().toLowerCase();
-   const filtered = term
-      ? cachedAlbums.filter(
-           (a) =>
-              (a.name || "").toLowerCase().includes(term) ||
-              (a.description || "").toLowerCase().includes(term),
-        )
-      : cachedAlbums;
+   const list = cachedAlbums.filter((album) => {
+      if (!albumMatchesRole(album)) return false;
+      if (!term) return true;
+      return (album.name || "").toLowerCase().includes(term) || (album.description || "").toLowerCase().includes(term);
+   });
+   if (albumSortMode === "title") {
+      return list.sort((a, b) =>
+         (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" }),
+      );
+   }
+   return list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+function syncAlbumFilterCounts() {
+   const counts = { all: cachedAlbums.length, owner: 0, member: 0 };
+   for (const album of cachedAlbums) counts[album.role === "owner" ? "owner" : "member"] += 1;
+   for (const key of Object.keys(counts)) {
+      const el = document.querySelector(`[data-album-count="${key}"]`);
+      if (el) el.textContent = String(counts[key]);
+   }
+}
+
+// Client-side view over cachedAlbums: search + role filter + sort. Counts on the
+// filter segments always describe the WHOLE album list, not the searched subset,
+// so "Managed by me (2)" never turns into a moving target while typing.
+function applyAlbumFilter() {
+   syncAlbumFilterCounts();
+   if ($("#albumsGalleryCards")?.dataset.skeleton === "1") return;
    if (!cachedAlbums.length) {
       setAlbumsState("empty");
       renderAlbums([]);
       return;
    }
+   const filtered = visibleAlbums();
    if (!filtered.length) {
       setAlbumsState("no-results");
       renderAlbums([]);
@@ -2887,67 +3544,181 @@ function applyAlbumFilter() {
    renderAlbums(filtered);
 }
 
+function setAlbumRoleFilter(role) {
+   albumRoleFilter = role === "owner" || role === "member" ? role : "all";
+   for (const button of document.querySelectorAll("[data-album-role]")) {
+      const active = button.dataset.albumRole === albumRoleFilter;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+   }
+   applyAlbumFilter();
+}
+
 async function refreshAlbums() {
-   setAlbumsState("skeleton");
-   renderSkeletonCards($("#albumsGalleryCards"));
-   updateAlbumNudgeVisibility();
+   const grid = $("#albumsGalleryCards");
+   const warm = hasLoadedAlbums && cachedAlbums.length > 0;
+   if (!warm) {
+      setAlbumsState("skeleton");
+      renderSkeletonAlbums(grid);
+      setLoadStatus("albumsLoadingStatus", "Loading your albums…");
+   } else {
+      setLoadStatus("albumsLoadingStatus", "");
+   }
    try {
       cachedAlbums = await listAlbums();
       hasLoadedAlbums = true;
+      clearSkeletonTrack(grid);
       // Header title + count follow the active view (albums).
       updateHomeHeading();
       applyAlbumFilter();
+      setLoadStatus("albumsLoadingStatus", "");
    } catch (error) {
-      setAlbumsState("error");
       const code = String(error?.code || "");
       const message = String(error?.message || error || "");
       console.error(`[cloudUI] listAlbums failed [code=${code}]`, error);
+      if (!warm) {
+         clearSkeletonTrack(grid);
+         setAlbumsState("error");
+         setLoadStatus("albumsLoadingStatus", "");
+      }
       const indexHint = /requires an index|failed.precondition|index/i.test(message) && !/permission/i.test(message)
          ? " Firebase Console → Firestore → Indexes → create the suggested index."
          : "";
       toast(
-         `Could not load albums${isFirestorePermissionsError(error) ? " — check Firestore security rules." : " — check your connection and the Firestore security rules."}${indexHint}`,
+         `Could not ${warm ? "refresh" : "load"} albums${isFirestorePermissionsError(error) ? " — check Firestore security rules." : " — check your connection and the Firestore security rules."}${indexHint}`,
       );
    }
 }
 
-function albumSongCardMarkup(song, role) {
-   const key = escapeHtml(song.latestKey || song.key || "");
-   const meter = escapeHtml(song.latestMeter || song.meter || "");
-   const counts = typeof song.versionCount === "number" ? `${song.versionCount} version${song.versionCount === 1 ? "" : "s"}` : "";
-   const updated = song.updatedAt ? new Date(song.updatedAt).toLocaleDateString() : "";
-   const isOwner = role === "owner";
+// Album-detail song list. The rows deliberately reuse the My Songs index
+// anatomy (`is-index-row`): mode tile, song/artist, key, meter, arrangement,
+// video, updated and actions. The album-specific work lives in the row menu
+// (remove / save a copy) and in the notation filter above the sheet.
+function albumSongMode(song) {
+   return normalizeEditorMode(song.latestEditorMode || song.editorMode);
+}
+
+function foldAlbumSearch(value) {
+   return String(value || "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replaceAll("♯", "#")
+      .replaceAll("♭", "b")
+      .replace(/\s+/g, " ")
+      .trim();
+}
+
+function albumSongFilterCounts() {
+   const counts = { all: cachedAlbumSongs.length, chords: 0, numbers: 0, chordpro: 0 };
+   for (const song of cachedAlbumSongs) counts[albumSongMode(song)] += 1;
+   return counts;
+}
+
+function albumSongFilterIcon(mode) {
+   if (mode === "all") {
+      return `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><path d="M15 15h4M15 18h4"/></svg>`;
+   }
+   return libraryModeIcon(mode, "album-song-filter-mark");
+}
+
+function syncAlbumSongFilterCounts() {
+   const counts = albumSongFilterCounts();
+   for (const mode of ["all", "chords", "numbers", "chordpro"]) {
+      const count = document.querySelector(`[data-album-song-count="${mode}"]`);
+      if (count) count.textContent = String(counts[mode]);
+      const icon = document.querySelector(`[data-album-song-icon="${mode}"]`);
+      if (icon && !icon.firstChild) icon.innerHTML = albumSongFilterIcon(mode);
+      const button = document.querySelector(`[data-album-song-mode="${mode}"]`);
+      if (!button) continue;
+      const active = albumSongFilterMode === mode;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+   }
+}
+
+// Search matches what the row shows, plus the plain-language names people type
+// for each mode ("nashville", "chord chart"). Accidentals are folded so "f#"
+// finds "F♯m" and "bb" finds "B♭".
+function albumSongSearchText(song) {
+   const mode = albumSongMode(song);
+   const modeWords = mode === "numbers"
+      ? "numeric nashville numbers"
+      : mode === "chordpro"
+         ? "chordpro chord pro lyrics"
+         : "chord chart chords";
+   return foldAlbumSearch([
+      song.title,
+      song.artist,
+      song.latestKey || song.key,
+      song.latestMeter || song.meter,
+      song.latestBPM || song.bpm,
+      arrangementLabel(song),
+      editorModeMeta[mode]?.badge,
+      modeWords,
+   ].join(" "));
+}
+
+function visibleAlbumSongs() {
+   const term = foldAlbumSearch($("#albumSongSearch")?.value);
+   return cachedAlbumSongs.filter((song) => {
+      if (albumSongFilterMode !== "all" && albumSongMode(song) !== albumSongFilterMode) return false;
+      return !term || albumSongSearchText(song).includes(term);
+   });
+}
+
+function updateAlbumSongSearchClear() {
+   const clear = $("#albumSongSearchClear");
+   if (clear) clear.hidden = !String($("#albumSongSearch")?.value || "").trim();
+}
+
+function albumSongRowMarkup(song, role) {
    const title = escapeHtml(song.title || "Untitled");
-   const actions = isOwner
-      ? `<button class="song-card-action" type="button" data-act="edit">Edit arrangement</button>
+   const creator = escapeHtml(song.artist || "Unknown");
+   const updated = relativeUpdated(song.updatedAt);
+   const mode = albumSongMode(song);
+   const modeLabel = editorModeMeta[mode]?.badge || "Chord Chart";
+   const arrangement = arrangementLabel(song);
+   const key = song.latestKey || song.key || "";
+   const timeSignature = song.latestMeter || song.meter || "";
+   const bpm = Number(song.latestBPM || song.bpm) || "";
+   const keyCell = key
+      ? `<span class="song-card-chip is-key"><small>Key</small><strong>${escapeHtml(key)}</strong></span>`
+      : `<span class="song-card-chip is-key is-empty"><small>Key</small><strong>—</strong></span>`;
+   const meterValue = `<span class="song-card-meter"><strong>${timeSignature ? escapeHtml(timeSignature) : "—"}</strong>${bpm ? `<span class="song-card-bpm">${bpm} BPM</span>` : ""}</span>`;
+   const meterCell = `<span class="song-card-chip is-meter${timeSignature ? "" : " is-empty"}"><small>Meter</small>${meterValue}</span>`;
+   const actions = role === "owner"
+      ? `<button class="song-card-action" type="button" data-act="edit">Open in editor</button>
          <button class="song-card-action" type="button" data-act="pdf">Export PDF</button>
          <button class="song-card-action is-delete" type="button" data-act="delete">Remove from album</button>`
       : `<button class="song-card-action" type="button" data-act="edit">Open arrangement</button>
          <button class="song-card-action" type="button" data-act="pdf">Export PDF</button>
          <button class="song-card-action" type="button" data-act="copy">Save a copy</button>`;
-   const mode = normalizeEditorMode(song.latestEditorMode || song.editorMode);
    return `
-      <article class="song-card library-song-row is-${mode}" role="listitem" tabindex="0"
-         data-id="${escapeHtml(song.cloudId)}" aria-label="${title}">
-         ${coverMarkup(song, mode)}
+      <article class="song-card library-song-row is-index-row is-${mode}" role="listitem" tabindex="0" data-id="${escapeHtml(song.cloudId)}"
+               aria-label="${title} by ${creator}, ${escapeHtml(modeLabel)}${key ? `, key ${escapeHtml(key)}` : ""}">
+         ${coverMarkup(song, mode, true)}
          <div class="song-card-identity">
             <h3 class="song-card-title">${title}</h3>
-            <div class="song-card-creator">${escapeHtml(song.artist || "Unknown")}</div>
+            <div class="song-card-creator">${creator}</div>
          </div>
          <div class="song-card-detail">
-            ${counts ? `<span class="song-card-arrangement">${escapeHtml(counts)}</span>` : ""}
-            ${updated ? `<span class="song-card-updated">Updated ${escapeHtml(updated)}</span>` : ""}
+            <span class="song-card-arrangement" title="${escapeHtml(arrangement)}">${escapeHtml(arrangement)}</span>
+            <span class="song-card-updated${updated ? "" : " is-empty"}"><span class="song-card-updated-label">Updated </span>${updated ? escapeHtml(updated) : "—"}</span>
          </div>
+         ${songMediaMarkup(song)}
          <div class="song-card-dock">
             <div class="song-card-meta">
-               <span class="song-card-mode" title="${escapeHtml(editorModeMeta[mode]?.badge || editorModeMeta.chords.badge)}" aria-label="${escapeHtml(editorModeMeta[mode]?.badge || editorModeMeta.chords.badge)}"><span class="song-card-mode-symbol" aria-hidden="true">${editorModeMeta[mode]?.cardMark || editorModeMeta.chords.cardMark}</span><span>${escapeHtml(mode === "numbers" ? "Numeric" : editorModeMeta[mode]?.badge || editorModeMeta.chords.badge)}</span></span>
-               ${key ? `<span class="song-card-chip"><small>Key</small><strong>${key}</strong></span>` : ""}
-               ${meter ? `<span class="song-card-chip"><small>Time Signature</small><strong>${meter}</strong></span>` : ""}
+               ${keyCell}
+               ${meterCell}
             </div>
             <div class="song-card-actions">
+               <button class="song-card-action song-card-open is-open" type="button" data-act="edit">Open</button>
                <details class="song-row-menu">
-                  <summary class="song-row-menu-trigger" aria-label="Actions for ${title}">More</summary>
-                  <div class="song-row-menu-items" role="group" aria-label="Arrangement actions">${actions}</div>
+                  <summary class="song-row-menu-trigger" aria-label="Actions for ${title}">
+                     <svg class="song-row-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+                  </summary>
+                  <div class="song-row-menu-items" role="group" aria-label="Album song actions">${actions}</div>
                </details>
             </div>
          </div>
@@ -2955,13 +3726,13 @@ function albumSongCardMarkup(song, role) {
 }
 
 function setAlbumListState(state) {
-   // "loading" | "empty" | "no-results" | "error" | "ready"
+   // "loading" | "skeleton" | "empty" | "no-results" | "error" | "ready"
    const list = $("#albumSongCards");
    const load = $("#albumLoading");
    const empty = $("#albumEmpty");
    const none = $("#albumNoResults");
    const error = $("#albumError");
-   if (list) list.hidden = state !== "ready";
+   if (list) list.hidden = state !== "ready" && state !== "skeleton";
    if (load) load.hidden = state !== "loading";
    if (empty) empty.hidden = state !== "empty";
    if (none) none.hidden = state !== "no-results";
@@ -2972,18 +3743,22 @@ function renderAlbumSongs(list) {
    const track = $("#albumSongCards");
    if (!track) return;
    const role = currentAlbum?.role || "member";
-   track.innerHTML = list.map((song) => albumSongCardMarkup(song, role)).join("");
-   updateAlbumSongEdgeBlur();
-   updateAlbumSongNudgeVisibility();
-   if (currentAlbum?.role === "member") {
-      const hint = $("#albumEmptyHint");
-      if (hint) hint.textContent = "No songs here yet — check back soon, or ask an owner to add arrangements.";
+   track.innerHTML = list.map((song) => albumSongRowMarkup(song, role)).join("");
+   track.removeAttribute("aria-busy");
+   delete track.dataset.skeleton;
+   const hint = $("#albumEmptyHint");
+   if (hint) {
+      hint.textContent = role === "member"
+         ? "No songs here yet. Check back soon, or ask an owner to add arrangements."
+         : "Use New Song or Add from My Songs to fill this album.";
    }
 }
 
 function applyAlbumSongFilter() {
-   const term = ($("#albumSongSearch")?.value || "").trim().toLowerCase();
-   const filtered = term ? cachedAlbumSongs.filter((s) => (s.title || "").toLowerCase().includes(term)) : cachedAlbumSongs;
+   syncAlbumSongFilterCounts();
+   updateAlbumSongSearchClear();
+   if ($("#albumSongCards")?.dataset.skeleton === "1") return;
+   const filtered = visibleAlbumSongs();
    if (!cachedAlbumSongs.length) {
       setAlbumListState("empty");
       renderAlbumSongs([]);
@@ -2998,25 +3773,150 @@ function applyAlbumSongFilter() {
    renderAlbumSongs(filtered);
 }
 
+function setAlbumSongFilterMode(mode) {
+   albumSongFilterMode = ["all", "chords", "numbers", "chordpro"].includes(mode) ? mode : "all";
+   applyAlbumSongFilter();
+}
+
+function resetAlbumSongFilters() {
+   albumSongFilterMode = "all";
+   const input = $("#albumSongSearch");
+   if (input) input.value = "";
+   applyAlbumSongFilter();
+}
+
 async function refreshAlbumSongs() {
-   setAlbumListState("loading");
+   const track = $("#albumSongCards");
+   const warm = albumSongsReady && cachedAlbumSongs.length > 0;
+   if (!warm) {
+      setAlbumListState("skeleton");
+      renderSkeletonRows(track, 6);
+      setLoadStatus("albumLoadingStatus", "Loading album songs…");
+   } else {
+      setLoadStatus("albumLoadingStatus", "");
+   }
    try {
       cachedAlbumSongs = await listAlbumSongs(currentAlbum.albumId);
+      albumSongsReady = true;
+      clearSkeletonTrack(track);
+      renderAlbumHeader();
       applyAlbumSongFilter();
+      setLoadStatus("albumLoadingStatus", "");
    } catch (error) {
+      albumSongsReady = false;
       const message = isFirestorePermissionsError(error)
          ? "Could not load songs. Check Firestore security rules."
          : "Could not load songs. Check your connection and try again.";
-      const errorMessage = $("#albumErrorMessage");
-      if (errorMessage) errorMessage.textContent = message;
-      setAlbumListState("error");
+      if (!warm) {
+         clearSkeletonTrack(track);
+         const errorMessage = $("#albumErrorMessage");
+         if (errorMessage) errorMessage.textContent = message;
+         setAlbumListState("error");
+         setLoadStatus("albumLoadingStatus", "");
+      } else {
+         toast(message);
+      }
+   }
+}
+
+function albumSongCountForHeader() {
+   const fallback = Number(currentAlbum?.songCount);
+   if (albumSongsReady) return cachedAlbumSongs.length;
+   return Number.isFinite(fallback) && fallback >= 0 ? fallback : 0;
+}
+
+function renderAlbumInviteChip() {
+   const chip = $("#albumInviteChip");
+   if (!chip || !currentAlbum) return;
+   const code = currentAlbum.role === "owner"
+      ? String(currentAlbum.activeInviteCode || "").trim()
+      : "";
+   chip.hidden = !code;
+   if (!code) return;
+   const value = $("#albumInviteCode");
+   if (value) value.textContent = code;
+   const copy = $("#albumInviteCopyBtn");
+   if (copy) {
+      copy.dataset.code = code;
+      copy.title = `Copy invite code ${code}`;
+      copy.setAttribute("aria-label", `Copy invite code ${code}`);
+   }
+}
+
+function renderAlbumMemberChip() {
+   if (!currentAlbum) return;
+   const button = $("#albumMembersBtn");
+   const label = $("#albumMemberCount");
+   const count = Number(currentAlbum.memberCount);
+   const isOwner = currentAlbum.role === "owner";
+   const text = Number.isFinite(count) && count > 0
+      ? `${count} member${count === 1 ? "" : "s"}`
+      : "Members";
+   if (label) label.textContent = text;
+   if (button) {
+      button.hidden = false;
+      button.title = isOwner ? "View and manage members" : "View members";
+      button.setAttribute("aria-label", `${text}, ${isOwner ? "manage" : "view"}`);
+   }
+}
+
+// One count() read when the album opens. A rules/offline failure only leaves the
+// chip at "Members"; the dialog itself loads the full list on demand.
+async function hydrateAlbumMemberCount(albumId) {
+   try {
+      const count = await countAlbumMembers(albumId);
+      if (!currentAlbum || currentAlbum.albumId !== albumId) return;
+      currentAlbum.memberCount = count;
+      renderAlbumMemberChip();
+   } catch {
+      /* Keep the neutral "Members" label. */
+   }
+}
+
+function resetAlbumHeaderForLoad() {
+   const title = $("#albumTitle");
+   if (title) title.textContent = "Album";
+   const description = $("#albumDescription");
+   if (description) {
+      description.textContent = "";
+      description.hidden = true;
+   }
+   const meta = $("#albumMeta");
+   if (meta) {
+      meta.textContent = "";
+      meta.hidden = true;
+   }
+   const glyph = $("#albumHeroGlyph");
+   if (glyph) glyph.textContent = "A";
+   const updated = $("#albumUpdated");
+   if (updated) updated.textContent = "";
+   const updatedSep = $("#albumUpdatedSep");
+   if (updatedSep) updatedSep.hidden = true;
+   const roleChip = $("#albumRoleChip");
+   if (roleChip) roleChip.classList.remove("is-owner");
+   const roleText = $("#albumRoleLabel");
+   if (roleText) roleText.textContent = "Role";
+   const inviteChip = $("#albumInviteChip");
+   if (inviteChip) inviteChip.hidden = true;
+   const readonlyNote = $("#albumReadonlyNote");
+   if (readonlyNote) readonlyNote.hidden = true;
+   const actions = $(".album-detail-actions");
+   if (actions) actions.classList.remove("is-member");
+   for (const id of ["albumMembersBtn", "albumInviteBtn", "albumAddFromBtn", "albumNewSongBtn", "albumLeaveBtn"]) {
+      const button = $(`#${id}`);
+      if (button) button.hidden = true;
    }
 }
 
 function renderAlbumHeader() {
+   if (!currentAlbum) return;
    const title = $("#albumTitle");
    const description = $("#albumDescription");
    const meta = $("#albumMeta");
+   const updated = $("#albumUpdated");
+   const updatedSep = $("#albumUpdatedSep");
+   const isOwner = currentAlbum.role === "owner";
+   const roleLabel = roleShortLabel(currentAlbum.role);
    if (title) title.textContent = currentAlbum.name;
    if (description) {
       const text = String(currentAlbum.description || "").trim();
@@ -3025,32 +3925,62 @@ function renderAlbumHeader() {
    }
    const heroGlyph = $("#albumHeroGlyph");
    if (heroGlyph) heroGlyph.textContent = (currentAlbum.name || "A").trim().charAt(0).toUpperCase() || "A";
+   const songCount = albumSongCountForHeader();
+   const songLabel = `${songCount} song${songCount === 1 ? "" : "s"}`;
+   const date = currentAlbum.createdAt ? new Date(currentAlbum.createdAt).toLocaleDateString() : "";
    if (meta) {
-      const roleLabel = roleShortLabel(currentAlbum.role);
-      const date = currentAlbum.createdAt ? new Date(currentAlbum.createdAt).toLocaleDateString() : "";
-      meta.textContent = `${currentAlbum.songCount} song${currentAlbum.songCount === 1 ? "" : "s"} · ${roleLabel}${currentAlbum.role === "member" ? " · read-only" : ""}${date ? ` · created ${date}` : ""}`;
+      meta.textContent = `${songLabel}${date ? ` · Created ${date}` : ""}`;
+      meta.hidden = false;
    }
-   const isOwner = currentAlbum.role === "owner";
+   const updatedText = currentAlbum.updatedAt ? relativeWhen(currentAlbum.updatedAt) : "";
+   if (updated) updated.textContent = updatedText ? `Updated ${updatedText}` : "";
+   if (updatedSep) updatedSep.hidden = !updatedText;
+   const roleChip = $("#albumRoleChip");
+   const roleText = $("#albumRoleLabel");
+   if (roleText) roleText.textContent = isOwner ? `Role: ${MD_TITLE} (${roleLabel})` : "Role: Member (read-only)";
+   if (roleChip) {
+      roleChip.classList.toggle("is-owner", isOwner);
+      roleChip.title = isOwner ? `${MD_TITLE}, full album control` : "Read-only album member";
+   }
+   renderAlbumMemberChip();
+   renderAlbumInviteChip();
+   const actions = $(".album-detail-actions");
+   if (actions) actions.classList.toggle("is-member", !isOwner);
+   const readonlyNote = $("#albumReadonlyNote");
+   if (readonlyNote) readonlyNote.hidden = isOwner;
    const invite = $("#albumInviteBtn");
    const addFrom = $("#albumAddFromBtn");
    const newSong = $("#albumNewSongBtn");
    const leave = $("#albumLeaveBtn");
-   const members = $("#albumMembersBtn");
    if (invite) invite.hidden = !isOwner;
    if (addFrom) addFrom.hidden = !isOwner;
    if (newSong) newSong.hidden = !isOwner;
    if (leave) leave.hidden = false; // anyone may leave — member OR MD
-   if (members) members.hidden = false; // everyone may view the member list
 }
 
 async function openAlbumDetail(albumId) {
    const modal = $("#albumModal");
    if (!modal) return;
    closeModal($("#mySongsModal"));
+   closeAlbumAccountMenu();
    openModal(modal);
    document.documentElement.dataset.screen = "album-detail";
    currentAlbum = null;
    cachedAlbumSongs = [];
+   albumSongFilterMode = "all";
+   albumSongsReady = false;
+   // Clear the previous album's rows and search before the fetch so reopening
+   // the screen never flashes another album's setlist or a stale query.
+   const previousList = $("#albumSongCards");
+   if (previousList) previousList.innerHTML = "";
+   const search = $("#albumSongSearch");
+   if (search) search.value = "";
+   updateAlbumSongSearchClear();
+   syncAlbumSongFilterCounts();
+   resetAlbumHeaderForLoad();
+   // The list frame stays put while the album document and its songs load.
+   setAlbumListState("skeleton");
+   renderSkeletonRows($("#albumSongCards"), 6);
    try {
       currentAlbum = await getAlbum(albumId);
    } catch (error) {
@@ -3059,8 +3989,7 @@ async function openAlbumDetail(albumId) {
       return;
    }
    renderAlbumHeader();
-   const search = $("#albumSongSearch");
-   if (search) search.value = "";
+   void hydrateAlbumMemberCount(albumId);
    await refreshAlbumSongs();
 }
 
@@ -3090,9 +4019,9 @@ async function saveVersionFor(ctx, versionId, data, opts) {
 async function deleteVersionFor(ctx, versionId) {
    return isAlbumCtx(ctx) ? deleteAlbumVersion(ctx.albumId, ctx.songId, versionId) : deleteVersion(ctx.songId, versionId);
 }
-async function updateLatestFor(ctx, versionId, label, count, editorMode, youtubeId, key, meter) {
-   if (isAlbumCtx(ctx)) return updateAlbumLatestVersion(ctx.albumId, ctx.songId, versionId, label, count, editorMode, youtubeId, key, meter);
-   return updateLatestVersion(ctx.songId, versionId, label, count, editorMode, youtubeId, key, meter);
+async function updateLatestFor(ctx, versionId, label, count, editorMode, youtubeId, key, meter, bpm) {
+   if (isAlbumCtx(ctx)) return updateAlbumLatestVersion(ctx.albumId, ctx.songId, versionId, label, count, editorMode, youtubeId, key, meter, bpm);
+   return updateLatestVersion(ctx.songId, versionId, label, count, editorMode, youtubeId, key, meter, bpm);
 }
 // Preserve scope fields when updating the cloud context in the editor.
 // `role` matters too: syncAlbumContextUI derives the pill/label/read-only state
@@ -3121,6 +4050,7 @@ function ctxEditorUrl(ctx) {
 // read-only session + "Save a copy" action).
 async function openAlbumSongInEditor(albumId, songId, versionId) {
    await guardUnsavedThen(async () => {
+      const loading = beginEditorLoading("Loading song…");
       try {
          let albumName = currentAlbum?.name || "";
          let role = currentAlbum?.role || "member";
@@ -3137,6 +4067,7 @@ async function openAlbumSongInEditor(albumId, songId, versionId) {
          if (meta.legacy) {
             bridge.applyProject(meta);
             bridge.setCloudContext({ scope: "album", albumId, albumName, songId, versionId: null, versionLabel: "", role });
+            endEditorLoading(loading);
             navigate(`#/album/${encodeURIComponent(albumId)}/${encodeURIComponent(songId)}`);
             toast(`Opened "${meta.title || "Untitled"}"`);
             return;
@@ -3147,10 +4078,12 @@ async function openAlbumSongInEditor(albumId, songId, versionId) {
          if (version) {
             bridge.applyProject(composeSong(meta, version));
             bridge.setCloudContext({ scope: "album", albumId, albumName, songId, versionId: version.versionId, versionLabel: version.label || "", role });
+            endEditorLoading(loading);
             navigate(albumEditorUrl(albumId, songId, version.versionId));
             toast(`Opened "${meta.title || "Untitled"}" — ${version.label || "Version"}`);
          } else {
             // No arrangements yet → require a version name first.
+            endEditorLoading(loading);
             const created = await openNewSongDialog({
                title: "Add First Version",
                desc: `"${meta.title || "Untitled"}" has no versions yet. Enter a version name, then pick a writing mode to start.`,
@@ -3167,6 +4100,9 @@ async function openAlbumSongInEditor(albumId, songId, versionId) {
          }
       } catch (error) {
          toast("Could not open that song");
+         navigate(`#/albums/${encodeURIComponent(albumId)}`, { replace: true });
+      } finally {
+         endEditorLoading(loading);
       }
    });
 }
@@ -3312,7 +4248,7 @@ function syncAlbumContextUI() {
    const newVersionBtn = $("#versionNewBtn");
    if (newVersionBtn) newVersionBtn.hidden = isAlbum && role !== "owner";
    // Back button keeps the generic "← Back" label (album detail has its own
-// "← Albums" button); the tooltip stays descriptive.
+// "← Back to Albums" button); the tooltip stays descriptive.
    const backBtn = $("#backToSongsBtn");
    if (backBtn) {
       // Set the whole content explicitly — never touch "a text node", because
@@ -3500,6 +4436,10 @@ async function refreshInviteCodeIntoDialog(andCopy) {
       const code = (await getInviteCode(currentAlbum.albumId)) || null;
       const value = $("#inviteCodeValue");
       if (value) value.textContent = code || "—";
+      if (currentAlbum) {
+         currentAlbum.activeInviteCode = code || "";
+         renderAlbumInviteChip();
+      }
       if (code && andCopy) {
          const ok = await copyTextToClipboard(code);
          if (ok) {
@@ -3630,13 +4570,30 @@ function applyAddSongFilter() {
     if (list) {
       list.innerHTML = filtered
          .map(
-            (s, i) => `<label class="add-song-option">
-                 <input type="radio" name="addSongChoice" value="${escapeHtml(s.cloudId)}" ${i === 0 ? "checked" : ""} />
+            (s, i) => {
+               const mode = normalizeEditorMode(s.latestEditorMode || s.editorMode);
+               const modeLabel = editorModeMeta[mode]?.badge || "Chord Chart";
+               const key = s.latestKey || s.key || "";
+               const meter = s.latestMeter || s.meter || "";
+               const bpm = Number(s.latestBPM || s.bpm) || "";
+               const versions = typeof s.versionCount === "number"
+                  ? `${s.versionCount} version${s.versionCount === 1 ? "" : "s"}`
+                  : "";
+               const meta = [
+                  s.artist || "Unknown",
+                  versions,
+                  key ? `Key ${key}` : "",
+                  meter ? `${meter}${bpm ? ` · ${bpm} BPM` : ""}` : "",
+               ].filter(Boolean).join(" · ");
+               return `<label class="add-song-option">
+                 <span class="mode-tile is-${mode} add-song-option-mode" title="${escapeHtml(modeLabel)}" aria-label="${escapeHtml(modeLabel)}">${libraryModeIcon(mode, "mode-mark")}</span>
                  <span class="add-song-option-text">
                     <strong>${escapeHtml(s.title)}</strong>
-                    <small>${escapeHtml(s.artist || "Unknown")}${typeof s.versionCount === "number" ? ` · ${s.versionCount} version${s.versionCount === 1 ? "" : "s"}` : ""}</small>
+                    <small>${escapeHtml(meta)}</small>
                  </span>
-              </label>`,
+                 <input type="radio" name="addSongChoice" value="${escapeHtml(s.cloudId)}" ${i === 0 ? "checked" : ""} />
+              </label>`;
+            },
          )
          .join("");
        list.querySelectorAll('input[name="addSongChoice"]').forEach((r) =>
@@ -3776,6 +4733,7 @@ function closeMembersDialog() {
    closeMemberActionsDialog({ restoreFocus: false });
    closeModal($("#albumMembersDialog"));
    resolve?.(true);
+   if (currentAlbum) void hydrateAlbumMemberCount(currentAlbum.albumId);
 }
 async function openMembersDialog() {
    const d = $("#albumMembersDialog");
@@ -3793,6 +4751,10 @@ async function openMembersDialog() {
       const mdCount = members.filter((m) => m.role === "owner").length;
       const memberCount = members.length - mdCount;
       memberActionMembers = members;
+      if (currentAlbum) {
+         currentAlbum.memberCount = members.length;
+         renderAlbumMemberChip();
+      }
       if (desc) {
          const counts = `${mdCount} ${MD_LABEL}${mdCount === 1 ? "" : "s"}${memberCount ? ` · ${memberCount} member${memberCount === 1 ? "" : "s"}` : ""}`;
          const verbs = isOwner
@@ -3830,7 +4792,7 @@ async function openMembersDialog() {
                const controls = manageable
                   ? `${memberManageButtonMarkup({ uid: m.uid, name: memberName })}<span class="member-row-chevron" aria-hidden="true">›</span>`
                   : "";
-               return `<div class="member-row${manageable ? " is-manageable" : ""}" data-uid="${escapeHtml(m.uid)}">
+               return `<div class="member-row${manageable ? " is-manageable" : ""}" data-uid="${escapeHtml(m.uid)}" role="listitem">
                        <span class="member-avatar" aria-hidden="true">${escapeHtml(avatarInitial)}</span>
                        <span class="member-who">
                           <strong>${escapeHtml(memberName)}${mdMark}${you}</strong>
@@ -3927,6 +4889,10 @@ function initAlbums() {
     const tabAlbums = $("#tabAlbums");
     tabSongs?.addEventListener("click", () => navigate("#/songs"));
     tabAlbums?.addEventListener("click", () => navigate("#/albums"));
+    // Album-detail appbar keeps the same two destinations visible while an
+    // album is open; the active tab is Albums, so both routes leave the detail.
+    $("#albumTabMySongs")?.addEventListener("click", () => navigate("#/songs"));
+    $("#albumTabAlbums")?.addEventListener("click", () => navigate("#/albums"));
     $(".home-tabs")?.addEventListener("keydown", (event) => {
        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
        const tabs = [tabSongs, tabAlbums].filter(Boolean);
@@ -3942,22 +4908,36 @@ function initAlbums() {
     $("#newAlbumBtn")?.addEventListener("click", openNewAlbumDialog);
     $("#joinAlbumBtn")?.addEventListener("click", openJoinAlbumDialog);
     $("#albumSearch")?.addEventListener("input", applyAlbumFilter);
+    $("#albumSort")?.addEventListener("change", (event) => {
+       albumSortMode = event.target.value === "title" ? "title" : "updated";
+       applyAlbumFilter();
+    });
+    $("#albumRoleFilter")?.addEventListener("click", (event) => {
+       const button = event.target.closest("[data-album-role]");
+       if (button) setAlbumRoleFilter(button.dataset.albumRole);
+    });
     $("#albumsRetry")?.addEventListener("click", refreshAlbums);
     const albumsTrack = $("#albumsGalleryCards");
-   albumsTrack?.addEventListener("click", (e) => {
-      const actionBtn = e.target.closest(".song-card-action");
-      const card = e.target.closest(".song-card");
-      if (!card) return;
-      const albumId = card.dataset.albumId;
+    albumsTrack?.addEventListener("click", async (e) => {
+       const card = e.target.closest(".album-index-card");
+       if (!card) return;
+       const albumId = card.dataset.albumId;
+       const copyBtn = e.target.closest("[data-act='copy-code']");
+       if (copyBtn) {
+          e.stopPropagation();
+          const copied = await copyTextToClipboard(copyBtn.dataset.code || "");
+          toast(copied ? "Invite code copied" : "Could not copy the invite code");
+          return;
+       }
+       const actionBtn = e.target.closest(".song-card-action");
        if (actionBtn) {
           e.stopPropagation();
           actionBtn.closest("details")?.removeAttribute("open");
           const act = actionBtn.dataset.act;
-         if (act === "edit") navigate(`#/albums/${encodeURIComponent(albumId)}`);
-         else if (act === "details") openEditAlbumDialog(albumId);
-         else if (act === "delete") {
-            const album = cachedAlbums.find((a) => a.albumId === albumId);
-            if (album) confirmDeleteAlbum(album);
+          if (act === "details") openEditAlbumDialog(albumId);
+          else if (act === "delete") {
+             const album = cachedAlbums.find((a) => a.albumId === albumId);
+             if (album) confirmDeleteAlbum(album);
           }
           return;
        }
@@ -3966,7 +4946,7 @@ function initAlbums() {
     });
     albumsTrack?.addEventListener("keydown", (e) => {
        if ((e.key === "Enter" || e.key === " ") && !e.target.closest("button, summary, input, a")) {
-          const card = e.target.closest(".song-card");
+          const card = e.target.closest(".album-index-card");
           if (card) { e.preventDefault(); navigate(`#/albums/${encodeURIComponent(card.dataset.albumId)}`); }
        }
     });
@@ -3979,44 +4959,69 @@ function initAlbums() {
    // New Song inside the open album. Guarded like the My Songs "New Song" button
    // so unsaved edits on the currently open arrangement can't be discarded
    // silently (a new album song opens as an unsaved draft).
-   $("#albumNewSongBtn")?.addEventListener("click", () => {
+   const startAlbumNewSong = () => {
       if (!currentAlbum) return;
       guardUnsavedThen(() => openAlbumNewSongFlow(currentAlbum.albumId));
-   });
+   };
+   $("#albumNewSongBtn")?.addEventListener("click", startAlbumNewSong);
    $("#albumLeaveBtn")?.addEventListener("click", confirmLeaveAlbum);
+   $("#albumInviteCopyBtn")?.addEventListener("click", async (event) => {
+      const code = event.currentTarget.dataset.code || "";
+      if (!code) return;
+      const copied = await copyTextToClipboard(code);
+      toast(copied ? "Invite code copied" : "Could not copy the invite code");
+   });
 
-   // Album song list (delegated): card opens editor; actions handle the rest.
+   // Song list filter (notation) and search.
+   $("#albumSongFilters")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-album-song-mode]");
+      if (button) setAlbumSongFilterMode(button.dataset.albumSongMode);
+   });
+   $("#albumSongSearch")?.addEventListener("input", applyAlbumSongFilter);
+   $("#albumSongSearchClear")?.addEventListener("click", () => {
+      const input = $("#albumSongSearch");
+      if (input) {
+         input.value = "";
+         applyAlbumSongFilter();
+         input.focus();
+      }
+   });
+   $("#albumClearFilters")?.addEventListener("click", () => {
+      resetAlbumSongFilters();
+      $("#albumSongSearch")?.focus();
+   });
+   $("#albumRetry")?.addEventListener("click", refreshAlbumSongs);
+
+   // Album song list (delegated): the row opens the arrangement; the menu owns
+   // the secondary actions. Same anatomy as My Songs, so keyboard behaviour is
+   // identical: Enter/Space on the row opens; controls keep their own keys.
    const albumTrack = $("#albumSongCards");
-   const role = () => currentAlbum?.role || "member";
    albumTrack?.addEventListener("click", (e) => {
       const actionBtn = e.target.closest(".song-card-action");
       const card = e.target.closest(".song-card");
       if (!card) return;
-      if (card.classList.contains("is-dim")) return; // blurred cards aren't interactive
-       if (actionBtn) {
-          e.stopPropagation();
-          actionBtn.closest("details")?.removeAttribute("open");
-          const act = actionBtn.dataset.act;
+      if (actionBtn) {
+         e.stopPropagation();
+         actionBtn.closest("details")?.removeAttribute("open");
+         const act = actionBtn.dataset.act;
          if (act === "edit") openAlbumSongInEditor(currentAlbum.albumId, card.dataset.id);
          else if (act === "pdf") openAlbumSongPdf(card.dataset.id);
          else if (act === "delete") confirmRemoveAlbumSong(card.dataset.id);
-          else if (act === "copy") copyAlbumSong(card.dataset.id);
-          return;
-       }
-       if (e.target.closest(".song-row-menu")) return;
-       openAlbumSongInEditor(currentAlbum.albumId, card.dataset.id);
-    });
-    albumTrack?.addEventListener("keydown", (e) => {
-       if ((e.key === "Enter" || e.key === " ") && !e.target.closest("button, summary, input, a")) {
-          const card = e.target.closest(".song-card");
-          if (card) {
-             e.preventDefault();
-             openAlbumSongInEditor(currentAlbum.albumId, card.dataset.id);
-          }
-       }
-    });
-    $("#albumSongSearch")?.addEventListener("input", applyAlbumSongFilter);
-    $("#albumRetry")?.addEventListener("click", refreshAlbumSongs);
+         else if (act === "copy") copyAlbumSong(card.dataset.id);
+         return;
+      }
+      if (e.target.closest(".song-row-menu")) return;
+      openAlbumSongInEditor(currentAlbum.albumId, card.dataset.id);
+   });
+   albumTrack?.addEventListener("keydown", (e) => {
+      if ((e.key === "Enter" || e.key === " ") && !e.target.closest("button, summary, input, a")) {
+         const card = e.target.closest(".song-card");
+         if (card) {
+            e.preventDefault();
+            openAlbumSongInEditor(currentAlbum.albumId, card.dataset.id);
+         }
+      }
+   });
 
    // Join dialog.
    $("#joinAlbumOk")?.addEventListener("click", submitJoinAlbum);
@@ -4115,14 +5120,19 @@ function initAlbums() {
 }
 
 async function openAlbumSongPdf(songId) {
+   const loading = beginEditorLoading("Preparing PDF…");
    try {
       const full = await loadAlbumSong(currentAlbum.albumId, songId);
       bridge.applyProject(full);
       bridge.setCloudContext({ scope: "album", albumId: currentAlbum.albumId, albumName: currentAlbum.name, songId, versionId: full.versionId || null, versionLabel: full.label || "", role: currentAlbum?.role || "member" });
+      endEditorLoading(loading);
       navigate(albumEditorUrl(currentAlbum.albumId, songId, full.versionId || null));
       setTimeout(() => bridge.openPdfOptions(), 340);
    } catch (error) {
       toast("Could not open that song");
+      navigate(`#/albums/${encodeURIComponent(currentAlbum.albumId)}`, { replace: true });
+   } finally {
+      endEditorLoading(loading);
    }
 }
 
@@ -4187,10 +5197,12 @@ export function initCloudUI(editorBridge) {
             versionCount: 3,
             latestVersionId: `v${i}`,
             latestVersionLabel: `Version ${(i % 3) + 1}`,
+            latestYoutubeId: i % 3 === 0 ? "dQw4w9WgXcQ" : "",
             latestEditorMode: i % 2 ? "numbers" : "chords",
-            latestKey: "G",
+            latestKey: ["G", "A", "B♭", "C", "D"][i % 5],
             latestMeter: "4/4",
-            updatedAt: Date.now(),
+            latestBPM: 68 + (i % 5),
+            updatedAt: Date.now() - i * 3600000,
          }));
          renderCards(songs);
          return $("#songCards")?.querySelectorAll(".song-card").length || 0;
@@ -4201,6 +5213,15 @@ export function initCloudUI(editorBridge) {
          updateEdgeBlur();
          updateNudgeVisibility();
       };
+      // Drive the real filter/sort path from the regression harness.
+      window.__cloudSetSongs = (songs) => {
+         cachedSongs = Array.isArray(songs) ? songs : [];
+         hasLoadedSongs = true;
+         updateHomeHeading();
+         applyFilter();
+         return $("#songCards")?.querySelectorAll(".song-card").length || 0;
+      };
+      window.__cloudApplyFilter = applyFilter;
    }
    $("#saveCloudBtn")?.addEventListener("click", saveToCloud);
    // #4 unsaved-changes indicator: the editor broadcasts a dirty-state change

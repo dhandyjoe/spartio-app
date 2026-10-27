@@ -2367,7 +2367,7 @@ body[data-meter="1/4"] #previewCard {
    .section-tools,
    .preview-actions,
    .transpose-control,
-   .playback-control,
+   .transport-control,
    .song-meta-lyrics-toggle,
    .history-toolbar,
    .bar-num,
@@ -2434,7 +2434,8 @@ body[data-meter="1/4"] #previewCard {
    .preview-header {
       margin-bottom: 0;
    }
-   .preview-header h2 {
+   .preview-header h1 {
+      margin: 5px 0 4px;
       font-size: 30px;
       letter-spacing: -0.8px;
       line-height: 1.05;
@@ -3067,8 +3068,7 @@ html.is-print-layout .preview-header > div:first-child > .eyebrow,
 html.is-print-layout .section-tools,
 html.is-print-layout .preview-actions,
 html.is-print-layout .transpose-control,
-html.is-print-layout .playback-control,
-html.is-print-layout .bpm-control,
+html.is-print-layout .transport-control,
 html.is-print-layout .song-meta-lyrics-toggle,
 html.is-print-layout .history-toolbar,
 html.is-print-layout .bar-tools,
@@ -3141,7 +3141,8 @@ html.is-print-layout #previewCard {
 html.is-print-layout #previewCard .preview-header {
    margin-bottom: 0;
 }
-html.is-print-layout #previewCard .preview-header h2 {
+html.is-print-layout #previewCard .preview-header h1 {
+   margin: 5px 0 4px;
    font-size: 30px;
    letter-spacing: -0.8px;
    line-height: 1.05;

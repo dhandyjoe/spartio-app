@@ -681,16 +681,10 @@ record(
    "PDF options: mid-row bars are tagged so redundant barlines are hidden",
    (await evaluate("document.querySelectorAll('.pdf-preview-page #previewCard .bar.pdf-mid-bar').length")) >= 1,
 );
-// Switch to Letter and confirm the paper geometry tracks the choice (margins
-// are locked to Narrow — there is no margin choice to click anymore).
-const letterPaperWidth = await evaluate(
-   "(()=>{const p=document.createElement('div');p.style.cssText='position:absolute;visibility:hidden;width:215.9mm';document.body.appendChild(p);const w=p.getBoundingClientRect().width;p.remove();return w})()",
-);
-await evaluate("document.querySelector('[data-paper=\"letter\"]').click();true");
+// Paper is locked to A4 (there is no Letter control to click anymore).
 record(
-   "PDF options: choosing Letter resizes the preview paper",
-   Math.abs((await evaluate("document.querySelector('.pdf-preview-page').offsetWidth")) - letterPaperWidth) <= 2,
-   JSON.stringify({ letterPaperWidth }),
+   "PDF options: paper choice is locked to A4",
+   await evaluate("!document.querySelector('[data-paper=\"letter\"]')&&!!document.querySelector('.pdf-preview-page')"),
 );
 await evaluate("document.querySelector('#pdfOptionsReset').click();true");
 record(
@@ -728,15 +722,11 @@ record(
 // ============================ CLOUD SYNC UI ============================
 // The Firebase network layer can't be exercised in headless CI, so these tests
 // cover the UI contract: topbar buttons exist, modals open centered & close,
-// the gallery renders cards (title/creator/key/time) in a two-row zigzag grid
-// that scrolls horizontally inside its container, search exists, prev/next
-// scroll the grid, and the layout never pushes the shell wider than the
-// viewport. Cards are rendered through the real render path via
-// window.__cloudRenderMock (exposed in test mode).
+// the gallery renders the song index (title/artist/key/meter/arrangement/
+// updated), search/filter/sort run through the real applyFilter path, and the
+// layout never pushes the shell wider than the viewport. Rows are rendered via
+// window.__cloudSetSongs (exposed in test mode).
 await navigate();
-
-// Helper: render N mock song cards through the real gallery render logic.
-const injectCards = (n) => evaluate(`window.__cloudRenderMock(${n})`);
 
 record(
    "Cloud: editor topbar exposes Back to My Songs + Save to Cloud (theme/profile moved to My Songs)",
@@ -767,15 +757,15 @@ record(
    ),
 );
 record(
-   "Nav: the editor header shows the document being edited (breadcrumb)",
+   "Nav: the sheet title is the page h1; the topbar keeps no duplicate breadcrumb",
    await evaluate(
-      "(()=>{const c=document.querySelector('.topbar #editorSongName');if(!c)return false;const t=document.querySelector('#songTitle');t.value='Breadcrumb Probe';t.dispatchEvent(new Event('input',{bubbles:true}));return c.textContent.trim()==='Breadcrumb Probe'})()",
+      "(()=>{const c=document.querySelector('#previewTitle');if(!c||c.tagName!=='H1'||document.querySelector('.topbar #editorSongName'))return false;const t=document.querySelector('#songTitle');t.value='Heading Probe';t.dispatchEvent(new Event('input',{bubbles:true}));return c.textContent.trim()==='Heading Probe'})()",
    ),
 );
 record(
    "Nav: home (My Songs) owns the brand lockup and the page title",
    await evaluate(
-      "(()=>{const b=document.querySelector('#mySongsModal .home-brand');const h=document.querySelector('#mySongsModal .home-intro h1');return !!b&&!!h&&/your song library/i.test(h.textContent)})()",
+      "(()=>{const b=document.querySelector('#mySongsModal .home-brand');const h=document.querySelector('#mySongsModal .home-intro h1');return !!b&&!!h&&/my songs/i.test(h.textContent)})()",
    ),
 );
 record(
@@ -797,7 +787,7 @@ record(
 record(
    "Nav: the profile button opens a card with identity, theme and Sign out",
    await evaluate(
-      "(()=>{const pop=document.querySelector('#accountPopover');if(!pop)return false;return !!pop.querySelector('#accountPopoverName')&&!!pop.querySelector('#accountPopoverEmail')&&!!pop.querySelector('#themeToggle')&&!!pop.querySelector('#signOutBtn')&&pop.hidden})()",
+      "(()=>{const pop=document.querySelector('#accountPopover');if(!pop)return false;return !!pop.querySelector('#accountPopoverName')&&!!pop.querySelector('#accountPopoverEmail')&&!pop.querySelector('#themeToggle')&&!!pop.querySelector('#signOutBtn')&&pop.hidden})()",
    ),
 );
 record(
@@ -881,7 +871,9 @@ record(
    ),
 );
 
-// Force the gallery open (bypassing auth) and inject mock cards to test UI.
+// Force the gallery open (bypassing auth) and drive the real filter/sort path
+// with believable song summaries. The desktop index is a list, not a carousel.
+await viewport(1440, 1000);
 await evaluate(
    "(()=>{const m=document.querySelector('#mySongsModal');m.hidden=false;m.classList.add('is-open');document.querySelector('#galleryLoading').hidden=true;return true})()",
 );
@@ -889,39 +881,45 @@ record(
    "Cloud: gallery overlay uses a grid layer",
    await evaluate("getComputedStyle(document.querySelector('#mySongsModal')).display==='grid'"),
 );
-await injectCards(6);
+const gallerySongs = [
+   { cloudId: "g1", title: "Goodness of God", artist: "Bethel Music", latestKey: "A♭", latestMeter: "4/4", latestBPM: 68, latestEditorMode: "chords", latestVersionLabel: "Sunday Lead", latestYoutubeId: "dQw4w9WgXcQ", versionCount: 2, updatedAt: Date.now() - 2 * 3600e3 },
+   { cloudId: "g2", title: "Way Maker", artist: "Sinach / Leeland", latestKey: "E", latestMeter: "4/4", latestBPM: 68, latestEditorMode: "numbers", latestVersionLabel: "Nashville Standard", latestYoutubeId: "", versionCount: 1, updatedAt: Date.now() - 26 * 3600e3 },
+   { cloudId: "g3", title: "Reckless Love", artist: "Cory Asbury", latestKey: "F♯m", latestMeter: "6/8", latestEditorMode: "chordpro", latestVersionLabel: "Acoustic with Bridge Tag", latestYoutubeId: "dQw4w9WgXcQ", versionCount: 3, updatedAt: Date.now() - 3 * 86400e3 },
+   { cloudId: "g4", title: "King of Kings", artist: "Hillsong Worship", latestKey: "D", latestMeter: "4/4", latestBPM: 68, latestEditorMode: "chords", latestVersionLabel: "Full Arrangement", latestYoutubeId: "", versionCount: 1, updatedAt: Date.now() - 5 * 86400e3 },
+   { cloudId: "g5", title: "10,000 Reasons", artist: "Matt Redman", latestKey: "G", latestMeter: "4/4", latestBPM: 68, latestEditorMode: "numbers", latestVersionLabel: "Youth Arrangement", latestYoutubeId: "dQw4w9WgXcQ", versionCount: 1, updatedAt: Date.now() - 7 * 86400e3 },
+   { cloudId: "g6", title: "Living Hope", artist: "Phil Wickham", latestKey: "E♭", latestMeter: "4/4", latestBPM: 68, latestEditorMode: "chordpro", latestVersionLabel: "Band Cut", latestYoutubeId: "", versionCount: 2, updatedAt: Date.now() - 14 * 86400e3 },
+];
+await evaluate(`window.__cloudSetSongs(${JSON.stringify(gallerySongs)})`);
 record(
-   "Cloud: gallery renders one card per song",
+   "Cloud: gallery renders one row per song",
    (await evaluate("document.querySelectorAll('.song-card').length")) === 6,
 );
 record(
-   "Cloud: each card shows title, creator, key, and time",
+   "Cloud: each row shows title, creator, key, meter, arrangement, and updated",
    await evaluate(
-      "[...document.querySelectorAll('.song-card')].every(c=>c.querySelector('.song-card-title')&&c.querySelector('.song-card-creator')&&c.querySelectorAll('.song-card-chip').length===2)",
+      "[...document.querySelectorAll('.song-card')].every(c=>c.querySelector('.song-card-title')&&c.querySelector('.song-card-creator')&&c.querySelector('.song-card-chip.is-key')&&c.querySelector('.song-card-chip.is-meter')&&c.querySelector('.song-card-arrangement')&&c.querySelector('.song-card-updated'))",
    ),
 );
 record(
-   "Cloud: cards are laid out in a two-row grid",
+   "Cloud: Meter column carries the tempo when the summary has it",
+   await evaluate("!!document.querySelector('.song-card-bpm')&&/BPM/.test(document.querySelector('.song-card-bpm').textContent)"),
+);
+record(
+   "Cloud: desktop index exposes the index column headers",
    await evaluate(
-      "(()=>{const g=document.querySelector('.cloud-cards');const rows=getComputedStyle(g).gridTemplateRows.trim().split(/\\s+/).filter(Boolean);return getComputedStyle(g).display==='grid'&&rows.length===2})()",
+      "(()=>{const h=document.querySelector('.library-table-head');return !!h&&getComputedStyle(h).display==='grid'&&h.textContent.includes('Song / artist')&&h.textContent.includes('Key')&&h.textContent.includes('Arrangement')&&h.textContent.includes('Updated')})()",
    ),
 );
 record(
-   "Cloud: columns zigzag (alternating up/down offsets)",
+   "Cloud: table header and rows share the same column template",
    await evaluate(
-      "(()=>{const cards=[...document.querySelectorAll('.song-card')];const a=getComputedStyle(cards[0]).getPropertyValue('--shift').trim();const b=getComputedStyle(cards[2]).getPropertyValue('--shift').trim();return a!==b&&a!==''&&b!==''})()",
+      "(()=>{const h=document.querySelector('.library-table-head'),r=document.querySelector('.song-card.is-index-row');return !!h&&!!r&&getComputedStyle(h).gridTemplateColumns===getComputedStyle(r).gridTemplateColumns})()",
    ),
 );
 record(
-   "Cloud: each card exposes export + delete + duplicate actions",
+   "Cloud: index is a vertical list with no horizontal overflow",
    await evaluate(
-      "[...document.querySelectorAll('.song-card')].every(c=>c.querySelector('.song-card-action.is-export')&&c.querySelector('.song-card-action.is-delete')&&c.querySelector('.song-card-action.is-duplicate'))",
-   ),
-);
-record(
-   "Cloud: card actions + detail are revealed on hover/focus",
-   await evaluate(
-      "(async()=>{const card=document.querySelector('.song-card');const actions=card.querySelector('.song-card-actions');const detail=card.querySelector('.song-card-detail');actions.style.transition='none';detail.style.transition='none';card.focus();await new Promise(r=>setTimeout(r,40));const ok=parseFloat(getComputedStyle(actions).opacity)===1&&parseFloat(getComputedStyle(detail).opacity)>0.5;card.blur();actions.style.transition='';detail.style.transition='';return ok})()",
+      "(()=>{const g=document.querySelector('.cloud-cards');return getComputedStyle(g).display==='flex'&&g.scrollWidth<=g.clientWidth+1})()",
    ),
 );
 record(
@@ -931,53 +929,100 @@ record(
    ),
 );
 record(
-   "Cloud: gallery has a title search box",
-   await evaluate("!!document.querySelector('#songSearch')&&document.querySelector('#songSearch').type==='search'"),
+   "Cloud: gallery has a title/artist/key search box",
+   await evaluate("!!document.querySelector('#songSearch')&&/title, artist, or key/i.test(document.querySelector('#songSearch').placeholder)"),
 );
 record(
-   "Cloud: search sits in a centered bar above the card list",
+   "Cloud: toolbar sits above the index and the hero sits above the toolbar",
    await evaluate(
-      "(()=>{const bar=document.querySelector('.cloud-gallery-searchbar');const body=document.querySelector('.cloud-gallery-body');const search=document.querySelector('.cloud-search');if(!bar||!body||!search)return false;const br=bar.getBoundingClientRect(),sr=search.getBoundingClientRect();const centered=Math.abs((sr.left+sr.right)/2-(br.left+br.right)/2)<=2;const above=br.bottom<=body.getBoundingClientRect().top+1;return centered&&above})()",
+      "(()=>{const hero=document.querySelector('.home-intro');const bar=document.querySelector('.cloud-gallery-searchbar');const body=document.querySelector('.cloud-gallery-body');if(!hero||!bar||!body)return false;return hero.getBoundingClientRect().bottom<=bar.getBoundingClientRect().top+1&&bar.getBoundingClientRect().bottom<=body.getBoundingClientRect().top+1})()",
    ),
 );
 record(
-   "Cloud: the hero heading sits above the search bar on its own row",
+   "Cloud: filter counts are computed from the real rows",
    await evaluate(
-      "(()=>{const hero=document.querySelector('.home-intro');const bar=document.querySelector('.cloud-gallery-searchbar');if(!hero||!bar)return false;return hero.getBoundingClientRect().bottom<=bar.getBoundingClientRect().top+1&&!bar.contains(hero)})()",
+      "(()=>{const counts=[...document.querySelectorAll('[data-filter-count]')].map(e=>e.textContent);return counts.join(',')==='6,2,2,2,3'})()",
    ),
 );
 record(
-   "Cloud: there is clear breathing room between the search bar and the song list",
+   "Cloud: the result line is hidden until a search or filter is active",
+   await evaluate("document.querySelector('.library-result-line').hidden===true"),
+);
+await evaluate("document.querySelector('#songFilterBtn').click();true");
+await click('[data-filter-mode="chords"]');
+record(
+   "Cloud: Chord Chart filter narrows the index and reports the range",
    await evaluate(
-      "(()=>{const search=document.querySelector('.cloud-search');const card=document.querySelector('.song-card');if(!search||!card)return false;const gap=card.getBoundingClientRect().top-search.getBoundingClientRect().bottom;return gap>=12})()",
+      "document.querySelectorAll('.song-card').length===2&&/Showing 2 of 6 songs/.test(document.querySelector('#libraryResultCount').textContent)",
+   ),
+);
+await evaluate("document.querySelector('#songFilterBtn').click();true");
+await click('[data-filter-mode="all"]');
+record(
+   "Cloud: All formats restores the whole library",
+   (await evaluate("document.querySelectorAll('.song-card').length")) === 6,
+);
+await evaluate("document.querySelector('#songFilterBtn').click();true");
+await click('[data-filter-video]');
+record(
+   "Cloud: With video filter narrows to rows that have a reference",
+   (await evaluate("document.querySelectorAll('.song-card').length")) === 3,
+);
+await evaluate("document.querySelector('#songFilterBtn').click();true");
+await click('[data-filter-video]');
+record(
+   "Cloud: toggling With video off restores the whole library",
+   (await evaluate("document.querySelectorAll('.song-card').length")) === 6,
+);
+await evaluate(
+   "(()=>{const i=document.querySelector('#songSearch');i.value='Sinach';i.dispatchEvent(new Event('input',{bubbles:true}));return true})()",
+);
+record(
+   "Cloud: search matches the artist as well as the title",
+   (await evaluate("document.querySelectorAll('.song-card').length")) === 1,
+);
+await evaluate(
+   "(()=>{const i=document.querySelector('#songSearch');i.value='F#m';i.dispatchEvent(new Event('input',{bubbles:true}));return true})()",
+);
+record(
+   "Cloud: search matches an enharmonic key spelling",
+   (await evaluate("document.querySelectorAll('.song-card').length")) === 1,
+);
+await evaluate(
+   "(()=>{const i=document.querySelector('#songSearch');i.value='zzzz';i.dispatchEvent(new Event('input',{bubbles:true}));return true})()",
+);
+record(
+   "Cloud: no-results state offers Clear filters",
+   await evaluate("!document.querySelector('#galleryNoResults').hidden&&!!document.querySelector('#galleryClearFilters')"),
+);
+await click("#galleryClearFilters");
+record(
+   "Cloud: Clear filters restores the library and clears the query",
+   await evaluate("document.querySelectorAll('.song-card').length===6&&document.querySelector('#songSearch').value===''"),
+);
+await evaluate(
+   "(()=>{const s=document.querySelector('#songSort');s.value='title';s.dispatchEvent(new Event('change',{bubbles:true}));return true})()",
+);
+record(
+   "Cloud: Title A-Z sorts the list",
+   (await text(".song-card-title")) === "10,000 Reasons",
+);
+record(
+   "Cloud: desktop rows expose Open plus the five secondary actions",
+   await evaluate(
+      "(()=>{const c=document.querySelector('.song-card');const open=c.querySelector('.song-card-open');return !!open&&getComputedStyle(open).display!=='none'&&c.querySelectorAll('.song-row-menu-items [data-act]').length===5})()",
    ),
 );
 record(
-   "Cloud: each card exposes an Export .file action",
-   await evaluate("!!document.querySelector('.song-card .song-card-action.is-export[data-act=\"export\"]')"),
-);
-record(
-   "Cloud: each card exposes an Edit action that routes to the chord editor",
+   "Cloud: the row menu uses an icon trigger with an accessible name",
    await evaluate(
-      "[...document.querySelectorAll('.song-card')].every(c=>!!c.querySelector('.song-card-action.is-edit[data-act=\"edit\"]'))",
+      "(()=>{const s=document.querySelector('.song-row-menu-trigger');return !!s&&!!s.querySelector('svg')&&/Actions for/.test(s.getAttribute('aria-label'))})()",
    ),
 );
 record(
-   "Cloud: each card exposes an Export .pdf action",
+   "Cloud: keyboard / focuses search and Escape clears it",
    await evaluate(
-      "[...document.querySelectorAll('.song-card')].every(c=>!!c.querySelector('.song-card-action.is-pdf[data-act=\"pdf\"]'))",
-   ),
-);
-record(
-   "Cloud: the per-card Export .pdf action is labelled for hover/assistive tech",
-   await evaluate(
-      "(()=>{const b=document.querySelector('.song-card .is-pdf');return !!b&&b.dataset.label==='Export .pdf'&&/as PDF$/.test(b.getAttribute('aria-label'))})()",
-   ),
-);
-record(
-   "Cloud: all five card actions fit inside the card (no clipping)",
-   await evaluate(
-      "(()=>{const card=document.querySelector('.song-card');const a=card.querySelector('.song-card-actions');if(a.querySelectorAll('button').length!==5)return false;const dock=card.querySelector('.song-card-dock');dock.style.transition='none';a.style.transition='none';card.focus();const ar=a.getBoundingClientRect(),cr=card.getBoundingClientRect();const ok=ar.left>=cr.left-0.5&&ar.right<=cr.right+0.5;card.blur();dock.style.transition='';a.style.transition='';return ok})()",
+      "(async()=>{const i=document.querySelector('#songSearch');i.value='probe';i.dispatchEvent(new Event('input',{bubbles:true}));document.body.focus();document.dispatchEvent(new KeyboardEvent('keydown',{key:'/',bubbles:true}));const focused=document.activeElement===i;i.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await new Promise(r=>setTimeout(r,30));return focused&&i.value===''})()",
    ),
 );
 record(
@@ -986,38 +1031,6 @@ record(
       "(async()=>{const t=document.querySelector('#songTitle');t.value='Card PDF Probe';t.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#exportBtn').click();await new Promise(r=>setTimeout(r,420));const modal=document.querySelector('#pdfOptionsModal');const host=document.querySelector('#pdfPreviewHost');const ok=!modal.hidden&&!!host.querySelector('#previewCard')&&document.querySelector('#previewTitle').textContent==='Card PDF Probe';document.querySelector('#pdfOptionsClose').click();await new Promise(r=>setTimeout(r,360));return ok&&modal.hidden})()",
    ),
 );
-// With many songs the grid scrolls horizontally INSIDE its container; the page
-// and header must stay put (this is the header-drift bug fix).
-await injectCards(30);
-await evaluate("window.__cloudUpdateBlur()");
-record(
-   "Cloud: many songs keep the page + header within the viewport (no drift)",
-   await evaluate(
-      "(()=>{const shell=document.querySelector('.cloud-gallery-shell');const head=document.querySelector('.cloud-gallery-head');return document.documentElement.scrollWidth<=document.documentElement.clientWidth+1&&shell.scrollWidth<=innerWidth+1&&head.getBoundingClientRect().right<=innerWidth+1})()",
-   ),
-);
-record(
-   "Cloud: the card grid itself overflows horizontally (scrollable)",
-   await evaluate("(()=>{const g=document.querySelector('.cloud-cards');return g.scrollWidth>g.clientWidth+4})()"),
-);
-record(
-   "Cloud: next nudge button appears when the grid can scroll",
-   await evaluate("!document.querySelector('#galleryNext').hidden"),
-);
-record("Cloud: grid starts scrolled to the left", (await evaluate("window.__cloudScrollLeft()")) <= 2);
-record(
-   "Cloud: prev nudge button is hidden at the start",
-   await evaluate("document.querySelector('#galleryPrev').hidden"),
-);
-await evaluate("window.__cloudNudge(1)");
-await evaluate("(async()=>{await new Promise(r=>setTimeout(r,420));return true})()");
-await evaluate("window.__cloudUpdateBlur()");
-record("Cloud: next nudge scrolls the grid to the right", (await evaluate("window.__cloudScrollLeft()")) > 2);
-record(
-   "Cloud: prev nudge becomes available after scrolling",
-   await evaluate("!document.querySelector('#galleryPrev').hidden"),
-);
-await evaluate("window.__cloudRenderMock(6);true");
 record(
    "Cloud: gallery exposes New Song and Attach Link controls",
    await evaluate("!!document.querySelector('#newSongBtn')&&!!document.querySelector('#attachLinkBtn')"),
