@@ -1,0 +1,121 @@
+/* Print-only rules, loaded last so paper wins over every screen theme. */
+@media print {
+   html,
+   body {
+      background: #fff !important;
+   }
+   .scroll-affordance,
+   .site-footer,
+   .pdf-options-modal,
+   .toast,
+   .editor-skeleton,
+   #editorLoadingStatus,
+   .library-skeleton-row,
+   .login-page,
+   /* App-shell notices must never reach paper. The member read-only banner in
+      particular was printing on the exported score, because the legacy print
+      rule in base/tokens.css only hides .topbar/.intro/.editor-card/.preview-footer. */
+   .album-banner,
+   /* Home/album gallery overlays live in .cloud-modal shells; the browser prints
+      whatever is open, so they must be excluded like every other dialog. */
+   .cloud-modal,
+   .home-fab,
+   /* Generic confirm-style dialogs (join/invite/members/new song/new album…)
+      have no shell of their own — hide them like every other overlay. */
+   .confirm-dialog {
+      display: none !important;
+   }
+   /* Multi-bar selection ("Copy bars") is EDITOR-ONLY chrome: the translucent
+      green fill, the #1f9d55 ring and the ✓ badge are pointer affordances, never
+      score content. Users routinely hit Export while a range is still selected,
+      and before this rule those rings printed as green boxes around the chords
+      in the PDF. (.bar-selection-bar is already hidden with the app chrome.)
+      pdf.js/events.js also clear the selection before printing — this rule is
+      the guarantee that no print path can ever leak it. */
+   .bar.is-selected,
+   .preview-section.is-selecting .bar.is-selected,
+   .preview-section.is-selecting .bar.is-selectable {
+      background: transparent !important;
+      outline: 0 !important;
+      box-shadow: none !important;
+      border-radius: 0;
+   }
+   .preview-section.is-selecting .bar.is-selected::after {
+      content: none !important;
+   }
+   .preview-stage {
+      display: contents;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+   }
+   .preview-viewport {
+      display: block;
+      overflow: visible;
+      padding: 0;
+   }
+   .preview-stage .preview-card {
+      min-width: 0;
+      margin: 0;
+      border: 0 !important;
+      border-radius: 0 !important;
+      background: #fff;
+      box-shadow: none !important;
+      padding: 0 !important;
+      zoom: 1 !important;
+   }
+   .preview-section .section-tools,
+   .delete-bar,
+   .section-menu {
+      display: none !important;
+   }
+   .bar-tools {
+      opacity: 0 !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
+   }
+   .pdf-signature {
+      position: fixed !important;
+      right: 9mm;
+      bottom: 3mm !important;
+      left: 9mm;
+      margin: 0 !important;
+      display: block !important;
+      color: #7b8b81;
+      font:
+         600 10.5px/1 Inter,
+         ui-sans-serif,
+         sans-serif;
+      letter-spacing: 0.04em;
+      text-align: center;
+   }
+}
+
+@media print {
+   html[data-theme="dark"] {
+      --ink: #163a2a;
+      --muted: #69756f;
+      --green: #237a50;
+      --dark-green: #155c3c;
+      --cream: #fcfbf5;
+      --surface: #fff;
+      --line: #d9e5dc;
+      --soft: #eaf5ed;
+      color-scheme: light !important;
+   }
+   html[data-theme="dark"] .preview-card {
+      color: #173a28 !important;
+   }
+   html[data-theme="dark"] .placed-chord,
+   html[data-theme="dark"] .sub-beat .placed-chord {
+      background: #dff2e4 !important;
+      color: #155c3c !important;
+   }
+   html[data-theme="dark"] .bar-batch {
+      border-color: #c9d6cb !important;
+   }
+   html[data-theme="dark"] .bar {
+      border-color: #173a28 !important;
+   }
+}
+

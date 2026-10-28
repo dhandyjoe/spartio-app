@@ -1,0 +1,2198 @@
+/* Library redesign, skeletons, desktop index and library dialogs. */
+/* ======================================================================
+   LOADING SKELETONS — the final layout with its values removed.
+
+   Two rules keep the page still while data arrives:
+   1. The library row reuses the REAL row classes (.song-card.is-index-row),
+      so its columns, min-height and responsive breakpoints cannot drift.
+   2. Every placeholder is a flat tone bar. No shimmer, no gradient, no
+      entrance animation. A skeleton is a quiet stand-in, not decoration.
+   ====================================================================== */
+.skeleton-bar {
+   display: block;
+   flex: none;
+   border-radius: 4px;
+   background: var(--library-skeleton);
+   animation: none;
+}
+
+/* ---- My Songs + album-detail rows ------------------------------------ */
+.library-skeleton-row {
+   pointer-events: none;
+   cursor: default;
+}
+.library-skeleton-row:hover,
+.library-skeleton-row:focus-visible {
+   background: transparent;
+   outline: none;
+}
+/* The real row paints .song-card-cover with --library-raised; this selector
+   has to be more specific so a loading cover stays a neutral placeholder. */
+.cloud-gallery.library-redesign .library-skeleton-row .song-card-cover,
+.cloud-album.library-redesign .library-skeleton-row .song-card-cover {
+   background: var(--library-skeleton);
+}
+.library-skeleton-row .song-card-identity {
+   gap: 6px;
+}
+.library-skeleton-row .sk-title-bar {
+   width: min(74%, 230px);
+   height: 13px;
+}
+.library-skeleton-row .sk-sub-bar {
+   width: min(46%, 140px);
+   height: 10px;
+}
+.library-skeleton-row .song-card-arrangement.skeleton-bar {
+   width: 82px;
+   height: 18px;
+   padding: 0;
+   background: var(--library-skeleton);
+}
+/* The desktop index paints the arrangement chip with --library-raised. Keep the
+   placeholder in the skeleton tone while still using the real chip frame. */
+.library-sheet .song-card.library-skeleton-row .song-card-arrangement.skeleton-bar {
+   background: var(--library-skeleton);
+}
+.library-skeleton-row .song-card-updated.skeleton-bar {
+   width: 58px;
+   height: 10px;
+   min-height: 0;
+}
+.library-skeleton-row .song-card-chip.is-key {
+   padding: 6px 10px;
+}
+.library-skeleton-row .sk-key-bar {
+   width: 24px;
+   height: 14px;
+   border-radius: 3px;
+}
+.library-skeleton-row .song-card-meter {
+   flex-direction: column;
+   align-items: flex-start;
+   gap: 3px;
+}
+.library-skeleton-row .sk-meter-bar {
+   width: 30px;
+   height: 10px;
+}
+.library-skeleton-row .sk-bpm-bar {
+   width: 38px;
+   height: 8px;
+}
+.library-skeleton-row .skeleton-media-bar {
+   width: 18px;
+   height: 14px;
+}
+.library-skeleton-row .song-card-actions {
+   gap: 6px;
+}
+.library-skeleton-row .sk-open-bar {
+   width: 54px;
+   height: 32px;
+   border-radius: 7px;
+}
+.library-skeleton-row .sk-menu-bar {
+   width: 36px;
+   height: 32px;
+   border-radius: 7px;
+}
+/* Below the desktop index the real row has no inline Open button — only the
+   kebab survives, sized like its 40px (tablet) / 44px (phone) trigger. */
+@media screen and (max-width: 1100px) {
+   .library-skeleton-row .sk-open-bar {
+      display: none;
+   }
+   .library-skeleton-row .sk-menu-bar {
+      width: 52px;
+      height: 40px;
+   }
+}
+@media screen and (max-width: 680px) {
+   .library-skeleton-row .sk-menu-bar {
+      width: 44px;
+      height: 44px;
+   }
+   /* Match the real two-line identity block (title + creator) so the phone row
+      keeps its pitch when the data lands. */
+   .library-skeleton-row .song-card-identity {
+      min-height: 36px;
+      justify-content: center;
+   }
+}
+
+/* ---- Albums index: keep the card frame, drop the words --------------- */
+#albumsPanel .album-index-grid .skeleton-card.is-album {
+   display: flex;
+   flex-direction: column;
+   gap: 8px;
+   width: auto;
+   height: auto;
+   min-height: 236px;
+   padding: 18px 20px 14px;
+   overflow: hidden;
+   border: 1px solid var(--library-line);
+   border-radius: 10px;
+   background: var(--library-surface);
+   pointer-events: none;
+   transform: none;
+   animation: none;
+}
+.skeleton-card.is-album .skeleton-album-head {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 12px;
+   min-height: 24px;
+}
+.skeleton-card.is-album .sk-role {
+   width: 58px;
+   height: 20px;
+   border-radius: 999px;
+}
+.skeleton-card.is-album .sk-menu {
+   width: 24px;
+   height: 24px;
+   border-radius: 6px;
+}
+.skeleton-card.is-album .sk-album-title {
+   width: min(64%, 260px);
+   height: 18px;
+   margin-top: 2px;
+}
+.skeleton-card.is-album .sk-album-sub {
+   width: min(94%, 460px);
+   height: 11px;
+}
+.skeleton-card.is-album .sk-album-sub.is-short {
+   width: min(62%, 300px);
+}
+.skeleton-card.is-album .skeleton-album-tracks {
+   display: flex;
+   flex-wrap: wrap;
+   gap: 6px;
+   min-height: 44px;
+   padding-top: 6px;
+}
+.skeleton-card.is-album .sk-track {
+   width: 112px;
+   height: 22px;
+   border-radius: 5px;
+}
+.skeleton-card.is-album .sk-track.is-short {
+   width: 82px;
+}
+.skeleton-card.is-album .skeleton-album-foot {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 12px;
+   margin-top: auto;
+   padding-top: 10px;
+   border-top: 1px solid var(--library-rule);
+}
+.skeleton-card.is-album .sk-stats {
+   width: 132px;
+   height: 10px;
+}
+.skeleton-card.is-album .sk-open {
+   width: 76px;
+   height: 10px;
+}
+/* Real cards reserve 70px for the recent-arrangements strip at this band and
+   land around 252px tall; the skeleton must not shrink the row. */
+@media screen and (min-width: 900px) {
+   #albumsPanel .album-index-grid .skeleton-card.is-album {
+      min-height: 252px;
+   }
+   .skeleton-card.is-album .skeleton-album-tracks {
+      min-height: 70px;
+   }
+}
+
+/* ---- Editor paper while a cloud arrangement loads -------------------- */
+@media screen {
+   .editor-skeleton {
+      width: 100%;
+   }
+   .editor-skeleton[hidden] {
+      display: none !important;
+   }
+   /* Mirror the real paper frame from `.preview-card` in styles/base/tokens.css
+      (radius, border, shadow, padding, min-height). Keep the two in sync; the
+      live zoom is shared so the skeleton does not grow or shrink when the
+      arrangement lands. */
+   .editor-skeleton-sheet {
+      width: 100%;
+      min-height: 620px;
+      margin: 0 auto;
+      padding: 42px 6%;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--cream);
+      box-shadow: 0 5px 18px rgba(24, 67, 42, 0.045);
+      zoom: var(--live-preview-zoom, 1);
+   }
+   .editor-skeleton .skeleton-bar {
+      background: var(--editor-skeleton);
+   }
+   .editor-skeleton-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+   }
+   .editor-skeleton-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: min(56%, 520px);
+   }
+   .editor-skeleton .sk-label {
+      width: 76px;
+      height: 9px;
+   }
+   .editor-skeleton .sk-headline {
+      width: 74%;
+      height: 28px;
+      border-radius: 6px;
+   }
+   .editor-skeleton .sk-artist {
+      width: 44%;
+      height: 12px;
+   }
+   .editor-skeleton-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+      min-width: 150px;
+      padding-top: 4px;
+   }
+   .editor-skeleton-meta .skeleton-bar {
+      height: 11px;
+   }
+   .editor-skeleton .sk-meta-long {
+      width: 132px;
+   }
+   .editor-skeleton .sk-meta-short {
+      width: 88px;
+   }
+   .editor-skeleton-rule {
+      display: block;
+      height: 2px;
+      margin: 26px 0 24px;
+      border-radius: 2px;
+      background: var(--editor-line);
+   }
+   .editor-skeleton-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 18px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--editor-rule);
+   }
+   .editor-skeleton-section:last-of-type {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: 0;
+   }
+   .editor-skeleton-section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+   }
+   .editor-skeleton .sk-section {
+      width: 92px;
+      height: 12px;
+   }
+   .editor-skeleton .sk-section-tools {
+      width: 52px;
+      height: 9px;
+   }
+   .editor-skeleton-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 14px;
+   }
+   .editor-skeleton-bars .skeleton-bar {
+      flex: 1 1 0;
+      height: 32px;
+   }
+   .editor-skeleton-lyrics {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding-top: 2px;
+   }
+   .editor-skeleton .sk-lyric {
+      width: 72%;
+      height: 9px;
+   }
+   .editor-skeleton .sk-lyric.is-short {
+      width: 46%;
+   }
+   /* The real paper is display:none only while the loading sheet owns the
+      viewport. The print/PDF layout rules stay outside this screen block. */
+   html[data-editor-loading="1"] #previewCard,
+   html[data-editor-loading="1"] .scroll-affordance {
+      display: none;
+   }
+   /* Loading is mode-agnostic. ChordPro hides .preview-stage in favour of
+      .cp-workspace, so during a cloud fetch the skeleton must take over and the
+      old ChordPro document must not remain readable underneath it. */
+   html[data-editor-loading="1"] body[data-editor-mode="chordpro"] main > .preview-stage,
+   html[data-editor-loading="1"] body[data-editor-mode="chordpro"] .preview-stage {
+      display: block !important;
+   }
+   html[data-editor-loading="1"] body[data-editor-mode="chordpro"] .cp-workspace {
+      display: none !important;
+   }
+}
+@media screen and (max-width: 850px) {
+   .editor-skeleton-sheet {
+      padding: 30px 6%;
+   }
+}
+@media screen and (max-width: 680px) {
+   #albumsPanel .album-index-grid .skeleton-card.is-album {
+      min-height: 194px;
+      padding: 14px;
+   }
+   .skeleton-card.is-album .skeleton-album-tracks {
+      min-height: 32px;
+   }
+   .skeleton-card.is-album .sk-track {
+      width: 96px;
+   }
+   .editor-skeleton-head {
+      flex-direction: column;
+      gap: 16px;
+   }
+   .editor-skeleton-copy {
+      width: 100%;
+   }
+   .editor-skeleton-meta {
+      flex-direction: row;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      padding-top: 0;
+   }
+   .editor-skeleton .sk-headline {
+      height: 24px;
+   }
+   .editor-skeleton-bars {
+      gap: 8px;
+   }
+   .editor-skeleton-bars .skeleton-bar {
+      height: 28px;
+   }
+}
+/* Add-from-My-Songs dialog: wider card + in-dialog search field. */
+.confirm-dialog-card.add-song-dialog-card {
+   width: min(500px, 94vw);
+   max-height: 84vh;
+   align-items: stretch;
+   text-align: left;
+}
+.add-song-search {
+   position: relative;
+   margin: 4px 0 6px;
+}
+.add-song-search .cloud-search-icon {
+   left: 16px;
+   top: 50%;
+   transform: translateY(-50%);
+}
+.add-song-search input {
+   padding-left: 42px;
+}
+#addSongDialog .add-song-list {
+   max-height: 300px;
+}
+/* Album card hover: reveal the description in place of the count/updated line.
+   Longer descriptions (up to ALBUM_DESC_MAX) are clipped with an ellipsis;
+   the full text stays in the tooltip. */
+.song-card.is-album .song-card-desc-text {
+   display: none;
+}
+.song-card.is-album:hover .song-card-desc-text,
+.song-card.is-album:focus-visible .song-card-desc-text {
+   display: -webkit-box;
+   -webkit-line-clamp: 4;
+   -webkit-box-orient: vertical;
+   overflow: hidden;
+   color: var(--muted);
+   font-size: 12px;
+   line-height: 1.4;
+   margin-top: 2px;
+}
+.song-card.is-album:hover .song-card-meta-line,
+.song-card.is-album:focus-visible .song-card-meta-line {
+   display: none;
+}
+/* Album card description accent (lobby always dark → always-on): pale green
+   reads better than --muted on the dark card. */
+.song-card.is-album:hover .song-card-desc-text,
+.song-card.is-album:focus-visible .song-card-desc-text {
+   color: #9fb69f;
+}
+/* ============================================================================
+   TABLET LAYOUT (681–1050px) + touch targets — added for the responsive pass.
+   Goal: the score sheet fits the pane on a portrait tablet (no forced horizontal
+   scroll) and the controls are comfortably tappable. Everything here is
+   SCREEN-ONLY, so `@media print` / `html.is-print-layout` (paper geometry) is
+   untouched — the print contract asserted by tests/unit.test.mjs stays green.
+   ============================================================================ */
+
+/* Turn the score pane into a query container so the SHEET can respond to the
+   space it actually has, not just the viewport. Enabled on tablet + desktop;
+   phones (<=680px) keep their own stacked rules, and this never runs in print. */
+@media screen and (min-width: 681px) {
+   .preview-stage {
+      container-type: inline-size;
+      container-name: score;
+   }
+   /* When the pane is narrower than a full desktop sheet, let the sheet FILL it
+      instead of overflowing horizontally. (A roomy desktop keeps the 920px paper
+      width and scrolls, exactly as before.) */
+   @container score (max-width: 940px) {
+      .preview-stage .preview-card {
+         min-width: 0;
+      }
+      .preview-viewport {
+         padding: 16px 18px 26px;
+      }
+   }
+}
+
+/* Tablet band (681–1050px): even out the horizontal gutters so the score gets
+   more width. Covers portrait iPads (incl. the 13" at 1024px). */
+@media (min-width: 681px) and (max-width: 1050px) {
+   main {
+      padding-right: 20px;
+      padding-left: 20px;
+   }
+}
+
+/* Touch tablets: several controls were sized for a mouse (the transpose buttons
+   are 22×20px). Give them a comfortable tap target. Scoped to `pointer: coarse`
+   so a tablet-with-trackpad or a desktop mouse keeps the compact look. */
+@media (min-width: 681px) and (max-width: 1050px) and (pointer: coarse) {
+   .transpose-buttons button {
+      width: 40px;
+      height: 40px;
+      font-size: 18px;
+   }
+   .metronome-btn {
+      width: 40px;
+      height: 40px;
+   }
+   .topbar .history-toolbar {
+      height: 36px;
+   }
+   .topbar .history-btn {
+      width: 38px;
+   }
+   .topbar .transport-control {
+      height: 36px;
+   }
+   .section-lyrics-toggle,
+   .section-chord-above-toggle,
+   .text-button,
+   .section-menu summary {
+      min-height: 40px;
+   }
+}
+/* ============================================================================
+   MY SONGS toolbar on tablet: keep every action on ONE row.
+   The header is a 3-column grid; the EQUAL-width side columns (`1fr auto 1fr`)
+   used to squeeze the labelled buttons into a second line, dropping the profile
+   button below. Two fixes:
+     1. Let the side columns take their NATURAL width (`auto … auto`) so the
+        actions are never squeezed by an equal-width rule.
+     2. Collapse the SECONDARY actions (Attach Link, Back to editor, the account
+        label) to icons — their accessible name now comes from aria-label. The
+        primary "＋ New Song" keeps its label.
+   Screen-only (the gallery never prints), so it cannot affect paper/PDF.
+   ============================================================================ */
+@media (min-width: 681px) and (max-width: 1050px) {
+   .cloud-gallery-head {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 14px;
+      padding: 14px 20px;
+   }
+   .cloud-gallery-actions {
+      flex-wrap: nowrap;
+      gap: 8px;
+   }
+   .cloud-gallery-actions #attachLinkBtn .btn-label,
+   .cloud-gallery-actions #backToEditorBtn .btn-label,
+   .cloud-gallery-actions .account-label {
+      display: none;
+   }
+   .cloud-gallery-actions #attachLinkBtn,
+   .cloud-gallery-actions #accountBtn,
+   .cloud-gallery-actions #backToEditorBtn {
+      min-width: 44px;
+      min-height: 44px;
+      padding: 8px;
+      justify-content: center;
+   }
+}
+
+/* ============================================================================
+   STICKY FOOTER — pin the site footer to the bottom of the viewport.
+   The page relies on `body { min-height: 100vh }`, so a SHORT document (a song
+   with few bars on a tall tablet viewport) left a large empty band BELOW the
+   footer. A flex-column body with a growing <main> removes that gap on every
+   screen size — the footer sits flush with the bottom instead of floating with
+   dead space under it.
+   SCREEN-ONLY: a print job has no viewport, so `@media print` keeps the plain
+   block flow and the exported PDF geometry is untouched.
+   ============================================================================ */
+@media screen {
+   body {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      /* dvh avoids the iOS address-bar overshoot; the vh line above is the fallback. */
+      min-height: 100dvh;
+   }
+   /* main grows to fill the free space, pushing the footer to the bottom.
+      IMPORTANT: `main` carries `margin: auto` (base/tokens.css). In a flex column the
+      horizontal auto-margins would make it SHRINK-TO-FIT instead of stretching
+      (the grid then collapses to 0 → a blank editor page), so an explicit
+      `width: 100%` is required. The vertical auto-margins are pinned to 0 so the
+      item simply fills the free space (a vertical auto-margin would otherwise
+      centre it, leaving a gap under the topbar); the left/right auto-margins
+      stay, keeping the column centred up to its max-width. */
+   body > main {
+      flex: 1 0 auto;
+      width: 100%;
+      margin-top: 0;
+      margin-bottom: 0;
+   }
+   /* Never let the footer/header be squashed by the growing item. */
+   body > .site-footer,
+   body > .topbar {
+      flex-shrink: 0;
+   }
+}
+
+/* ============================================================================
+   TOUCH TABLETS — tap-to-reveal for per-bar tools (no hover).
+   A tablet has no hover, so the desktop `:hover` reveal for the per-bar tools
+   (⧉ copy, ⎘ paste, × delete) and the × chord badge never fires.
+   Instead we reveal them for the bar the user just TOUCHED — the `.is-tools-open`
+   class that events.js sets (and render.js re-stamps so it survives a re-render).
+   Scoped to touch TABLETS only (`hover: none` + ≥681px): PHONES keep their
+   always-on layout and DESKTOP keeps its hover behaviour — both untouched.
+   Screen-only: print hides every one of these via `display:none` (preview.css /
+   styles/base/print.css), so the exported PDF is unaffected.
+   ============================================================================ */
+@media (hover: none) and (min-width: 681px) {
+   /* Hidden AND not tappable until the bar is touched. (The old `opacity: 0`
+      with no pointer-events made them invisible yet still clickable — a stray
+      tap near a bar's top-right corner could delete it.) */
+   .bar-tools,
+   .delete-bar,
+   .placed-chord .chord-remove {
+      opacity: 0;
+      pointer-events: none;
+   }
+   .bar.is-tools-open .bar-tools,
+   .bar.is-tools-open .delete-bar,
+   .bar.is-tools-open .placed-chord .chord-remove {
+      opacity: 1;
+      pointer-events: auto;
+   }
+   /* Compact, top-aligned tool cluster so it never covers the notation/chord
+      lane. The bar only has ~13px of clear space ABOVE the beats (lane measured
+      13→67px of an 80px bar), so centring a big button hid the chords. These now
+      match the desktop footprint (tucked into the bar's top-right corner). */
+   .copy-bar,
+   .paste-bar,
+   .delete-bar {
+      width: 24px;
+      height: 24px;
+   }
+   .bar.is-tools-open .bar-tools {
+      top: 2px;
+      right: 32px;
+      transform: none;
+   }
+   .delete-bar {
+      top: 2px;
+      right: 4px;
+      transform: none;
+   }
+   /* Empty-beat "+" hint for the revealed bar — the desktop version lives under
+      `@media (hover: hover)` and never shows on touch. */
+   .bar.is-tools-open .beat.drop-target:not(.has-chord)::after {
+      content: "+";
+      position: absolute;
+      z-index: 6;
+      inset: 21px 16px 3px;
+      display: grid;
+      place-items: center;
+      font:
+         700 15px/1 Inter,
+         ui-sans-serif,
+         sans-serif;
+      color: var(--green);
+      pointer-events: none;
+   }
+}
+
+
+/* ======================================================================
+   LIBRARY REDESIGN — songbook index
+   Real arrangement metadata leads each row; green is reserved for primary
+   actions, selection, and the notation mark. Lists stay visible on every width.
+   ====================================================================== */
+@media screen {
+   .cloud-gallery.library-redesign,
+   .cloud-album.library-redesign {
+      --library-ground: #f2f5f2;
+      --library-surface: #ffffff;
+      --library-raised: #eaf5ed;
+      --library-skeleton: #dfe7e1;
+      --library-line: #d9e5dc;
+      --library-rule: #e9efea;
+      --library-control: #7c8a80;
+      --library-head: #f1f4f1;
+      --library-hover: #f2f5f2;
+      --library-key-bg: #ecefec;
+      --library-ink: #163a2a;
+      --library-muted: #526259;
+      --library-accent: #237a50;
+      --library-primary: #237a50;
+      --library-primary-ink: #ffffff;
+      --library-primary-hover: #1e6e47;
+      --library-secondary: #426653;
+      --library-secondary-ink: #ffffff;
+      --library-danger: #a32922;
+      padding: 0;
+      display: grid;
+      place-items: stretch;
+      background: var(--library-ground);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+      transition: none;
+   }
+   .cloud-modal.library-redesign[hidden] {
+      display: none;
+   }
+   html[data-theme="dark"] .cloud-gallery.library-redesign,
+   html[data-theme="dark"] .cloud-album.library-redesign {
+      --library-ground: #0f1110;
+      --library-surface: #171a18;
+      --library-raised: #202521;
+      --library-skeleton: #2c342e;
+      --library-line: #343a35;
+      --library-rule: #292e2a;
+      --library-control: #7c8a80;
+      --library-head: #202521;
+      --library-hover: #1d211e;
+      --library-key-bg: #202521;
+      --library-ink: #f1f4f2;
+      --library-muted: #b6c0b8;
+      --library-accent: #83c99d;
+      --library-primary: #237a50;
+      --library-primary-ink: #ffffff;
+      --library-primary-hover: #1e6e47;
+      --library-secondary: #3f6b55;
+      --library-secondary-ink: #ffffff;
+      --library-danger: #ff9b8f;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-shell,
+   .cloud-album.library-redesign .cloud-album-shell {
+      width: 100%;
+      max-width: none;
+      height: 100%;
+      min-height: 0;
+      margin: 0;
+      overflow: hidden;
+      transform: none;
+      opacity: 1;
+      transition: none;
+      background: var(--library-ground);
+      color: var(--library-ink);
+   }
+   .cloud-gallery.library-redesign.is-open .cloud-gallery-shell {
+      transform: none;
+      opacity: 1;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-head {
+      position: relative;
+      z-index: 5;
+      display: grid;
+      grid-template-columns: minmax(150px, 1fr) auto minmax(150px, 1fr);
+      align-items: center;
+      gap: 24px;
+      width: 100%;
+      padding: 0 clamp(20px, 4vw, 56px);
+      min-height: 68px;
+      border: 0;
+      background: var(--library-ground);
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-heading {
+      justify-self: start;
+   }
+   .cloud-gallery.library-redesign .home-brand {
+      gap: 9px;
+   }
+   .cloud-gallery.library-redesign .home-brand-icon {
+      width: 30px;
+      height: 30px;
+      background: transparent;
+   }
+   .cloud-gallery.library-redesign .home-brand-icon img {
+      width: 100%;
+      height: 100%;
+   }
+   .cloud-gallery.library-redesign .home-brand-text {
+      font: 700 16px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.02em;
+      color: var(--library-ink);
+   }
+   .cloud-gallery.library-redesign .home-brand-text small {
+      display: none;
+   }
+   .cloud-gallery.library-redesign .home-tabs {
+      display: flex !important;
+      align-items: stretch;
+      justify-content: center;
+      gap: 26px;
+      align-self: stretch;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+   }
+   .cloud-gallery.library-redesign .home-tab {
+      position: relative;
+      min-height: 44px;
+      padding: 0 2px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--library-muted);
+      font: 600 14px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+      white-space: nowrap;
+   }
+   .cloud-gallery.library-redesign .home-tab::after {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      height: 2px;
+      background: var(--library-accent);
+      content: "";
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 180ms ease-out;
+   }
+   .cloud-gallery.library-redesign .home-tab:hover {
+      color: var(--library-ink);
+      background: transparent;
+   }
+   .cloud-gallery.library-redesign .home-tab.is-active,
+   .cloud-gallery.library-redesign .home-tab[aria-selected="true"] {
+      color: var(--library-ink);
+      background: transparent;
+   }
+   .cloud-gallery.library-redesign .home-tab.is-active::after,
+   .cloud-gallery.library-redesign .home-tab[aria-selected="true"]::after {
+      transform: scaleX(1);
+   }
+   .cloud-gallery.library-redesign .home-tab:focus-visible,
+   .cloud-gallery.library-redesign .account-button:focus-visible,
+   .cloud-gallery.library-redesign .gallery-resume:focus-visible {
+      outline: 3px solid var(--library-accent);
+      outline-offset: 3px;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-actions {
+      justify-self: end;
+      flex-wrap: nowrap;
+      gap: 12px;
+   }
+   .cloud-gallery.library-redesign .account-button {
+      min-height: 44px;
+      gap: 9px;
+      padding: 4px 10px 4px 4px;
+      border: 1px solid var(--library-control);
+      border-radius: 10px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+      font: 600 13px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .account-button:hover,
+   .cloud-gallery.library-redesign .account-button[aria-expanded="true"] {
+      border-color: var(--library-control);
+      background: var(--library-surface);
+   }
+   .cloud-gallery.library-redesign .account-avatar {
+      width: 34px;
+      height: 34px;
+      background: var(--library-raised);
+      color: var(--library-accent);
+      font-size: 13px;
+      font-weight: 700;
+   }
+   .cloud-gallery.library-redesign .account-button:not(.is-authed) .account-avatar {
+      display: none;
+   }
+   .cloud-gallery.library-redesign .gallery-resume {
+      min-height: 40px;
+      padding: 0 10px;
+      background: transparent;
+      color: var(--library-muted);
+   }
+   .cloud-gallery.library-redesign .account-popover {
+      z-index: 20;
+      width: min(300px, calc(100vw - 32px));
+      padding: 8px;
+      border: 1px solid var(--library-control);
+      border-radius: 14px;
+      background: var(--library-surface);
+      box-shadow: 0 12px 32px rgba(15, 35, 22, 0.16);
+   }
+   .cloud-gallery.library-redesign .account-popover-id {
+      padding: 12px;
+   }
+   .cloud-gallery.library-redesign .account-popover-avatar {
+      width: 40px;
+      height: 40px;
+      background: var(--library-raised);
+      color: var(--library-accent);
+      font: 700 15px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .account-popover-who strong {
+      color: var(--library-ink);
+      font: 600 14px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .account-popover-who small {
+      color: var(--library-muted);
+      font-size: 12px;
+   }
+   .cloud-gallery.library-redesign .account-popover-sep {
+      background: var(--library-rule);
+   }
+   .cloud-gallery.library-redesign .account-popover-item {
+      min-height: 44px;
+      border-radius: 8px;
+      color: var(--library-ink);
+      font: 500 14px/1.3 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .account-popover-item:hover,
+   .cloud-gallery.library-redesign .account-popover-item:focus-visible {
+      background: var(--library-raised);
+      outline: 2px solid transparent;
+   }
+   .cloud-gallery.library-redesign .account-popover-item.is-signout {
+      color: var(--library-danger);
+   }
+   .cloud-gallery.library-redesign .account-popover-item.is-signout:hover,
+   .cloud-gallery.library-redesign .account-popover-item.is-signout:focus-visible {
+      background: color-mix(in srgb, var(--library-danger) 10%, var(--library-surface));
+   }
+   .cloud-gallery.library-redesign .account-popover-item:disabled {
+      color: var(--library-muted);
+      opacity: 0.75;
+   }
+   .cloud-gallery.library-redesign .account-popover-item:focus-visible {
+      outline: 3px solid var(--library-accent);
+      outline-offset: -2px;
+   }
+
+   .cloud-gallery.library-redesign .library-content {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      width: min(1240px, 100%);
+      min-width: 0;
+      min-height: 0;
+      margin: 0 auto;
+      padding: 34px clamp(20px, 4vw, 56px) 40px;
+      overflow: hidden;
+   }
+   .cloud-gallery.library-redesign .library-view-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 22px;
+   }
+   .cloud-gallery.library-redesign .home-intro {
+      min-width: 0;
+      margin: 0;
+      padding: 0;
+      text-align: left;
+   }
+   .cloud-gallery.library-redesign .home-intro h1 {
+      color: var(--library-ink);
+      font: 650 26px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.035em;
+   }
+   .cloud-gallery.library-redesign .home-intro p {
+      margin: 5px 0 0;
+      color: var(--library-muted);
+      font-size: 13px;
+   }
+   .cloud-gallery.library-redesign .library-count {
+      color: inherit;
+      font-weight: 500;
+   }
+   .cloud-gallery.library-redesign .library-view-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+   }
+   .cloud-gallery.library-redesign .library-view-actions > [hidden],
+   .cloud-gallery.library-redesign .cloud-gallery-actions > [hidden] {
+      display: none !important;
+   }
+   .cloud-gallery.library-redesign .library-view-actions .button {
+      display: inline-flex !important;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 14px;
+      border-radius: 8px;
+      font: 600 13px/1.2 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .library-view-actions .button-primary,
+   .cloud-album.library-redesign .cloud-album-actions .button-primary {
+      border: 1px solid var(--library-primary);
+      background: var(--library-primary);
+      color: var(--library-primary-ink);
+   }
+   html[data-theme="dark"] .cloud-gallery.library-redesign .library-view-actions .button-primary,
+   html[data-theme="dark"] .cloud-album.library-redesign .cloud-album-actions .button-primary {
+      background: var(--library-primary);
+      color: var(--library-primary-ink);
+   }
+   .cloud-gallery.library-redesign .library-view-actions .button-ghost,
+   .cloud-album.library-redesign .cloud-album-actions .button-ghost,
+   .cloud-gallery.library-redesign .gallery-resume {
+      border: 1px solid var(--library-control);
+      background: var(--library-surface);
+      color: var(--library-ink);
+   }
+   .cloud-gallery.library-redesign .library-view-actions .button:hover,
+   .cloud-album.library-redesign .cloud-album-actions .button:hover {
+      filter: brightness(0.96);
+   }
+   .cloud-gallery.library-redesign .home-tab-panel[hidden] {
+      display: none !important;
+   }
+   .cloud-gallery.library-redesign .home-tab-panel:not([hidden]) {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      min-height: 0;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-searchbar {
+      justify-content: flex-start;
+      gap: 10px;
+      padding: 0 0 16px;
+   }
+   .cloud-gallery.library-redesign .cloud-search {
+      width: min(540px, 100%);
+   }
+   .cloud-gallery.library-redesign .cloud-search input,
+   .cloud-album.library-redesign .cloud-search input {
+      min-height: 44px;
+      padding: 9px 14px 9px 40px;
+      border: 1px solid var(--library-control);
+      border-radius: 8px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+      font: 400 14px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .cloud-search input::placeholder,
+   .cloud-album.library-redesign .cloud-search input::placeholder {
+      color: var(--library-muted);
+      opacity: 1;
+   }
+   .library-dialog .new-song-name-input::placeholder,
+   .library-dialog .attach-link-input::placeholder {
+      color: var(--library-muted);
+      opacity: 1;
+   }
+   .cloud-gallery.library-redesign .cloud-search input:focus-visible,
+   .cloud-album.library-redesign .cloud-search input:focus-visible {
+      border-color: var(--library-accent);
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 35%, transparent);
+      outline-offset: 1px;
+      box-shadow: none;
+   }
+   .cloud-gallery.library-redesign .cloud-search-icon {
+      left: 14px;
+      color: var(--library-muted);
+   }
+   .cloud-gallery.library-redesign .topbar-help-btn {
+      display: grid;
+      place-items: center;
+      flex: 0 0 44px;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      border: 1px solid var(--library-control);
+      border-radius: 8px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+   }
+   .cloud-gallery.library-redesign .topbar-help-icon {
+      margin: 0;
+   }
+   .cloud-gallery.library-redesign .topbar-help-btn:focus-visible {
+      outline: 3px solid var(--library-accent);
+      outline-offset: 2px;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-body {
+      position: relative;
+      display: block;
+      flex: 1 1 auto;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
+   }
+   .cloud-gallery.library-redesign .cloud-cards,
+   .cloud-album.library-redesign .cloud-cards {
+      display: flex;
+      flex-direction: column;
+      align-content: stretch;
+      justify-content: flex-start;
+      gap: 0;
+      width: 100%;
+      height: auto;
+      min-height: 0;
+      max-width: 100%;
+      padding: 0;
+      overflow: visible;
+      touch-action: auto;
+   }
+   .cloud-gallery.library-redesign .cloud-cards::-webkit-scrollbar,
+   .cloud-album.library-redesign .cloud-cards::-webkit-scrollbar {
+      display: initial;
+   }
+   .cloud-gallery.library-redesign .song-card,
+   .cloud-album.library-redesign .song-card {
+      position: relative;
+      display: grid;
+      grid-template-columns: 52px minmax(180px, 1.45fr) minmax(130px, 0.9fr) minmax(260px, 1.7fr);
+      grid-template-rows: minmax(52px, auto);
+      grid-template-areas: "cover identity detail dock";
+      align-items: center;
+      gap: 16px;
+      width: 100%;
+      height: auto;
+      min-height: 82px;
+      padding: 11px 10px;
+      overflow: visible;
+      border: 0;
+      border-bottom: 1px solid var(--library-rule);
+      border-radius: 0;
+      background: transparent;
+      color: var(--library-ink);
+      cursor: pointer;
+      filter: none;
+      opacity: 1;
+      transform: none;
+      box-shadow: none;
+      transition: background-color 0.14s ease;
+      animation: none;
+   }
+   .cloud-gallery.library-redesign .song-card:hover,
+   .cloud-album.library-redesign .song-card:hover {
+      border-color: var(--library-rule);
+      background: var(--library-surface);
+      filter: none;
+      transform: none;
+      box-shadow: none;
+   }
+   .cloud-gallery.library-redesign .song-card:focus-visible,
+   .cloud-album.library-redesign .song-card:focus-visible {
+      z-index: 2;
+      outline: 3px solid var(--library-accent);
+      outline-offset: 1px;
+      background: var(--library-surface);
+   }
+   .cloud-gallery.library-redesign .song-card:has(.song-row-menu[open]),
+   .cloud-album.library-redesign .song-card:has(.song-row-menu[open]) {
+      z-index: 30;
+   }
+   .cloud-gallery.library-redesign .song-card:active,
+   .cloud-album.library-redesign .song-card:active {
+      transform: none;
+   }
+   .cloud-gallery.library-redesign .song-card-cover,
+   .cloud-album.library-redesign .song-card-cover {
+      grid-area: cover;
+      position: relative;
+      width: 48px;
+      height: 48px;
+      min-height: 0;
+      aspect-ratio: 1;
+      overflow: hidden;
+      border: 0;
+      border-radius: 6px;
+      background: var(--library-raised);
+      color: var(--library-accent);
+   }
+   .cloud-gallery.library-redesign .song-card-cover::after,
+   .cloud-album.library-redesign .song-card-cover::after {
+      display: none;
+   }
+   .cloud-gallery.library-redesign .song-card-cover.is-motif,
+   .cloud-album.library-redesign .song-card-cover.is-motif {
+      background: var(--library-raised);
+   }
+   .cloud-gallery.library-redesign .song-card-cover-img,
+   .cloud-album.library-redesign .song-card-cover-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 1;
+   }
+   .cloud-gallery.library-redesign .song-card-mode-mark,
+   .cloud-album.library-redesign .song-card-mode-mark {
+      position: static;
+      font: 700 26px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      opacity: 1;
+      filter: none;
+      transform: none;
+      transition: transform 150ms ease-out;
+   }
+   /* Only the OLD text fallback uses the generic accent. The shared `.mode-mark`
+      SVG keeps its own mode token (green / purple / amber) in every list. */
+   .cloud-gallery.library-redesign .song-card-mode-mark:not(.mode-mark),
+   .cloud-album.library-redesign .song-card-mode-mark:not(.mode-mark) {
+      color: var(--library-accent);
+   }
+   .cloud-gallery.library-redesign .song-card:hover .song-card-mode-mark,
+   .cloud-gallery.library-redesign .song-card:focus-visible .song-card-mode-mark,
+   .cloud-album.library-redesign .song-card:hover .song-card-mode-mark,
+   .cloud-album.library-redesign .song-card:focus-visible .song-card-mode-mark {
+      transform: translateY(-1px) scale(1.08);
+   }
+   .cloud-gallery.library-redesign .song-card-cover-tokens,
+   .cloud-album.library-redesign .song-card-cover-tokens {
+      display: none;
+   }
+   .cloud-gallery.library-redesign .song-card-identity,
+   .cloud-album.library-redesign .song-card-identity {
+      grid-area: identity;
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: 4px;
+      padding: 0;
+   }
+   .cloud-gallery.library-redesign .song-card-title,
+   .cloud-album.library-redesign .song-card-title {
+      overflow: hidden;
+      margin: 0;
+      color: var(--library-ink);
+      font: 600 15px/1.3 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.01em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+   }
+   .cloud-gallery.library-redesign .song-card-creator,
+   .cloud-album.library-redesign .song-card-creator {
+      display: block;
+      overflow: hidden;
+      margin: 0;
+      color: var(--library-muted);
+      font: 400 13px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+   }
+   .cloud-gallery.library-redesign .song-card-detail,
+   .cloud-album.library-redesign .song-card-detail {
+      grid-area: detail;
+      display: flex;
+      flex-direction: column;
+      overflow: visible;
+      align-self: center;
+      margin: 0;
+      padding: 0;
+      color: var(--library-muted);
+      font: 400 12px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+      opacity: 1;
+      transform: none;
+   }
+   .cloud-gallery.library-redesign .song-card-arrangement,
+   .cloud-gallery.library-redesign .song-card-updated,
+   .cloud-album.library-redesign .song-card-arrangement,
+   .cloud-album.library-redesign .song-card-updated {
+      display: block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+   }
+   .cloud-gallery.library-redesign .song-card-updated,
+   .cloud-album.library-redesign .song-card-updated {
+      color: var(--library-muted);
+      font-size: 11px;
+   }
+   .cloud-gallery.library-redesign .song-card-dock,
+   .cloud-album.library-redesign .song-card-dock {
+      grid-area: dock;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      min-height: 44px;
+      overflow: visible;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
+      transition: none;
+   }
+   .cloud-gallery.library-redesign .song-card-meta,
+   .cloud-album.library-redesign .song-card-meta {
+      display: flex;
+      flex: 1 1 auto;
+      align-items: center;
+      gap: 8px 12px;
+      min-width: 0;
+      padding: 0;
+      overflow: hidden;
+   }
+   .cloud-gallery.library-redesign .song-card-chip,
+   .cloud-gallery.library-redesign .song-card-role,
+   .cloud-album.library-redesign .song-card-chip,
+   .cloud-album.library-redesign .song-card-role {
+      flex: none;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--library-muted);
+      font: 500 12px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+      white-space: nowrap;
+   }
+   .cloud-gallery.library-redesign .song-card-chip,
+   .cloud-album.library-redesign .song-card-chip {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+   }
+   .cloud-gallery.library-redesign .song-card-chip small,
+   .cloud-album.library-redesign .song-card-chip small {
+      color: var(--library-muted);
+      font: 500 12px/1.35 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0;
+      text-transform: none;
+   }
+   .cloud-gallery.library-redesign .song-card-chip strong,
+   .cloud-album.library-redesign .song-card-chip strong {
+      color: var(--library-ink);
+      font: 700 13px/1.35 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .song-card-chip.is-key strong,
+   .cloud-album.library-redesign .song-card-chip.is-key strong {
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1.1;
+   }
+   .cloud-gallery.library-redesign .song-card-role.is-md,
+   .cloud-album.library-redesign .song-card-role.is-md {
+      color: var(--library-accent);
+      font-weight: 600;
+   }
+   .cloud-gallery.library-redesign .song-card-actions,
+   .cloud-album.library-redesign .song-card-actions {
+      position: relative;
+      display: flex;
+      flex: none;
+      align-items: center;
+      justify-content: flex-end;
+      width: auto;
+      min-height: 44px;
+      padding: 0;
+      overflow: visible;
+      opacity: 1;
+      pointer-events: auto;
+   }
+   .cloud-gallery.library-redesign .song-row-menu,
+   .cloud-album.library-redesign .song-row-menu {
+      position: relative;
+   }
+   .cloud-gallery.library-redesign .song-row-menu-trigger,
+   .cloud-album.library-redesign .song-row-menu-trigger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 52px;
+      min-height: 40px;
+      padding: 0 9px;
+      border: 1px solid var(--library-control);
+      border-radius: 7px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+      cursor: pointer;
+      font: 500 12px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+      list-style: none;
+   }
+   .cloud-gallery.library-redesign .song-row-menu-trigger::-webkit-details-marker,
+   .cloud-album.library-redesign .song-row-menu-trigger::-webkit-details-marker {
+      display: none;
+   }
+   .cloud-gallery.library-redesign .song-row-menu-trigger:hover,
+   .cloud-album.library-redesign .song-row-menu-trigger:hover {
+      border-color: var(--library-accent);
+   }
+   .cloud-gallery.library-redesign .song-row-menu-trigger:focus-visible,
+   .cloud-album.library-redesign .song-row-menu-trigger:focus-visible {
+      outline: 3px solid var(--library-accent);
+      outline-offset: 2px;
+   }
+   .cloud-gallery.library-redesign .song-row-menu-items,
+   .cloud-album.library-redesign .song-row-menu-items {
+      position: absolute;
+      z-index: 20;
+      top: calc(100% + 5px);
+      right: 0;
+      display: flex;
+      flex-direction: column;
+      width: max-content;
+      min-width: 168px;
+      max-width: min(240px, calc(100vw - 32px));
+      padding: 5px;
+      border: 1px solid var(--library-control);
+      border-radius: 9px;
+      background: var(--library-surface);
+      box-shadow: 0 10px 26px rgba(15, 35, 22, 0.16);
+   }
+   .cloud-gallery.library-redesign .song-card-action,
+   .cloud-album.library-redesign .song-card-action {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      min-height: 40px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--library-ink);
+      cursor: pointer;
+      font: 400 13px/1.3 Inter, ui-sans-serif, system-ui, sans-serif;
+      text-align: left;
+   }
+   .cloud-gallery.library-redesign .song-card-action:hover,
+   .cloud-gallery.library-redesign .song-card-action:focus-visible,
+   .cloud-album.library-redesign .song-card-action:hover,
+   .cloud-album.library-redesign .song-card-action:focus-visible {
+      outline: none;
+      background: var(--library-raised);
+   }
+   .cloud-gallery.library-redesign .song-card-action.is-delete,
+   .cloud-album.library-redesign .song-card-action.is-delete {
+      color: var(--library-danger);
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-state,
+   .cloud-album.library-redesign .cloud-gallery-state {
+      position: static;
+      display: flex;
+      width: 100%;
+      min-height: 190px;
+      margin: 12px 0;
+      padding: 28px;
+      border: 1px solid var(--library-line);
+      border-radius: 10px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-state[hidden],
+   .cloud-album.library-redesign .cloud-gallery-state[hidden] {
+      display: none !important;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-state-icon {
+      color: var(--library-accent);
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-state p,
+   .cloud-album.library-redesign .cloud-gallery-state p {
+      margin: 10px 0 4px;
+      color: var(--library-ink);
+      font: 600 16px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-state span,
+   .cloud-album.library-redesign .cloud-gallery-state span {
+      max-width: 52ch;
+      color: var(--library-muted);
+      font: 400 14px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-state .button {
+      min-height: 42px;
+      margin-top: 12px;
+      border-radius: 8px;
+   }
+   .cloud-album.library-redesign .cloud-album-shell {
+      display: flex;
+      flex-direction: column;
+   }
+   .cloud-album.library-redesign .cloud-modal-title {
+      color: var(--library-ink);
+      font: 650 22px/1.25 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.025em;
+   }
+   .cloud-album.library-redesign .cloud-album-description {
+      max-width: 62ch;
+      margin: 4px 0 0;
+      color: var(--library-muted);
+      font: 400 13px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-album.library-redesign .cloud-modal-sub {
+      max-width: none;
+      margin-top: 4px;
+      color: var(--library-muted);
+      font-size: 12px;
+   }
+
+   .cloud-gallery.library-redesign .cloud-modal-title,
+   .cloud-gallery.library-redesign .confirm-dialog-title,
+   .cloud-album.library-redesign .confirm-dialog-title {
+      color: var(--library-ink);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .confirm-dialog-backdrop {
+      background: rgba(12, 24, 17, 0.42);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+   }
+   .confirm-dialog-card {
+      gap: 14px;
+      align-items: stretch;
+      padding: 26px;
+      border: 1px solid var(--library-control, var(--line));
+      border-radius: 16px;
+      text-align: left;
+   }
+   .confirm-dialog-icon {
+      width: auto;
+      height: auto;
+      align-self: flex-start;
+      border-radius: 0;
+      background: transparent;
+      color: var(--dark-green);
+      font-size: 20px;
+   }
+   html[data-theme="dark"] .confirm-dialog-icon {
+      background: transparent;
+   }
+   .confirm-dialog-title {
+      margin: 0;
+      font: 650 20px/1.25 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.025em;
+   }
+   .confirm-dialog-desc {
+      max-width: 58ch;
+      color: #526259;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-line;
+   }
+   html[data-theme="dark"] .confirm-dialog-desc {
+      color: #b6c0b8;
+   }
+   .confirm-dialog .new-song-name-label,
+   .confirm-dialog .pdf-field-label {
+      color: #526259;
+   }
+   html[data-theme="dark"] .confirm-dialog .new-song-name-label,
+   html[data-theme="dark"] .confirm-dialog .pdf-field-label {
+      color: #b6c0b8;
+   }
+   .confirm-dialog-actions {
+      justify-content: flex-end;
+      gap: 8px;
+   }
+   .confirm-dialog-actions .button {
+      flex: 0 1 auto;
+      min-width: 110px;
+      min-height: 44px;
+      border-radius: 8px;
+   }
+   .confirm-dialog-actions-stacked .button {
+      width: 100%;
+   }
+
+   .library-dialog .confirm-dialog-card {
+      --library-control: #7c8a80;
+      --library-muted: #526259;
+      position: relative;
+      width: min(560px, calc(100vw - 32px));
+      max-height: min(88vh, 860px);
+      align-items: stretch;
+      gap: 18px;
+      overflow-y: auto;
+      padding: 30px;
+      border-color: var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+      color: var(--ink);
+      box-shadow: 0 18px 50px rgba(15, 35, 22, 0.2);
+   }
+   .library-dialog#joinAlbumDialog .confirm-dialog-card {
+      width: min(460px, calc(100vw - 32px));
+   }
+   html[data-theme="dark"] .library-dialog .confirm-dialog-card {
+      --library-muted: #b6c0b8;
+   }
+   .library-dialog-head {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding-right: 32px;
+   }
+   .library-dialog-head .confirm-dialog-desc {
+      margin: 0;
+      color: var(--library-muted);
+   }
+   .library-dialog-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 40px;
+      height: 40px;
+      border: 1px solid var(--library-control, #7c8a80);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+      font: 400 24px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .library-dialog-close:hover {
+      background: var(--soft);
+      color: var(--ink);
+   }
+   .library-dialog-close:focus-visible {
+      outline: 3px solid var(--green);
+      outline-offset: 2px;
+   }
+   .library-dialog .new-song-name {
+      margin: 0;
+   }
+   .library-dialog .new-song-name-label,
+   .library-dialog .mode-picker-fieldset legend {
+      margin: 0 0 8px;
+      color: var(--ink);
+      font: 600 13px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0;
+      text-transform: none;
+   }
+   .library-dialog .new-song-name-label em {
+      color: var(--library-muted);
+      font-weight: 400;
+   }
+   .library-dialog .new-song-name-input,
+   .library-dialog .attach-link-input {
+      min-height: 46px;
+      border: 1px solid var(--library-control, var(--control, var(--line)));
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      font: 400 15px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .library-dialog .new-song-name-input:focus-visible,
+   .library-dialog .attach-link-input:focus-visible {
+      border-color: var(--green);
+      outline: 3px solid color-mix(in srgb, var(--green) 30%, transparent);
+      outline-offset: 1px;
+      box-shadow: none;
+   }
+   .library-dialog .new-song-name-hint {
+      margin-top: 7px;
+      color: var(--library-muted);
+      font-size: 13px;
+   }
+   .library-dialog .new-song-name-error {
+      color: #a32922;
+      font-size: 13px;
+   }
+   html[data-theme="dark"] .library-dialog .new-song-name-error {
+      color: #ff9b8f;
+   }
+   .library-dialog .mode-picker-card,
+   .mode-picker-card {
+      width: min(940px, calc(100vw - 32px));
+      max-height: min(92vh, 900px);
+   }
+   .mode-picker-fieldset {
+      min-width: 0;
+      margin: 0;
+      padding: 0;
+      border: 0;
+   }
+   .mode-picker-fieldset legend {
+      padding: 0;
+   }
+   .mode-picker-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 0;
+      padding: 0;
+   }
+   .mode-card {
+      display: flex;
+      min-width: 0;
+      min-height: 100%;
+      flex-direction: column;
+      gap: 14px;
+      padding: 14px;
+      border: 1px solid var(--library-control, #7c8a80);
+      border-radius: 10px;
+      background: var(--surface);
+      box-shadow: none;
+      color: var(--ink);
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.14s ease, background-color 0.14s ease;
+   }
+   .mode-card:hover {
+      border-color: var(--green);
+      background: var(--surface);
+      box-shadow: none;
+      transform: none;
+   }
+   .mode-card:focus-visible {
+      outline: 3px solid var(--green);
+      outline-offset: 2px;
+   }
+   .mode-card.is-selected {
+      border: 2px solid var(--green);
+      padding: 13px;
+      background: var(--soft);
+   }
+   html[data-theme="dark"] .library-dialog .mode-card {
+      border-color: var(--library-control);
+      background: var(--surface);
+      box-shadow: none;
+   }
+   html[data-theme="dark"] .library-dialog .mode-card:hover,
+   html[data-theme="dark"] .library-dialog .mode-card.is-selected {
+      border-color: var(--green);
+      background: var(--soft);
+   }
+   .mode-card-visual {
+      display: flex;
+      min-height: 72px;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border: 0;
+      border-radius: 6px;
+      background: var(--soft);
+   }
+   .mode-card-score {
+      color: var(--ink);
+      font: 700 17px/1.25 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.02em;
+      white-space: normal;
+      overflow-wrap: anywhere;
+   }
+   .mode-card-beats {
+      color: var(--library-muted, var(--muted));
+      font: 400 11px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      white-space: normal;
+   }
+   .mode-card-body {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+   }
+   .mode-card-title {
+      margin: 0;
+      color: var(--ink);
+      font: 600 15px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.01em;
+   }
+   .mode-card-sub {
+      color: var(--library-muted, var(--muted));
+      font: 400 13px/1.45 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .mode-card-sub code {
+      color: var(--ink);
+      font: inherit;
+      font-weight: 600;
+   }
+   .mode-card-points {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin: 4px 0 0;
+      padding: 0;
+      color: var(--library-muted, var(--muted));
+      list-style: none;
+   }
+   .mode-card-points span {
+      color: var(--library-muted, var(--muted));
+      font: 400 12px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .mode-card-points span::before {
+      content: "· ";
+      color: var(--green);
+      font-weight: 700;
+   }
+   .library-dialog-actions {
+      margin-top: 0;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+   }
+   .library-dialog-actions .button:disabled {
+      border-color: var(--library-control, var(--line));
+      background: var(--soft);
+      color: var(--library-muted, var(--muted));
+      cursor: not-allowed;
+      opacity: 1;
+   }
+   .library-dialog .confirm-dialog-actions .button-ghost {
+      border-color: var(--library-control, #7c8a80);
+      background: var(--surface);
+      color: var(--ink);
+   }
+   .library-dialog .confirm-dialog-actions .button:disabled {
+      border-color: var(--library-control, var(--line));
+      background: var(--soft);
+      color: var(--library-muted, var(--muted));
+      box-shadow: none;
+      cursor: not-allowed;
+      opacity: 1;
+   }
+   .attach-link-field {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+   }
+   .library-dialog .attach-link-input {
+      min-height: 120px;
+      margin: 0;
+      padding: 12px;
+      resize: vertical;
+      overflow-wrap: anywhere;
+   }
+   .library-dialog .attach-link-input::placeholder {
+      color: var(--muted);
+      opacity: 1;
+   }
+   .attach-link-card .new-song-name-hint {
+      margin: 0;
+   }
+   .confirm-dialog-card.add-song-dialog-card {
+      width: min(650px, calc(100vw - 32px));
+      max-height: min(88vh, 780px);
+   }
+   .add-song-search {
+      margin: 0;
+   }
+   .add-song-search input {
+      padding-left: 40px;
+   }
+   .add-song-list {
+      gap: 0;
+      max-height: min(38vh, 340px);
+      margin: 0;
+      overflow: auto;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+   }
+   .add-song-option {
+      min-height: 60px;
+      padding: 9px 10px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      background: transparent;
+   }
+   .add-song-option:last-child {
+      border-bottom: 0;
+   }
+   .add-song-option:has(input:checked) {
+      background: var(--soft);
+   }
+   .add-song-option:focus-within {
+      outline: 2px solid var(--green);
+      outline-offset: -2px;
+   }
+   .add-song-option input[type="radio"] {
+      width: 18px;
+      height: 18px;
+   }
+   .add-song-option-text strong {
+      color: var(--ink);
+      font: 600 14px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .add-song-option-text small {
+      color: var(--library-muted, var(--muted));
+      font: 400 12px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .add-song-loading,
+   .add-song-state {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 72px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--library-muted, var(--muted));
+      font: 400 14px/1.45 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .add-song-loading[hidden],
+   .add-song-state[hidden] {
+      display: none !important;
+   }
+   .add-song-state.is-error {
+      color: var(--library-danger, #a32922);
+   }
+   .add-song-state .button {
+      min-height: 38px;
+      border-radius: 7px;
+   }
+   .cloud-album.library-redesign .cloud-gallery-searchbar .cloud-search {
+      width: min(540px, 100%);
+   }
+}
+
+@media screen and (max-width: 900px) {
+   .cloud-gallery.library-redesign .song-card,
+   .cloud-album.library-redesign .song-card {
+      grid-template-columns: 48px minmax(140px, 1.2fr) minmax(100px, 0.8fr) minmax(180px, 1.3fr);
+      gap: 12px;
+   }
+   .cloud-gallery.library-redesign .song-card-meta,
+   .cloud-album.library-redesign .song-card-meta {
+      flex-wrap: wrap;
+      gap: 4px 10px;
+   }
+}
+
+@media screen and (max-width: 680px) {
+   .cloud-gallery.library-redesign .cloud-gallery-head {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas: "brand actions" "tabs tabs";
+      gap: 0 10px;
+      min-height: 0;
+      padding: 6px 16px 0;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-heading {
+      grid-area: brand;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-actions {
+      grid-area: actions;
+      gap: 6px;
+   }
+   .cloud-gallery.library-redesign .home-tabs {
+      grid-area: tabs;
+      justify-content: flex-start;
+      gap: 22px;
+      min-height: 44px;
+      margin-top: 5px;
+   }
+   .cloud-gallery.library-redesign .home-tab {
+      min-height: 44px;
+      font-size: 13px;
+   }
+   .cloud-gallery.library-redesign .account-button {
+      min-width: 44px;
+      min-height: 44px;
+      justify-content: center;
+      padding: 4px;
+   }
+   .cloud-gallery.library-redesign .account-button.is-authed .account-label {
+      display: none;
+   }
+   .cloud-gallery.library-redesign .account-button:not(.is-authed) .account-label {
+      display: inline !important;
+   }
+   .cloud-gallery.library-redesign .account-avatar {
+      width: 34px;
+      height: 34px;
+   }
+   .cloud-gallery.library-redesign .gallery-resume {
+      display: inline-flex !important;
+      min-width: 44px;
+      padding: 0 8px;
+   }
+   .cloud-gallery.library-redesign .library-content {
+      padding: 22px 16px max(22px, env(safe-area-inset-bottom));
+   }
+   .cloud-gallery.library-redesign .library-view-head {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 14px;
+      margin-bottom: 18px;
+   }
+   .cloud-gallery.library-redesign .home-intro h1 {
+      font-size: 22px;
+   }
+   .cloud-gallery.library-redesign .library-view-actions {
+      justify-content: flex-start;
+      width: 100%;
+   }
+   .cloud-gallery.library-redesign .library-view-actions .button {
+      min-height: 44px;
+      padding: 0 11px;
+      font-size: 12px;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-searchbar {
+      gap: 8px;
+      padding-bottom: 12px;
+   }
+   .cloud-gallery.library-redesign .cloud-search {
+      flex: 1 1 0;
+      min-width: 0;
+   }
+   .cloud-gallery.library-redesign .cloud-search input {
+      min-height: 44px;
+   }
+   .cloud-gallery.library-redesign .cloud-gallery-body,
+   .cloud-album.library-redesign .cloud-album-body {
+      overflow: auto;
+   }
+   .cloud-gallery.library-redesign .song-card,
+   .cloud-album.library-redesign .song-card {
+      grid-template-columns: 44px minmax(0, 1fr) auto;
+      grid-template-rows: auto auto auto;
+      grid-template-areas: "cover identity actions" "cover detail actions" "cover dock actions";
+      gap: 4px 10px;
+      min-height: 86px;
+      padding: 11px 2px;
+   }
+   .cloud-gallery.library-redesign .song-card-cover,
+   .cloud-album.library-redesign .song-card-cover {
+      width: 40px;
+      height: 40px;
+   }
+   .cloud-gallery.library-redesign .song-card-mode-mark,
+   .cloud-album.library-redesign .song-card-mode-mark {
+      font-size: 19px;
+   }
+   .cloud-gallery.library-redesign .song-card-title,
+   .cloud-album.library-redesign .song-card-title {
+      font-size: 14px;
+   }
+   .cloud-gallery.library-redesign .song-card-creator,
+   .cloud-album.library-redesign .song-card-creator {
+      font-size: 12px;
+   }
+   .cloud-gallery.library-redesign .song-card-detail,
+   .cloud-album.library-redesign .song-card-detail {
+      font-size: 11px;
+   }
+   .cloud-gallery.library-redesign .song-card-detail,
+   .cloud-album.library-redesign .song-card-detail {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 1px 5px;
+   }
+   .cloud-gallery.library-redesign .song-card-dock,
+   .cloud-album.library-redesign .song-card-dock {
+      grid-template-columns: minmax(0, 1fr) auto;
+      min-height: 20px;
+      gap: 5px;
+   }
+   .cloud-gallery.library-redesign .song-card-meta,
+   .cloud-album.library-redesign .song-card-meta {
+      flex-wrap: wrap;
+      gap: 4px 8px;
+   }
+   .cloud-gallery.library-redesign .song-card-chip,
+   .cloud-gallery.library-redesign .song-card-role,
+   .cloud-album.library-redesign .song-card-chip,
+   .cloud-album.library-redesign .song-card-role {
+      font-size: 11px;
+   }
+   .cloud-gallery.library-redesign .song-row-menu-trigger,
+   .cloud-album.library-redesign .song-row-menu-trigger {
+      min-width: 44px;
+      min-height: 44px;
+      padding: 0 7px;
+      font-size: 11px;
+   }
+   .cloud-gallery.library-redesign .song-row-menu-items,
+   .cloud-album.library-redesign .song-row-menu-items {
+      position: fixed;
+      top: auto;
+      right: 16px;
+      bottom: max(16px, env(safe-area-inset-bottom));
+      min-width: min(240px, calc(100vw - 32px));
+   }
+   .cloud-gallery.library-redesign .song-card-action,
+   .cloud-album.library-redesign .song-card-action {
+      min-height: 44px;
+   }
+   .cloud-album.library-redesign .cloud-album-hero {
+      display: none;
+   }
+   .cloud-album.library-redesign .cloud-modal-title {
+      font-size: 18px;
+   }
+   .cloud-album.library-redesign .cloud-album-description {
+      font-size: 12px;
+   }
+   .cloud-album.library-redesign .cloud-modal-sub {
+      font-size: 11px;
+   }
+   .cloud-album.library-redesign .cloud-album-searchbar {
+      padding-right: 16px;
+      padding-left: 16px;
+   }
+   .library-dialog .confirm-dialog-card,
+   .library-dialog .confirm-dialog-card.mode-picker-card,
+   .confirm-dialog-card.add-song-dialog-card {
+      width: 100%;
+      max-height: min(92dvh, 900px);
+      padding: 18px 14px max(14px, env(safe-area-inset-bottom));
+      border-radius: 16px;
+   }
+   .library-dialog .mode-picker-card {
+      gap: 10px;
+   }
+   .mode-picker-grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 6px;
+   }
+   .mode-card {
+      min-height: 0;
+      flex-direction: row;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px;
+   }
+   .mode-card.is-selected {
+      padding: 7px;
+   }
+   .mode-card-visual {
+      flex: 0 0 78px;
+      height: auto;
+      min-height: 54px;
+      padding: 6px;
+      overflow: visible;
+   }
+   .mode-card-score {
+      font-size: 13px;
+   }
+   .mode-card-beats {
+      font-size: 11px;
+      line-height: 1.1;
+   }
+   .mode-card-body {
+      min-width: 0;
+      gap: 3px;
+   }
+   .mode-card-title {
+      font-size: 14px;
+   }
+   .mode-card-sub {
+      font-size: 12px;
+   }
+   .mode-card-points {
+      display: flex;
+      gap: 2px;
+   }
+   .mode-card-points span {
+      font-size: 11px;
+      line-height: 1.25;
+   }
+   .library-dialog .new-song-name-hint {
+      margin-top: 4px;
+   }
+   .library-dialog-actions .button {
+      min-width: 0;
+      flex: 1 1 0;
+   }
+   .library-dialog .library-dialog-actions {
+      position: sticky;
+      z-index: 3;
+      bottom: -1px;
+      margin-top: 0;
+      padding: 12px 0 max(10px, env(safe-area-inset-bottom));
+      background: var(--surface);
+   }
+}
+
+@media screen and (max-width: 380px) {
+   .cloud-gallery.library-redesign .library-view-actions {
+      gap: 6px;
+   }
+   .cloud-gallery.library-redesign .library-view-actions .button {
+      padding: 0 8px;
+      font-size: 11px;
+   }
+   .mode-card-visual {
+      flex-basis: 74px;
+   }
+}
+
+@media screen and (hover: none) and (pointer: coarse) {
+   .cloud-gallery.library-redesign .library-view-actions .button,
+   .cloud-gallery.library-redesign .song-row-menu-trigger,
+   .cloud-gallery.library-redesign .topbar-help-btn,
+   .cloud-gallery.library-redesign .account-button,
+   .cloud-album.library-redesign .song-row-menu-trigger,
+   .cloud-album.library-redesign .album-back,
+   .cloud-album.library-redesign .cloud-album-actions .button {
+      min-height: 44px;
+   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+   .cloud-gallery.library-redesign *,
+   .cloud-album.library-redesign *,
+   .library-dialog *,
+   .confirm-dialog * {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      transition-delay: 0s !important;
+      animation-duration: 0.01ms !important;
+      animation-delay: 0s !important;
+      animation-iteration-count: 1 !important;
+   }
+   .cloud-gallery.library-redesign .home-tab::after,
+   .cloud-gallery.library-redesign .song-card-mode-mark,
+   .cloud-album.library-redesign .song-card-mode-mark {
+      transition: none !important;
+      transform: none !important;
+   }
+}
+
+@media screen {
+   :where(
+      .cloud-gallery.library-redesign,
+      .cloud-gallery.library-redesign *,
+      .cloud-album.library-redesign,
+      .cloud-album.library-redesign *,
+      .confirm-dialog,
+      .confirm-dialog *
+   ) {
+      font-family: "Sora", "Inter", system-ui, sans-serif !important;
+   }
+   :where(.confirm-dialog code, .invite-code-value, .album-code-input) {
+      font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace) !important;
+   }
+}
+

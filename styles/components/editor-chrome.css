@@ -1,0 +1,898 @@
+/* ============================================================================
+   EDITOR CHROME REFRESH — framed sheet (screen only)
+
+   Art direction: the chrome is one tinted frame; the score paper is the only
+   white sheet. Depth comes from a tone step, not shadows — the one elevation
+   token is reserved for things that truly float (dialogs, popovers, menus).
+   Colour budget: the brand green appears on Save and focus; the three mode
+   marks use their own shared tokens (green / purple / amber). Everything else
+   in the chrome is ink/grey.
+
+   SCOPE: screen only. Nothing here may reach @media print or the PDF layout
+   preview — html.is-print-layout rules are more specific and stay untouched.
+   Protected: styles/score/preview.css, #previewCard, #cpPreviewCard and the whole
+   PDF pipeline.
+   ========================================================================== */
+:root {
+   --editor-ground: #eef1ec;
+   --editor-surface: #ffffff;
+   --editor-raised: #eaf5ed;
+   --editor-skeleton: #dfe7e1;
+   --editor-line: #d9e5dc;
+   --editor-rule: #e9efea;
+   --editor-control: #7c8a80;
+   --editor-ink: #163a2a;
+   --editor-muted: #526259;
+   --editor-accent: #237a50;
+   --editor-accent-ink: #ffffff;
+   --editor-accent-hover: #1b6543;
+   --editor-danger: #a32922;
+   --editor-elev: 0 14px 34px rgba(16, 40, 28, 0.16);
+   --editor-font: "Sora", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+   /* One mode palette for the library tile, the version popover and the
+      topbar badge. Values match the Stitch light-mode set. */
+   --mode-chords-line: #c7e8d6;
+   --mode-chords-fill: #eef8f3;
+   --mode-chords-ink: #1b6341;
+   --mode-numbers-line: #d8cbfa;
+   --mode-numbers-fill: #f3effc;
+   --mode-numbers-ink: #5034b0;
+   --mode-chordpro-line: #f8e1ba;
+   --mode-chordpro-fill: #fef7ec;
+   --mode-chordpro-ink: #9a5802;
+}
+html[data-theme="dark"] {
+   --editor-ground: #0f1110;
+   --editor-surface: #171a18;
+   --editor-raised: #202521;
+   --editor-skeleton: #2c342e;
+   --editor-line: #343a35;
+   --editor-rule: #292e2a;
+   --editor-control: #7c8a80;
+   --editor-ink: #f1f4f2;
+   --editor-muted: #b6c0b8;
+   --editor-accent: #83c99d;
+   --editor-accent-ink: #10231b;
+   --editor-accent-hover: #9ad9b3;
+   --editor-danger: #ff9b8f;
+   --editor-elev: 0 18px 40px rgba(0, 0, 0, 0.55);
+   --mode-chords-line: rgba(131, 201, 157, 0.36);
+   --mode-chords-fill: rgba(35, 122, 80, 0.2);
+   --mode-chords-ink: #83c99d;
+   --mode-numbers-line: rgba(165, 180, 252, 0.4);
+   --mode-numbers-fill: rgba(99, 102, 241, 0.22);
+   --mode-numbers-ink: #a5b4fc;
+   --mode-chordpro-line: rgba(252, 211, 77, 0.4);
+   --mode-chordpro-fill: rgba(245, 158, 11, 0.22);
+   --mode-chordpro-ink: #fcd34d;
+}
+
+@media screen {
+   body {
+      background: var(--editor-ground);
+   }
+
+   /* ---- Typography: Sora is the editor's voice -------------------------
+      Applies to the chrome only. The score paper (#previewCard /
+      #cpPreviewCard) keeps its own musical typography (Inter 850/900 +
+      the accidental subset) because it is the printed document and its
+      metrics are part of the PDF contract. */
+   .topbar,
+   .topbar .button,
+   .topbar .editor-mode-badge,
+   .topbar .album-pill,
+   .topbar .youtube-chip,
+   .album-banner,
+   .toast,
+   .site-footer,
+   .scroll-affordance,
+   .placing-banner,
+   /* Screen-only controls that sit inside the sheet. The printable score text
+      (title, artist, KEY/TIME values, chords, lyrics) stays Inter. */
+   .preview-actions,
+   .song-meta-lyrics-toggle,
+   .transpose-control,
+   .section-tools,
+   .bar-tools,
+   .add-bar,
+   .delete-bar,
+   .copy-bar,
+   .paste-bar,
+   .bar-selection-bar,
+   .account-popover,
+   .section-menu-popover,
+   .chord-popover,
+   .beat-menu,
+   .fermata-editor,
+   .confirm-dialog-card,
+   .pdf-options-dialog,
+   .device-hint-card {
+      font-family: var(--editor-font);
+   }
+
+   /* ---- Frame: the top bar follows the page, with no resting rule -------- */
+   .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 60;
+      height: 48px;
+      padding: 0 clamp(12px, 2vw, 24px);
+      border-bottom: 0;
+      background: var(--editor-ground);
+      box-shadow: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      transition: box-shadow 0.16s ease;
+   }
+   /* The one line that appears only once the sheet slides underneath. It is a
+      tone step, not a floating shadow, and never affects paper geometry. */
+   .topbar.is-stuck {
+      box-shadow: 0 1px 0 var(--editor-line);
+   }
+   .topbar-nav {
+      gap: 8px;
+      min-width: 0;
+   }
+   .topbar-actions {
+      gap: 6px;
+      min-width: 0;
+   }
+   /* The context cluster (mode, album) is set apart from the editing actions
+      (tempo, history, save, export) by a quiet 1px divider. */
+   .topbar-divider {
+      width: 1px;
+      height: 20px;
+      align-self: center;
+      margin: 0 2px;
+      background: color-mix(in srgb, var(--editor-muted) 34%, transparent);
+   }
+   .editor-back {
+      min-height: 30px;
+      padding: 5px 8px;
+      border: 0;
+      background: transparent;
+      color: var(--editor-muted);
+      font-size: 13px;
+   }
+   .editor-back:hover {
+      background: var(--editor-raised);
+      color: var(--editor-ink);
+   }
+   /* ---- One chip family: white, 1px edge, 8px radius, 28px tall ---------- */
+   .version-switcher-btn,
+   .editor-mode-badge,
+   .album-pill {
+      min-height: 28px;
+      padding: 4px 10px;
+      border: 1px solid var(--editor-line);
+      border-radius: 8px;
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+      font-size: 12px;
+      font-weight: 650;
+      box-shadow: none;
+   }
+   .version-switcher-btn:hover,
+   .album-pill:hover {
+      background: var(--editor-raised);
+      border-color: var(--editor-control);
+   }
+   .version-switcher-caret {
+      display: inline-grid;
+      place-items: center;
+   }
+   .version-switcher-caret svg {
+      display: block;
+      width: 14px;
+      height: 14px;
+   }
+   .album-pill-icon,
+   .album-banner-icon,
+   .editor-mode-badge-icon {
+      display: inline-grid;
+      place-items: center;
+      flex: none;
+   }
+   .album-pill-icon svg {
+      width: 14px;
+      height: 14px;
+   }
+   .album-pill.is-readonly {
+      border-style: dashed;
+      background: var(--editor-surface);
+      color: var(--editor-muted);
+   }
+
+   /* Mode badge: a neutral chip carrying the SAME tinted mark as the library.
+      Colour sits on the 20px tile (data), never on the label (chrome). */
+   .editor-mode-badge {
+      gap: 7px;
+      padding: 3px 10px 3px 3px;
+   }
+   .editor-mode-badge-icon {
+      width: 20px;
+      height: 20px;
+      min-width: 20px;
+      border: 1px solid var(--mode-chords-line);
+      border-radius: 6px;
+      background: var(--mode-chords-fill);
+      color: var(--mode-chords-ink);
+      font-size: 12px;
+   }
+   .editor-mode-badge-icon svg {
+      display: block;
+      width: 14px;
+      height: 14px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+   }
+   .editor-mode-badge-icon svg.is-filled {
+      fill: currentColor;
+      stroke: none;
+   }
+   body[data-editor-mode="numbers"] .editor-mode-badge-icon {
+      border-color: var(--mode-numbers-line);
+      background: var(--mode-numbers-fill);
+      color: var(--mode-numbers-ink);
+   }
+   body[data-editor-mode="chordpro"] .editor-mode-badge-icon {
+      border-color: var(--mode-chordpro-line);
+      background: var(--mode-chordpro-fill);
+      color: var(--mode-chordpro-ink);
+   }
+
+   /* ---- Transport + history: small document controls ------------------- */
+   /* Play and tempo are one unit: one border, one surface, one focus ring. */
+   .transport-control {
+      display: inline-flex;
+      align-items: stretch;
+      flex: 0 0 auto;
+      height: 30px;
+      border: 1px solid var(--editor-line);
+      border-radius: 8px;
+      background: var(--editor-surface);
+      overflow: hidden;
+   }
+   .transport-control:focus-within {
+      border-color: var(--editor-accent);
+   }
+   .transport-play {
+      display: inline-grid;
+      place-items: center;
+      width: 30px;
+      min-height: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--editor-accent);
+      cursor: pointer;
+      transition:
+         background 0.16s ease,
+         color 0.16s ease,
+         opacity 0.16s ease;
+   }
+   .transport-play:hover {
+      background: var(--editor-raised);
+   }
+   .transport-play:active {
+      background: var(--editor-line);
+   }
+   .transport-play:focus-visible {
+      outline: 2px solid var(--editor-accent);
+      outline-offset: -2px;
+   }
+   .transport-play svg {
+      display: block;
+      width: 14px;
+      height: 14px;
+   }
+   .transport-play .transport-icon-stop {
+      display: none;
+   }
+   .transport-play.is-playing .transport-icon-play {
+      display: none;
+   }
+   .transport-play.is-playing .transport-icon-stop {
+      display: block;
+   }
+   .transport-play.is-playing {
+      background: var(--editor-raised);
+   }
+   .transport-play.is-preparing {
+      opacity: 0.65;
+      cursor: progress;
+   }
+   .transport-sep {
+      width: 1px;
+      height: 16px;
+      align-self: center;
+      background: var(--editor-line);
+   }
+   .topbar .bpm-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 100%;
+      padding: 0 8px;
+      border: 0;
+      background: transparent;
+      color: var(--editor-muted);
+      font-size: 10px;
+      font-weight: 650;
+      letter-spacing: 0;
+      text-transform: none;
+   }
+   .topbar .bpm-control-label {
+      line-height: 1;
+   }
+   .topbar .bpm-control input {
+      width: 34px;
+      height: 20px;
+      padding: 0;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--editor-ink);
+      font-family: var(--editor-font);
+      font-size: 12px;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      -moz-appearance: textfield;
+   }
+   .topbar .bpm-control input:hover {
+      background: var(--editor-raised);
+   }
+   .topbar .bpm-control input:focus-visible {
+      outline: none;
+      box-shadow: inset 0 0 0 2px var(--editor-accent);
+      background: var(--editor-surface);
+   }
+   .topbar .bpm-control input::-webkit-outer-spin-button,
+   .topbar .bpm-control input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+   }
+   .topbar .history-toolbar {
+      flex: 0 0 auto;
+   }
+
+   /* ---- Buttons: flat, one fill (Save), everything else quiet ------------ */
+   .button {
+      min-height: 32px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      box-shadow: none;
+      transition:
+         background 0.16s ease,
+         border-color 0.16s ease,
+         color 0.16s ease,
+         opacity 0.16s ease;
+   }
+   .button:hover {
+      transform: none;
+      filter: none;
+   }
+   .button .btn-icon {
+      display: inline-grid;
+      place-items: center;
+      margin-right: 6px;
+   }
+   .button .btn-icon svg {
+      display: block;
+      width: 15px;
+      height: 15px;
+   }
+   .icon-glyph {
+      display: inline-grid;
+      place-items: center;
+   }
+   .icon-glyph svg {
+      display: block;
+      width: 15px;
+      height: 15px;
+   }
+   .youtube-chip-edit .icon-glyph svg {
+      width: 14px;
+      height: 14px;
+   }
+   .button-primary,
+   .button-save {
+      background: var(--editor-accent);
+      color: var(--editor-accent-ink);
+      border-color: transparent;
+      box-shadow: none;
+   }
+   .button-primary:hover,
+   .button-save:hover {
+      background: var(--editor-accent-hover);
+      box-shadow: none;
+   }
+   .button-ghost {
+      border: 1px solid var(--editor-line);
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+   }
+   .button-ghost:hover {
+      border-color: var(--editor-control);
+      background: var(--editor-raised);
+   }
+   .button-dark {
+      border: 1px solid var(--editor-line);
+      background: transparent;
+      color: var(--editor-ink);
+      box-shadow: none;
+   }
+   .button-dark:hover {
+      border-color: var(--editor-control);
+      background: var(--editor-raised);
+      color: var(--editor-ink);
+   }
+   .icon-button {
+      min-width: 32px;
+      min-height: 32px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--editor-muted);
+   }
+   .icon-button:hover {
+      border-color: var(--editor-line);
+      background: var(--editor-raised);
+      color: var(--editor-ink);
+   }
+   .icon-button svg {
+      display: block;
+      width: 16px;
+      height: 16px;
+   }
+   .button-reset {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--editor-muted);
+   }
+   .button-reset:hover {
+      background: var(--editor-raised);
+      color: var(--editor-ink);
+   }
+   .button.is-danger,
+   .button-ghost.is-danger {
+      color: var(--editor-danger);
+   }
+   .button-danger {
+      background: var(--editor-danger);
+      color: #fff;
+   }
+
+   /* Save settles into a check for a moment after a successful save. The class
+      is added by flashSavedState() — additive only; save logic is untouched. */
+   .button-save .btn-icon {
+      position: relative;
+   }
+   .button-save.is-saved {
+      background: var(--editor-accent-hover);
+   }
+   .button-save.is-saved .btn-icon svg {
+      display: none;
+   }
+   .button-save.is-saved .btn-icon::after {
+      content: "✓";
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1;
+   }
+
+   /* ---- YouTube chip: keep the two-state contract, quiet the surface ----- */
+   .youtube-chip {
+      min-height: 28px;
+      border-radius: 8px;
+      border-color: var(--editor-line);
+      background: var(--editor-surface);
+   }
+   .youtube-chip[data-state="none"] {
+      border-color: transparent;
+      background: transparent;
+   }
+   .youtube-chip-none {
+      border-radius: 8px;
+      color: var(--editor-muted);
+   }
+   .youtube-chip-none:hover {
+      color: var(--editor-ink);
+   }
+
+   /* ---- Frame + canvas well --------------------------------------------- */
+   main {
+      max-width: none;
+      padding: 8px clamp(8px, 1.4vw, 16px) 16px;
+   }
+   .preview-viewport {
+      padding: 18px 16px 24px;
+      background: var(--editor-ground);
+      scrollbar-color: var(--editor-control) transparent;
+   }
+   .preview-viewport:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--editor-accent);
+   }
+   .preview-stage {
+      background: transparent;
+   }
+   .scroll-affordance {
+      border: 1px solid var(--editor-line);
+      border-radius: 8px;
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+      font-size: 12px;
+      box-shadow: var(--editor-elev);
+   }
+   .placing-banner {
+      border: 1px solid var(--editor-line);
+      border-radius: 8px;
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+      box-shadow: var(--editor-elev);
+   }
+
+   /* ---- Banners, toast, footer ----------------------------------------- */
+   .album-banner {
+      margin: 0;
+      padding: 8px clamp(12px, 2vw, 24px);
+      border: 0;
+      border-radius: 0;
+      background: var(--editor-raised);
+      color: var(--editor-ink);
+      font-size: 12.5px;
+      box-shadow: inset 3px 0 0 var(--editor-accent);
+   }
+   .album-banner::before {
+      display: none;
+   }
+   .album-banner-icon svg {
+      width: 16px;
+      height: 16px;
+      color: var(--editor-accent);
+   }
+   .toast {
+      border-radius: 8px;
+      background: #163a2a;
+      color: #f4f8f5;
+      font-size: 12.5px;
+      box-shadow: var(--editor-elev);
+   }
+   html[data-theme="dark"] .toast {
+      background: #e7ece8;
+      color: #10231b;
+   }
+   .site-footer {
+      border-top: 0;
+      background: var(--editor-ground);
+      color: var(--editor-muted);
+   }
+
+   /* ---- Dialog shell: one flat sheet, one floating shadow ---------------- */
+   .confirm-dialog-card,
+   .pdf-options-dialog {
+      border: 1px solid var(--editor-line);
+      border-radius: 16px;
+      background: var(--editor-surface);
+      box-shadow: var(--editor-elev);
+   }
+   .confirm-dialog-icon:not(.member-actions-avatar) {
+      width: 40px;
+      height: 40px;
+      border-radius: 0;
+      background: transparent;
+      color: var(--editor-accent);
+      font-size: 20px;
+   }
+   .confirm-dialog-icon:not(.member-actions-avatar) svg {
+      width: 22px;
+      height: 22px;
+   }
+   html[data-theme="dark"] .confirm-dialog-icon:not(.member-actions-avatar) {
+      background: transparent;
+      color: var(--editor-accent);
+   }
+   .confirm-dialog-actions .button {
+      min-height: 36px;
+   }
+   .confirm-dialog-backdrop,
+   .pdf-options-backdrop {
+      background: rgba(9, 22, 15, 0.42);
+   }
+   html[data-theme="dark"] .confirm-dialog-backdrop,
+   html[data-theme="dark"] .pdf-options-backdrop {
+      background: rgba(0, 0, 0, 0.62);
+   }
+
+   /* ---- PDF options: chrome only; the preview pane keeps its own rules --- */
+   .pdf-options-head h2 {
+      letter-spacing: -0.01em;
+   }
+   .pdf-preview-title {
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--editor-muted);
+   }
+   .pdf-field-divider {
+      font-size: 12px;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--editor-muted);
+   }
+   .pdf-field-divider::after {
+      background: var(--editor-rule);
+   }
+   .pdf-choice {
+      min-height: 34px;
+      border-radius: 8px;
+      border-color: var(--editor-line);
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+   }
+   .pdf-choice:hover {
+      border-color: var(--editor-control);
+      background: var(--editor-raised);
+   }
+   .pdf-choice.is-active,
+   .pdf-choice[aria-pressed="true"] {
+      border-color: var(--editor-accent);
+      background: var(--editor-accent);
+      color: var(--editor-accent-ink);
+   }
+   .pdf-slider {
+      accent-color: var(--editor-accent);
+   }
+
+   /* ---- Floating surfaces: popovers and menus --------------------------- */
+   .account-popover,
+   .section-menu-popover,
+   .chord-popover {
+      border: 1px solid var(--editor-line);
+      border-radius: 12px;
+      background: var(--editor-surface);
+      box-shadow: var(--editor-elev);
+   }
+   .account-popover-item:hover,
+   .account-popover-item:focus-visible {
+      background: var(--editor-raised);
+   }
+   .account-popover-sep {
+      background: var(--editor-rule);
+   }
+   .copy-section,
+   .paste-section,
+   .select-bars {
+      color: var(--editor-ink);
+   }
+   .copy-section:hover,
+   .paste-section:hover,
+   .select-bars:hover {
+      background: var(--editor-raised);
+   }
+   .delete-section {
+      color: var(--editor-danger);
+   }
+   .delete-section:hover {
+      background: var(--editor-raised);
+   }
+   .delete-section:disabled,
+   .paste-section:disabled {
+      color: var(--editor-muted);
+      opacity: 0.6;
+   }
+
+   /* ---- Keyboard focus: one ring, everywhere ---------------------------- */
+   .topbar :focus-visible,
+   .confirm-dialog :focus-visible,
+   .pdf-options-dialog :focus-visible,
+   .account-popover :focus-visible,
+   .section-menu-popover :focus-visible,
+   .chord-popover :focus-visible {
+      outline: 2px solid var(--editor-accent);
+      outline-offset: 2px;
+   }
+
+   /* ---- Dark theme: the same frame, one tone step per surface ------------ */
+   html[data-theme="dark"] body {
+      background: var(--editor-ground);
+   }
+   html[data-theme="dark"] .topbar {
+      background: var(--editor-ground);
+      border-bottom: 0;
+   }
+   html[data-theme="dark"] .version-switcher-btn,
+   html[data-theme="dark"] .editor-mode-badge,
+   html[data-theme="dark"] .album-pill,
+   html[data-theme="dark"] .youtube-chip {
+      border-color: var(--editor-line);
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+   }
+   html[data-theme="dark"] .editor-mode-badge {
+      color: var(--editor-ink);
+   }
+   html[data-theme="dark"] .youtube-chip[data-state="none"] {
+      border-color: transparent;
+      background: transparent;
+   }
+   html[data-theme="dark"] .youtube-chip-none {
+      border-color: var(--editor-line);
+      color: var(--editor-muted);
+   }
+   html[data-theme="dark"] .button-dark {
+      border-color: var(--editor-line);
+      background: transparent;
+      color: var(--editor-ink);
+   }
+   html[data-theme="dark"] .button-dark:hover {
+      border-color: var(--editor-control);
+      background: var(--editor-raised);
+      color: var(--editor-ink);
+   }
+   html[data-theme="dark"] .button-ghost {
+      border-color: var(--editor-line);
+      background: var(--editor-surface);
+      color: var(--editor-ink);
+   }
+   html[data-theme="dark"] .button-ghost:hover {
+      border-color: var(--editor-control);
+      background: var(--editor-raised);
+   }
+   html[data-theme="dark"] .editor-back {
+      border-color: transparent;
+      background: transparent;
+      color: var(--editor-muted);
+   }
+   html[data-theme="dark"] .editor-back:hover {
+      background: var(--editor-raised);
+      color: var(--editor-ink);
+   }
+   html[data-theme="dark"] .youtube-chip-open,
+   html[data-theme="dark"] .youtube-chip-edit {
+      color: #fda4af;
+   }
+
+   .device-hint-close {
+      border: 0;
+      border-radius: 8px;
+      background: var(--editor-accent);
+      color: var(--editor-accent-ink);
+      font-weight: 700;
+      box-shadow: none;
+   }
+   .device-hint-close:hover {
+      background: var(--editor-accent-hover);
+   }
+   .device-hint-card {
+      border: 1px solid var(--editor-line);
+      border-radius: 16px;
+      background: var(--editor-surface);
+      box-shadow: var(--editor-elev);
+   }
+   .device-hint-icon {
+      display: inline-grid;
+      place-items: center;
+      color: var(--editor-accent);
+   }
+   .device-hint-icon svg {
+      width: 26px;
+      height: 26px;
+   }
+
+   /* ---- Phone: the frame disappears; the sheet becomes the screen -------- */
+   @media (max-width: 680px) {
+      .topbar {
+         height: auto;
+         padding: 10px 12px;
+         background: var(--editor-ground);
+      }
+      main {
+         padding: 8px 8px 16px;
+      }
+      .preview-viewport {
+         padding: 12px 10px 18px;
+      }
+      .topbar-actions .button,
+      .topbar-actions .button-ghost,
+      .topbar-actions .button-save,
+      .topbar-actions .button-dark {
+         min-height: 40px;
+         padding: 8px 10px;
+         font-size: 11px;
+      }
+      .topbar-actions .button .btn-icon svg {
+         width: 14px;
+         height: 14px;
+      }
+      .topbar .transport-control {
+         height: 40px;
+      }
+      .topbar .transport-play {
+         width: 32px;
+      }
+      .topbar .bpm-control {
+         height: 100%;
+         gap: 3px;
+         padding: 0 6px;
+      }
+      .topbar .bpm-control-label {
+         display: none;
+      }
+      .topbar .bpm-control input {
+         width: 26px;
+         height: 24px;
+      }
+      .topbar .history-toolbar {
+         height: 40px;
+         min-height: 0;
+      }
+      .topbar .history-btn {
+         width: 32px;
+         min-height: 0;
+      }
+      .topbar .editor-mode-badge {
+         padding: 3px;
+      }
+      .topbar .version-switcher-btn {
+         min-width: 0;
+         max-width: 46vw;
+      }
+      .topbar #versionSwitcherLabel {
+         min-width: 0;
+         overflow: hidden;
+         text-overflow: ellipsis;
+         white-space: nowrap;
+      }
+      .topbar-divider {
+         display: none;
+      }
+      .album-banner {
+         padding: 8px 12px;
+         font-size: 12px;
+      }
+   }
+
+   /* ---- Tablet: keep one row; the mode mark carries the identity -------- */
+   @media (min-width: 681px) and (max-width: 1050px) {
+      .version-switcher-btn,
+      .editor-mode-badge,
+      .album-pill,
+      .youtube-chip {
+         font-size: 11.5px;
+      }
+      .editor-mode-badge {
+         padding: 3px;
+      }
+      .topbar .version-switcher-btn {
+         min-width: 0;
+         max-width: 140px;
+      }
+      .topbar #versionSwitcherLabel {
+         min-width: 0;
+         overflow: hidden;
+         text-overflow: ellipsis;
+         white-space: nowrap;
+      }
+   }
+
+   /* Compact tablets: the bar still has to stay on one line. The Back label
+      and the BPM word step aside; the play icon plus the number still read as
+      the transport group, and both controls keep their aria labels. */
+   @media (min-width: 681px) and (max-width: 820px) {
+      .topbar .editor-back .btn-label,
+      .topbar .bpm-control-label {
+         display: none;
+      }
+      .topbar .version-switcher-btn {
+         max-width: 96px;
+      }
+   }
+}
+

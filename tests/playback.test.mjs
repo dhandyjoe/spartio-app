@@ -6,8 +6,8 @@ import {
    resolveEntryNotes,
    resolveEntryFrequencies,
    buildPlaybackQueue,
-} from "../src/playback.js";
-import { noteNameToMidi } from "../src/synth.js?v=20260824-chordAbove";
+} from "../src/playback/playback.js";
+import { noteNameToMidi } from "../src/playback/synth.js?v=20260824-chordAbove";
 
 // ---- Chord to MIDI note resolution ----
 

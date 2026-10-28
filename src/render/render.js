@@ -1,0 +1,633 @@
+// render.js — view layer: builds score HTML and writes it to the DOM.
+// Depends on notation.js (pure), dom.js (helpers), store.js (state).
+// Event-binding hooks (from events.js) are injected via initRender() to keep the graph acyclic.
+import {
+   keyNames,
+   chordQualities,
+   bassNotes,
+   nashvilleNumbers,
+   nashvilleZeroNumbers,
+   nashvilleLowerNumbers,
+   nashvilleUpperNumbers,
+   durationMeta,
+   lyricsFeatureAvailable,
+   escapeHTML,
+   beatValue,
+   lyricValue,
+   fermataValue,
+   chordAboveValue,
+   chordAboveShownForBar,
+   moveChordAbove,
+   sectionShowsChordAbove,
+   sectionHasFermata,
+   editorModeMeta,
+   normalizeEditorMode,
+   modeIconSvg,
+   isSingleBeatMeter,
+   barUnitWord,
+   NASHVILLE_TOKEN_RE,
+   NASHVILLE_OCTAVE_UP,
+   NASHVILLE_OCTAVE_DOWN,
+   nashvilleAccidentalOf,
+} from "../notation/notation.js?v=__BUILD__";
+import { parseChordPro } from "../notation/chordPro.js?v=__BUILD__";
+import { youtubeChipMeta } from "../util/youtube.js?v=__BUILD__";
+import { $, prefersTap, toast } from "../core/dom.js?v=__BUILD__";
+import { getState } from "../core/store.js?v=__BUILD__";
+
+// Injected app hooks (set once at bootstrap by events.js/app.js).
+const hooks = {
+   bindDraggableChords() {},
+   bindPaletteItem() {},
+   bindPreview() {},
+   // ChordPro workspace bindings (textareas, palette, section list). Injected by
+   // events.js/chordProEditor.js and called after every ChordPro render.
+   bindChordPro() {},
+   updateViewportOverflow() {},
+   // Returns the current transient bar-selection state (never persisted / undone):
+   // { active, sectionId, anchor, focus } or a falsy value when not selecting.
+   getBarSelection() {
+      return null;
+   },
+   // True while an album MEMBER (read-only role) has the song open: such a user may watch a
+   // link but not change the arrangement, so the edit affordances are not offered.
+   isMemberReadOnly() {
+      return false;
+   },
+};
+export function initRender(overrides = {}) {
+   Object.assign(hooks, overrides);
+}
+
+function chordName(quality) {
+   return `${getState().chordRoot}${quality}`;
+}
+function nashvilleName(quality) {
+   const state = getState();
+   return `${state.nashvilleAccidental}${state.nashvilleNumber}${quality}`;
+}
+export function nashvilleNumberLabel(number) {
+   const match = String(number).match(/^([1-7])([̣̇])$/u);
+   if (!match) return number;
+   return nashvilleNoteHTML("", match[1], match[2] === NASHVILLE_OCTAVE_DOWN ? "low" : "high");
+}
+// The accidental glyph + modifier class for a Nashville number. The glyph stays in the DOM
+// (inside `.nashville-sign`, hidden in the score — see styles/score/preview.css) so the value is
+// still readable to screen readers, text selection and the tests, while on paper the player
+// reads the "coret": a slash leaning up to the right for a raise (♯) and down to the right
+// for a lower (♭). Both are drawn by CSS from `.nashville-slash`, which adds NO width to the
+// token, so printed bar wrapping/pagination (measured in pdf.js) can never shift.
+const ACCIDENTAL_CLASS = { "#": "nashville-alt-sharp", "♭": "nashville-alt-flat" };
+const ACCIDENTAL_GLYPH = { "#": "♯", "♭": "♭" };
+function nashvilleNoteHTML(accidental, degree, octave) {
+   const dot = octave === "high" ? NASHVILLE_OCTAVE_UP : octave === "low" ? NASHVILLE_OCTAVE_DOWN : "";
+   // A bare degree prints as plain text, exactly as it did before this feature.
+   if (!accidental && !dot) return degree;
+   const slash = accidental
+      ? '<span class="nashville-slash" aria-hidden="true"></span>' +
+        `<span class="nashville-sign" aria-hidden="true">${ACCIDENTAL_GLYPH[accidental]}</span>`
+      : "";
+   const octaveDot = dot ? '<span class="nashville-octave-dot" aria-hidden="true">●</span>' : "";
+   const wrapper = octave ? `nashville-octave nashville-octave-${octave}` : "nashville-altered";
+   const alt = accidental ? ` ${ACCIDENTAL_CLASS[accidental]}` : "";
+   const label = accidental ? ` role="img" aria-label="${ACCIDENTAL_GLYPH[accidental]}${degree}"` : "";
+   return `<span class="${wrapper}${alt}"${label}><span class="nashville-degree">${degree}</span>${slash}${octaveDot}</span>`;
+}
+export function chordLabel(chord) {
+   const nashville = String(chord).match(NASHVILLE_TOKEN_RE);
+   if (nashville) {
+      const accidental = nashvilleAccidentalOf(nashville[1]);
+      const octave = nashville[3] === NASHVILLE_OCTAVE_UP ? "high" : nashville[3] === NASHVILLE_OCTAVE_DOWN ? "low" : "";
+      return `<span class="chord-token">${nashvilleNoteHTML(accidental, nashville[2], octave)}${escapeHTML(nashville[4])}</span>`;
+   }
+   const label = escapeHTML(chord)
+      .replaceAll("♭", '<span class="chord-accidental chord-flat">♭</span>')
+      .replaceAll("♯", '<span class="chord-accidental chord-sharp">♯</span>');
+   return `<span class="chord-token">${label}</span>`;
+}
+function meterInfo() {
+   const [top] = getState().meter.split("/").map(Number);
+   return { beats: top };
+}
+export function renderCustomChord() {
+   const value = getState().customChord.trim(),
+      safe = escapeHTML(value); // bug fix: escape user-supplied custom chord before injecting
+   $("#customChordPreview").innerHTML = value
+      ? `<span class="chord custom-chord" draggable="true" data-chord="${safe}">${safe}</span>`
+      : '<span class="custom-chord-hint">Custom chord preview</span>';
+   hooks.bindDraggableChords();
+}
+// One-shot diagnostic for the ChordPro layout: its CSS lives in styles/score/chordpro.css.
+// Two failure modes are worth telling the user about, because both look like "the
+// app is broken" while the page still works:
+//   1. the stylesheet never loaded (404 / bad deploy) → the panel is unstyled;
+//   2. a service worker or the HTTP cache served a STALE copy → old rules apply.
+// Case 2 is detected through the `--chordpro-css-version` marker declared at the top
+// of chordpro.css; that value is the shared `__BUILD__` placeholder which the
+// deploy workflow fills in, so it always matches ASSET_VERSION in sw.js.
+const CHORDPRO_CSS_VERSION = "__BUILD__";
+let chordProCssWarned = false;
+function warnIfChordProCssMissing() {
+   if (chordProCssWarned) return;
+   const probe = document.querySelector(".cp-editor-head");
+   if (!probe) return;
+   // `.cp-editor-head { display: flex; flex-direction: column }` → "row" by default
+   // when the stylesheet is absent.
+   const loaded = getComputedStyle(probe).flexDirection === "column";
+   const declared = getComputedStyle(document.documentElement)
+      .getPropertyValue("--chordpro-css-version")
+      .trim();
+   if (loaded && declared === CHORDPRO_CSS_VERSION) return;
+   chordProCssWarned = true;
+   toast(
+      loaded
+         ? "ChordPro styles are out of date — hard-reload (Shift+Cmd+R / Ctrl+F5) to refresh them"
+         : "ChordPro styles didn’t load — check the browser console, then hard-reload (Shift+Cmd+R)",
+   );
+}
+
+export function renderControls() {
+   const state = getState();
+   $("#keySelect").innerHTML = keyNames
+      .map((key) => `<option ${key === state.key ? "selected" : ""}>${key}</option>`)
+      .join("");
+   $("#chordRootPicker").innerHTML = keyNames
+      .map((key) => `<button class="key ${key === state.chordRoot ? "active" : ""}" data-root="${key}">${key}</button>`)
+      .join("");
+   $("#chordBank").innerHTML = chordQualities
+      .map(
+         ({ value }) =>
+            `<span class="chord" draggable="true" data-chord="${chordName(value)}">${chordName(value)}</span>`,
+      )
+      .join("");
+   $("#slashRoot").innerHTML = keyNames.map((key) => `<option value="${key}">${key}</option>`).join("");
+   $("#slashQuality").innerHTML = chordQualities
+      .map(({ value, label }) => `<option value="${value}">${label}</option>`)
+      .join("");
+   $("#slashBass").innerHTML = bassNotes.map((note) => `<option value="${note}">${note}</option>`).join("");
+   $("#slashChordBank").innerHTML = state.slashChords
+      .map(
+         (chord) =>
+            `<span class="chord slash-chord" draggable="true" data-chord="${escapeHTML(chord)}">${escapeHTML(chord)}</span>`,
+      )
+      .join("");
+   $("#customChordInput").value = state.customChord;
+   const nashvilleRow = (numbers, label, description, rowClass = "") =>
+      `<div class="nashville-row-block"><span class="nashville-row-label">${label}</span><div class="nashville-number-row ${rowClass}" aria-label="${description}">${numbers.map((number) => `<button class="nashville-key ${number === state.nashvilleNumber ? "active" : ""}" data-number="${number}" title="${description}">${nashvilleNumberLabel(number)}</button>`).join("")}</div></div>`;
+   $("#nashvilleRootPicker").innerHTML = [
+      nashvilleRow(nashvilleNumbers, "Normal", "Normal notation"),
+      nashvilleRow(nashvilleLowerNumbers, "Lower octave", "One octave lower"),
+      nashvilleRow(nashvilleUpperNumbers, "Upper octave", "One octave higher"),
+      nashvilleRow(nashvilleZeroNumbers, "Number 0", "Nashville Number 0", "nashville-zero-row"),
+   ].join("");
+   $("#nashvilleAccidentalPicker").innerHTML = [
+      ["", "♮"],
+      ["♭", "♭"],
+      ["#", "#"],
+   ]
+      .map(
+         ([value, label]) =>
+            `<button class="nashville-accidental ${value === state.nashvilleAccidental ? "active" : ""}" data-accidental="${value}">${label}</button>`,
+      )
+      .join("");
+   $("#nashvilleChordBank").innerHTML = chordQualities
+      .map(
+         ({ value }) =>
+            `<span class="chord nashville-chord" draggable="true" data-chord="${nashvilleName(value)}">${chordLabel(nashvilleName(value))}</span>`,
+      )
+      .join("");
+   $("#nashvilleSelectedPreview").innerHTML = chordLabel(nashvilleName(""));
+   $("#beatBank").innerHTML = Object.entries(durationMeta)
+      .map(
+         ([value, { symbol, label, count }]) =>
+            `<span class="duration-option duration-option-${value}" draggable="true" data-duration="${value}" title="Divide one beat into ${count} equal parts"><b>${symbol}</b><span>${label}<small>${count} notes per beat</small></span></span>`,
+      )
+      .join("");
+   $("#lyricsEnabled").checked = state.lyricsEnabled;
+   $("#lyricsEnabledLabel").textContent = state.lyricsEnabled ? "Lyrics on" : "Lyrics off";
+   // Mirror the global lyrics state onto the song-meta toggle (ribbon is hidden).
+   const topToggle = $("#lyricsEnabledTop");
+   if (topToggle) {
+      topToggle.checked = state.lyricsEnabled;
+      const topLabel = $("#lyricsEnabledTopLabel");
+      if (topLabel) topLabel.textContent = state.lyricsEnabled ? "On" : "Off";
+   }
+   // The chord row above the numbers is a PER-SECTION feature: every section owns a
+   // "Chords On/Off" button (section.chordAboveEnabled) plus optional per-bar
+   // overrides, so there is no song-wide switch left to keep in sync here.
+   // Reflect the current editing mode on <body> so mode-specific UI (lyrics
+   // toggle placement, suggestion hints, mode badge, the ChordPro workspace) can be
+   // driven purely by CSS. The label + SVG mapping lives in notation.js (pure and
+   // unit-tested) so the topbar pill and the library cards can never drift apart.
+   const mode = normalizeEditorMode(state.editorMode);
+   document.body.dataset.editorMode = mode;
+   // ChordPro displays only its own workspace.
+   // Driven from JS with inline styles on TOP of the CSS gate in
+   // styles/score/chordpro.css. This is deliberate belt-and-braces: an inline `display`
+   // outranks every non-important author rule (`.ribbon-workspace { display: block }`
+   // in preview.css, `.workspace { display: block }` in base/tokens.css), so the beat-grid
+   // editor cannot stay on screen even if that stylesheet is missing, stale or still
+   // held by the service worker. `aria-hidden` keeps it out of the a11y tree too.
+   const chordproMode = mode === "chordpro";
+   // The beat-grid editor is TWO siblings inside <main>: `.ribbon-workspace` (the tool
+   // aside) and `.preview-stage` (the chord-chart LIVE PREVIEW). Gating only the first
+   // one left the grid score painted on screen in ChordPro mode — which is exactly the
+   // bug this fixes. Both are hidden in ChordPro mode and restored for the other modes.
+   const gridParts = [document.querySelector("main > .ribbon-workspace"), document.querySelector("main > .preview-stage")];
+   gridParts.forEach((part) => {
+      if (!part) return;
+      part.style.display = chordproMode ? "none" : "";
+      part.hidden = chordproMode;
+      if (chordproMode) part.setAttribute("aria-hidden", "true");
+      else part.removeAttribute("aria-hidden");
+   });
+   const cpWorkspace = document.getElementById("cpWorkspace");
+   if (cpWorkspace) cpWorkspace.style.display = chordproMode ? "grid" : "none";
+   if (chordproMode) warnIfChordProCssMissing();
+   // The topbar badge is the same mode mark as the library, not a second glyph
+   // vocabulary. The visible label is shortened only for the long Numeric name;
+   // the tooltip/accessible name keeps the full product wording.
+   const modeBadge = $("#editorModeBadge");
+   const modeBadgeText = modeBadge?.querySelector(".editor-mode-badge-text");
+   const modeBadgeIcon = modeBadge?.querySelector(".editor-mode-badge-icon");
+   const modeLabel = editorModeMeta[mode].badge;
+   if (modeBadgeText) modeBadgeText.textContent = mode === "numbers" ? "Numeric" : modeLabel;
+   if (modeBadgeIcon) modeBadgeIcon.innerHTML = modeIconSvg(mode);
+   if (modeBadge) {
+      const accessible = `${modeLabel} — writing mode`;
+      modeBadge.title = accessible;
+      modeBadge.setAttribute("aria-label", accessible);
+   }
+   // YouTube chip (topbar): the link of the arrangement being edited, visible in EVERY mode, in
+   // one of TWO states — "link" (thumbnail + start time) or "none" ("No YouTube link" + ✎).
+   // The state attribute drives visibility in CSS, and every value is written on BOTH
+   // transitions: a `hidden` attribute alone would lose against the chip's `display`, which is
+   // exactly how a stale thumbnail from the previous version used to stay on screen.
+   const chipMeta = youtubeChipMeta(state);
+   const chipWrap = $("#youtubeChip");
+   if (chipWrap) {
+      chipWrap.dataset.state = chipMeta.hasLink ? "link" : "none";
+      // A read-only member can still watch the video but must not change the arrangement's link,
+      // so the ✎ is hidden by CSS (the click handler guards too).
+      chipWrap.dataset.readonly = hooks.isMemberReadOnly() ? "true" : "false";
+      const thumb = $("#youtubeChipThumb");
+      const label = $("#youtubeChipLabel");
+      const openBtn = $("#youtubeChipOpen");
+      if (thumb) {
+         if (chipMeta.hasLink) {
+            if (thumb.getAttribute("src") !== chipMeta.thumb) thumb.src = chipMeta.thumb;
+         } else thumb.removeAttribute("src"); // never keep the previous version's still
+      }
+      if (label) label.textContent = chipMeta.hasLink ? chipMeta.label : "";
+      if (openBtn) {
+         // The click target lives on the element (events.js opens it in a new tab), so the
+         // renderer stays the only place that decides WHAT the chip points at.
+         if (chipMeta.hasLink) {
+            openBtn.title = chipMeta.title;
+            openBtn.setAttribute("aria-label", chipMeta.title);
+            openBtn.dataset.href = chipMeta.href;
+         } else {
+            openBtn.title = "Open on YouTube";
+            openBtn.removeAttribute("aria-label");
+            delete openBtn.dataset.href;
+         }
+      }
+   }
+   // Tempo lives per-song, so mirror the state back into the BPM input whenever
+   // controls re-render (e.g. on load/import) — keeps it from sticking at 120.
+   const bpmInput = $("#bpmInput");
+   if (bpmInput && bpmInput !== document.activeElement) bpmInput.value = String(state.bpm || 120);
+   hooks.bindDraggableChords();
+   renderCustomChord();
+   document
+      .querySelectorAll(".duration-option")
+      .forEach((option) => hooks.bindPaletteItem(option, { type: "duration", value: option.dataset.duration }));
+}
+function chordOrDot(section, slot) {
+   const value = beatValue(section, slot);
+   return value.chord
+      ? `<span class="placed-chord" role="button" tabindex="0" title="Tap to remove" aria-label="Remove ${escapeHTML(value.chord)} chord">${chordLabel(value.chord)}<span class="chord-remove" title="Remove chord" aria-hidden="true">×</span></span>`
+      : '<span class="beat-dot">·</span>';
+}
+function lyricInputHTML(section, slot) {
+   const text = lyricValue(section, slot),
+      label = `Lyrics for beat ${slot.replace(":", " part ")}`;
+   return `<span class="lyric-editor"><input class="lyric-input" type="text" value="${escapeHTML(text)}" placeholder="" data-section="${section.id}" data-slot="${slot}" aria-label="${label}" autocomplete="off" spellcheck="false"><span class="lyric-print">${escapeHTML(text)}</span></span>`;
+}
+// Chord-above cell (Chord Chart mode): a letter chord shown ABOVE the number.
+// Mirrors lyricInputHTML but sits in the top grid row. An empty value renders a
+// faint "+" placeholder so users can discover the affordance.
+// The width is uniform for every cell (--chord-above-w) and the beat pitch under
+// a chord row widens as a whole (--chord-above-leaf), so the double row reads as a
+// tidy grid instead of ragged, content-sized boxes.
+function chordAboveInputHTML(section, slot) {
+   const chord = chordAboveValue(section, slot),
+      label = `Chord above beat ${slot.replace(":", " part ")}`,
+      filled = chord ? "has-chord-above" : "";
+   return `<span class="chord-above-editor ${filled}"><input class="chord-above-input" type="text" value="${escapeHTML(chord)}" placeholder="+" data-section="${section.id}" data-slot="${slot}" aria-label="${label}" autocomplete="off" spellcheck="false"><span class="chord-above-print">${chord ? chordLabel(chord) : ""}</span></span>`;
+}
+// A bar whose chord row is switched OFF still gets an (empty) cell: the grid
+// track is reserved by .beat-column.with-chord-above, so the notation lane and
+// the printed barlines stay aligned with the neighbouring bars instead of
+// jumping up by one row. This is what fills that reserved track.
+const CHORD_ABOVE_TRACK_PLACEHOLDER =
+   '<span class="chord-above-editor is-chord-above-off" aria-hidden="true"></span>';
+// Fermata glyph.
+// A fermata is drawn as an inline SVG (a dot under a semicircle arc) instead of the
+// Unicode char 𝄐 (U+1D110): neither Inter nor the bundled Noto Serif JP subset
+// carries the Musical Symbols block, so the char would fall back to a different OS
+// symbol font (the exact problem the ♭/♯ subset solved). The SVG renders identically
+// on every OS and prints crisply. It is purely a SCORE MARK — playback owns the
+// timing, the PDF just shows this glyph.
+const FERMATA_GLYPH =
+   '<span class="beat-fermata" role="img" aria-label="Fermata" title="Fermata">' +
+   '<svg viewBox="0 0 20 18" aria-hidden="true" focusable="false">' +
+   '<path d="M2.5 7 A 8 6 0 0 1 17.5 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+   '<circle cx="10" cy="12.4" r="2.6" fill="currentColor"/>' +
+   "</svg></span>";
+function fermataGlyphHTML(section, slot) {
+   return fermataValue(section, slot) > 0 ? FERMATA_GLYPH : "";
+}
+function fermataClass(section, slot) {
+   return fermataValue(section, slot) > 0 ? " has-fermata" : "";
+}
+function subdivisionTargetHTML(section, baseSlot, index, parentDuration) {
+   const subSlot = `${baseSlot}:${index}`,
+      subValue = beatValue(section, subSlot);
+   if (parentDuration === "half" && subValue.duration === "half") {
+      if (subValue.chord && !section.beats[`${subSlot}.0`]) {
+         section.beats[`${subSlot}.0`] = { chord: subValue.chord, duration: null };
+         subValue.chord = null;
+         section.beats[subSlot] = subValue;
+      }
+      // The chord row moves with the split chord, so nothing is left behind on a
+      // slot that is no longer rendered.
+      moveChordAbove(section, subSlot, `${subSlot}.0`);
+      const children = Array.from({ length: 2 }, (_, childIndex) => {
+         const childSlot = `${subSlot}.${childIndex}`,
+            childValue = beatValue(section, childSlot);
+         return `<span class="sub-beat nested-sub-beat drop-target ${childValue.chord ? "has-chord" : ""}${fermataClass(section, childSlot)}" data-section="${section.id}" data-slot="${childSlot}" data-base-slot="${baseSlot}" data-parent-slot="${subSlot}" data-parent-duration="half" data-level="2">${chordOrDot(section, childSlot)}${fermataGlyphHTML(section, childSlot)}</span>`;
+      }).join("");
+      return `<span class="nested-beat-group${fermataClass(section, subSlot)}" data-section="${section.id}" data-base-slot="${baseSlot}" data-split-slot="${subSlot}"><span class="nested-duration-line" data-section="${section.id}" data-split-slots="${subSlot}" title="Click to remove nested half-beat" aria-label="Remove nested half-beat"></span><span class="nested-sub-beats">${children}</span>${fermataGlyphHTML(section, subSlot)}</span>`;
+   }
+   return `<span class="sub-beat drop-target ${subValue.chord ? "has-chord" : ""}${fermataClass(section, subSlot)}" data-section="${section.id}" data-slot="${subSlot}" data-base-slot="${baseSlot}" data-parent-duration="${parentDuration}" data-level="1">${chordOrDot(section, subSlot)}${fermataGlyphHTML(section, subSlot)}</span>`;
+}
+export function beatHTML(section, bar, beat, chordAboveTrack = false, chordAboveShown = false) {
+   const state = getState();
+   const slot = `${bar}-${beat}`,
+      value = beatValue(section, slot),
+      showLyrics = lyricsFeatureAvailable && state.lyricsEnabled && section.lyricsEnabled !== false;
+   // `chordAboveTrack` reserves the top chord row for this bar, while
+   // `chordAboveShown` decides whether the bar receives an editable/printable chord
+   // cell or just the (empty) reserved track.
+   //
+   // The cell is only emitted when a track exists: an extra child would otherwise
+   // become a SECOND grid row in a single-row column, pushing the beats down and
+   // leaving an empty strip above a score that must look exactly like one without
+   // the feature (this is the "switched off leaves a gap" regression).
+   const chordAboveCell = (cellSlot) =>
+      chordAboveShown ? chordAboveInputHTML(section, cellSlot) : CHORD_ABOVE_TRACK_PLACEHOLDER;
+   const chordAboveLead = chordAboveTrack ? chordAboveCell(slot) : "";
+   if (!value.duration) {
+      const notation = `<span class="beat drop-target ${value.chord ? "has-chord" : ""}${fermataClass(section, slot)}" data-section="${section.id}" data-slot="${slot}" data-base-slot="${slot}" data-level="0">${chordOrDot(section, slot)}${fermataGlyphHTML(section, slot)}</span>`;
+      const columnClasses = `beat-column ${chordAboveTrack ? "with-chord-above" : ""} ${showLyrics ? "with-lyrics" : ""}`;
+      return `<span class="${columnClasses}">${chordAboveLead}<span class="notation-cell">${notation}</span>${showLyrics ? lyricInputHTML(section, slot) : ""}</span>`;
+   }
+   if (value.chord && !section.beats[`${slot}:0`]) {
+      section.beats[`${slot}:0`] = { chord: value.chord, duration: null };
+      value.chord = null;
+      section.beats[slot] = value;
+   }
+   const count = durationMeta[value.duration]?.count || 1;
+   const subBeats = Array.from({ length: count }, (_, index) =>
+      subdivisionTargetHTML(section, slot, index, value.duration),
+   ).join("");
+   const nestedSplitSlots =
+      value.duration === "half"
+         ? Array.from({ length: count }, (_, index) => `${slot}:${index}`).filter(
+              (subSlot) => beatValue(section, subSlot).duration === "half",
+           )
+         : [];
+   const quarterPrintLine =
+      value.duration === "quarter" ? '<span class="quarter-print-line" aria-hidden="true"></span>' : "";
+   const lyricSlots = Array.from({ length: count }, (_, index) => `${slot}:${index}`).flatMap((subSlot) =>
+      value.duration === "half" && beatValue(section, subSlot).duration === "half"
+         ? [`${subSlot}.0`, `${subSlot}.1`]
+         : [subSlot],
+   );
+   const subLyrics = showLyrics
+      ? `<span class="sub-lyrics" style="--lyric-leaves:${lyricSlots.length}">${lyricSlots.map((lyricSlot) => lyricInputHTML(section, lyricSlot)).join("")}</span>`
+      : "";
+   const subChordAbove = chordAboveTrack
+      ? `<span class="sub-chord-above" style="--lyric-leaves:${lyricSlots.length}">${lyricSlots.map((chordSlot) => chordAboveCell(chordSlot)).join("")}</span>`
+      : "";
+   const columnClasses = `beat-column duration-column duration-${value.duration} ${chordAboveTrack ? "with-chord-above" : ""} ${showLyrics ? "with-lyrics" : ""}`;
+   return `<span class="${columnClasses}">${subChordAbove}<span class="notation-cell"><span class="beat-group duration-${value.duration} ${nestedSplitSlots.length ? "has-nested-duration" : ""}${fermataClass(section, slot)}" data-section="${section.id}" data-base-slot="${slot}"><span class="duration-line" title="Click to remove rhythm marker"></span>${quarterPrintLine}<span class="sub-beats">${subBeats}</span>${fermataGlyphHTML(section, slot)}</span></span>${subLyrics}</span>`;
+}
+function sectionTypeClass(name) {
+   const n = name.toLowerCase().trim();
+   if (/^(verse|v\.?|vrs)/.test(n)) return "sec-verse";
+   if (/^(chorus|cho\.?|reff?|refrain)/.test(n)) return "sec-chorus";
+   if (/^(bridge|brg\.?|bri\.?)/.test(n)) return "sec-bridge";
+   if (/^(intro|int\.?|intr\.?)/.test(n)) return "sec-intro";
+   if (/^(outro|out\.?|ending|coda|tag)/.test(n)) return "sec-outro";
+   if (/^(pre-?chorus|pc)/.test(n)) return "sec-prechorus";
+   if (/^(interlude|music|solo|instrumental|instr\.?)/.test(n)) return "sec-interlude";
+   return "sec-default";
+}
+function sectionHTML(section) {
+   const state = getState();
+   const { beats } = meterInfo();
+   const beatWord = beats === 1 ? "beat" : "beats";
+   // In `1/4` the bar IS a beat: the section reads as ONE growing bar (no bar
+   // line — see styles/score/preview.css), so every "bar" label below becomes "beat".
+   const singleBeat = isSingleBeatMeter(state.meter);
+   const unit = barUnitWord(state.meter);
+   const showLyrics = lyricsFeatureAvailable && state.lyricsEnabled && section.lyricsEnabled !== false,
+      // The chord row exists in Chord Chart mode only, and each SECTION decides
+      // whether it uses it (its own Chords On/Off button + per-bar overrides).
+      chordRowAvailable = state.editorMode === "chords",
+      // Strategy "uniform": a section that shows the row in ANY of its bars
+      // reserves the track for ALL of them, so the notation lane and the printed
+      // barlines stay aligned instead of jumping up by one row.
+      chordAboveTrack = chordRowAvailable && sectionShowsChordAbove(section),
+      hasLyricContent = Object.values(section.lyricBeats || {}).some((text) => String(text).trim()),
+      // A section that carries a fermata AND shows its chord row (Chords+) needs extra
+      // clearance above the notation lane — the fermata glyph lifts above the lane top.
+      sectionFermata = sectionHasFermata(section);
+   // Track cumulative bar count across sections
+   if (!renderPreview._cumulativeBarCount) renderPreview._cumulativeBarCount = 0;
+   const cumulativeBarStart = renderPreview._cumulativeBarCount;
+   renderPreview._cumulativeBarCount += section.bars;
+   // Transient multi-bar selection state (never persisted / part of history).
+   const selection = hooks.getBarSelection();
+   const selecting = !!(selection && selection.active && selection.sectionId === section.id);
+   // The selection is a SET of bar indices (a block becomes non-contiguous once
+   // bars are toggled off), so the highlight is a membership test, not a range.
+   const selBars = selecting && selection.bars instanceof Set ? selection.bars : null;
+   const bars = Array.from({ length: section.bars }, (_, bar) => {
+      const globalBarNum = cumulativeBarStart + bar + 1;
+      const inRange = !!(selBars && selBars.has(bar));
+      const barSelClass = selecting ? " is-selectable" : "";
+      const barSelectedClass = inRange ? " is-selected" : "";
+      // Per-bar answer for the chord row: the track may be reserved section-wide
+      // while this bar has the row switched off — or forced on even though the
+      // section default is off (see chordAboveShownForBar).
+      const chordAboveShown = chordAboveTrack && chordAboveShownForBar(section, bar);
+      const chordAboveOffClass = chordAboveTrack && !chordAboveShown ? " is-chord-above-off" : "";
+      // Touch tap-to-reveal: the bar whose per-bar tools are shown. Stamped from
+      // state so the revealed bar survives a re-render (set by markActiveBar in events.js).
+      const toolsOpen =
+         state.activeBar && state.activeBar.sectionId === section.id && state.activeBar.bar === bar
+            ? " is-tools-open"
+            : "";
+      // NOTE: the per-bar chord-row (♪) toggle was removed — the chord row is now
+      // controlled only by the section-level "Chords On/Off" button.
+      return `<div class="bar ${showLyrics ? "has-lyrics" : ""}${chordAboveTrack ? " has-chord-above" : ""}${chordAboveOffClass}${barSelClass}${barSelectedClass}${toolsOpen}" style="--beats:${beats}" data-bar="${bar}"><span class="bar-num" aria-hidden="true">${globalBarNum}</span><span class="bar-tools"><button class="copy-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Copy ${unit} ${globalBarNum}" aria-label="Copy ${unit} ${globalBarNum}">⧉</button><button class="paste-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Paste into ${unit} ${globalBarNum}" aria-label="Paste into ${unit} ${globalBarNum}">⎘</button></span><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Delete ${unit} ${globalBarNum}" aria-label="Delete ${unit} ${globalBarNum}">×</button>${Array.from({ length: beats }, (_, beat) => beatHTML(section, bar, beat, chordAboveTrack, chordAboveShown)).join("")}</div>`;
+   });
+   const batches = Array.from(
+      { length: Math.ceil(bars.length / 4) },
+      (_, index) =>
+         `<div class="bar-batch ${showLyrics ? "has-lyrics" : ""}${chordAboveTrack ? " has-chord-above" : ""}">${bars.slice(index * 4, index * 4 + 4).join("")}</div>`,
+   ).join("");
+   const title =
+      section.id === state.editingId
+         ? `<input class="section-title-input" data-section="${section.id}" value="${escapeHTML(section.name)}" aria-label="Section name">`
+         : `<button class="section-title" data-section="${section.id}" title="Click to edit section name">${escapeHTML(section.name.toUpperCase())}</button>`;
+   const lyricsToggle =
+      lyricsFeatureAvailable && state.lyricsEnabled
+         ? `<button class="section-lyrics-toggle ${section.lyricsEnabled !== false ? "active" : ""}" data-section="${section.id}" aria-pressed="${section.lyricsEnabled !== false}"><span aria-hidden="true">${section.lyricsEnabled !== false ? "✓" : "–"}</span> Lyrics ${section.lyricsEnabled !== false ? "On" : "Off"}</button>`
+         : "";
+   // Chord-above toggle — the section's own switch, shown in Chord Chart mode only.
+   const chordAboveToggle = chordRowAvailable
+      ? `<button class="section-chord-above-toggle ${section.chordAboveEnabled === true ? "active" : ""}" data-section="${section.id}" aria-pressed="${section.chordAboveEnabled === true}"><span aria-hidden="true">${section.chordAboveEnabled === true ? "✓" : "–"}</span> Chords ${section.chordAboveEnabled === true ? "On" : "Off"}</button>`
+      : "";
+   const deleteDisabled = state.sections.length === 1;
+   const sectionMenu = `<details class="section-menu"><summary title="Section options" aria-label="Options for ${escapeHTML(section.name)}">•••</summary><div class="section-menu-popover"><button class="select-bars" type="button" data-section="${section.id}">Copy ${unit}s</button><button class="copy-section" type="button" data-section="${section.id}">Copy section</button><button class="paste-section" type="button" data-section="${section.id}">Paste section</button><button class="delete-section" type="button" data-section="${section.id}" ${deleteDisabled ? "disabled" : ""}>Delete section</button></div></details>`;
+   // Insertion is a section-level edit; playback is centralized in the topbar.
+   const addSection = `<button class="text-button add-section" type="button" data-section="${section.id}" title="Add a section after ${escapeHTML(section.name)}">+ Add section</button>`;
+   const typeClass = sectionTypeClass(section.name);
+   const chip = `<span class="section-chip" aria-hidden="true"></span>`;
+   // Selection action bar: shown above the grid only for the section being selected.
+   const selCount = selBars ? selBars.size : 0;
+   const selectionBar = selecting
+      ? `<div class="bar-selection-bar" role="status"><span class="bar-selection-count">${
+           selCount ? `${selCount} ${unit}${selCount === 1 ? "" : "s"} selected` : `No ${unit}s selected yet`
+        }</span><span class="bar-selection-hint">Tap ${unit}s to build the block · tap a selected ${unit} to remove it</span><button class="bar-selection-copy" type="button" data-section="${section.id}" ${selCount ? "" : "disabled"}>Copy</button><button class="bar-selection-cancel" type="button">Cancel</button></div>`
+      : "";
+   return `<section class="preview-section ${typeClass} ${section.id === state.activeId ? "is-active" : ""} ${hasLyricContent ? "has-lyric-content" : ""}${sectionFermata ? " has-fermata" : ""}${selecting ? " is-selecting" : ""}" data-section="${section.id}"><div class="section-preview-heading"><div>${chip}${title}</div><div class="section-tools">${chordAboveToggle}${lyricsToggle}<span class="bar-caption">${singleBeat ? `1 bar · ${section.bars} ${section.bars === 1 ? "beat" : "beats"}` : `${section.bars} ${section.bars === 1 ? "bar" : "bars"} · ${beats} ${beatWord} per bar`}</span>${addSection}<button class="text-button add-bar" data-section="${section.id}">${singleBeat ? "+ Add 1 beat" : "+ Add 1 bar"}</button>${sectionMenu}</div></div>${selectionBar}<div class="bar-grid">${batches}</div></section>`;
+}
+// ChordPro rendering.
+// Lyrics with a chord printed directly above the syllable it precedes. The layout
+// is a plain text flow — one inline-block per WORD — which is what lets both the
+// live preview and the exported PDF wrap naturally, with no bar grid, no beat
+// columns and none of the print barline geometry the other two modes need.
+function chordProBlockHTML(block) {
+   if (block.type === "section") return `<p class="cp-label">${escapeHTML(block.label)}</p>`;
+   if (block.type === "comment") return `<p class="cp-comment">${escapeHTML(block.text)}</p>`;
+   if (block.type === "blank") return `<div class="cp-blank" aria-hidden="true"></div>`;
+   // meta / directive / end blocks are intentionally never printed.
+   if (block.type !== "line") return "";
+   const words = block.chunks
+      .map((chunk) => {
+         // An empty text keeps the slot (chord with no lyric, e.g. a lead-in bar).
+         const lyric = escapeHTML(chunk.text) || "&nbsp;";
+         const chord = chunk.chord ? `<span class="cp-chord">${chordLabel(chunk.chord)}</span>` : "";
+         // A chord standing on its own (intro/progression like "[C] [Am7] [Dm7]") is
+         // flagged so CSS can keep a readable gap between the chords.
+         const chordOnly = chunk.chord && !String(chunk.text).trim() ? " is-chord-only" : "";
+         return `<span class="cp-word${chunk.chord ? " has-chord" : ""}${chordOnly}">${chord}<span class="cp-lyric">${lyric}</span></span>`;
+      })
+      .join("");
+   return `<p class="cp-line">${words}</p>`;
+}
+
+/** One ChordPro section: its name plus the rendered lyric/chord flow. */
+export function chordProSectionHTML(section) {
+   const blocks = parseChordPro(section?.chordPro || "");
+   const body = blocks.map(chordProBlockHTML).join("");
+   return `<section class="cp-section" data-section="${section?.id ?? ""}">
+   <p class="cp-section-head"><span class="cp-section-chip" aria-hidden="true"></span><span class="cp-section-name">${escapeHTML(
+      String(section?.name || "Section").toUpperCase(),
+   )}</span></p>
+   ${body || '<p class="cp-empty">Type your first line in the editor, e.g. <code>[C]Amazing grace</code>.</p>'}
+</section>`;
+}
+
+export function renderPreview() {
+   const state = getState();
+   renderPreview._cumulativeBarCount = 0;
+   const artist = $("#artist").value || "Artist / Composer";
+   $("#previewTitle").textContent = $("#songTitle").value || "Song Title";
+   $("#previewArtist").innerHTML =
+      `<span class="artist-label">Created by:</span> <em class="artist-value">${escapeHTML(artist)}</em>`;
+   $("#previewKey").textContent = state.key;
+   $("#previewMeter").textContent = state.meter;
+   // Publish the time signature to the stylesheet. `body[data-meter="1/4"]` is the
+   // scope that drops the bar line and re-spaces the row: a 1/4 bar IS a beat, so the
+   // section is drawn as ONE growing bar. Every meter change (grid select, ChordPro
+   // select, project load, undo/redo) funnels through renderPreview(), so the
+   // attribute can never drift away from the score that is on screen.
+   document.body.dataset.meter = state.meter;
+   // The old free-text hint ("Drag a chord…") was replaced by the "How to use
+   // this score app?" button + dialog (see index.html / events.js). Guard in case
+   // the element is absent so older markup doesn't throw.
+   const legacyHint = $("#previewHint");
+   if (legacyHint) {
+      legacyHint.textContent =
+         lyricsFeatureAvailable && state.lyricsEnabled
+            ? `${prefersTap() ? "Select and tap" : "Drag"} chords onto beats, then enter lyrics in the row below.`
+            : `${prefersTap() ? "Select an item above, then tap" : "Drag a chord from the toolbar onto"} a beat.`;
+   }
+   // ChordPro mode.
+   // That mode's score is a text flow (lyrics with a chord above the syllable), not
+   // a beat grid, so it renders into its own host and skips the grid scroll/width
+   // passes below. Everything above still ran, which keeps the topbar breadcrumb and
+   // the hidden print card in sync for every mode.
+   if (normalizeEditorMode(state.editorMode) === "chordpro") {
+      const cpHost = $("#cpSectionsPreview");
+      if (cpHost) cpHost.innerHTML = state.sections.map(chordProSectionHTML).join("");
+      hooks.bindChordPro();
+      return;
+   }
+   // Re-rendering replaces innerHTML, which resets scroll offsets to 0 on every
+   // rebuilt element. We re-render on every edit (e.g. committing a chord), so
+   // without restoring scroll the view would jump when editing beats near the
+   // right edge of a wide score. TWO scroll containers matter:
+   //   • #previewViewport — vertical/whole-page scroll.
+   //   • each .bar-grid    — the per-section horizontal scroll of the beat lines
+   //     (this is where a wide bar of ¼-beats actually scrolls sideways).
+   // Snapshot both, keyed by section id for the grids, then restore after the
+   // swap. Bar widths (--leaf) are only applied by distributeLeafWidth() inside
+   // updateViewportOverflow() (the rAF below), so a restore before that would be
+   // clamped (scrollWidth still small) — hence we restore again after the width
+   // pass. Project load/reset resets scroll explicitly elsewhere.
+   const viewport = $("#previewViewport");
+   const scrollLeft = viewport ? viewport.scrollLeft : 0;
+   const scrollTop = viewport ? viewport.scrollTop : 0;
+   const gridScroll = new Map();
+   document.querySelectorAll("#sectionsPreview .preview-section").forEach((section) => {
+      const grid = section.querySelector(".bar-grid");
+      if (grid && grid.scrollLeft) gridScroll.set(section.dataset.section, grid.scrollLeft);
+   });
+   const restoreScroll = () => {
+      if (viewport) {
+         viewport.scrollLeft = scrollLeft;
+         viewport.scrollTop = scrollTop;
+      }
+      gridScroll.forEach((left, sectionId) => {
+         const section = document.querySelector(`#sectionsPreview .preview-section[data-section="${sectionId}"]`);
+         const grid = section?.querySelector(".bar-grid");
+         if (grid) grid.scrollLeft = left;
+      });
+   };
+   $("#sectionsPreview").innerHTML = state.sections.map(sectionHTML).join("");
+   restoreScroll();
+   hooks.bindPreview();
+   requestAnimationFrame(() => {
+      hooks.updateViewportOverflow();
+      // Re-apply after bar widths are finalised so a far-right scroll position
+      // survives the relayout instead of being clamped back toward zero.
+      restoreScroll();
+   });
+}

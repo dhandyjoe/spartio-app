@@ -176,30 +176,42 @@ Perangkat (kontrak responsif existing):
 ## 6. Arsitektur & Teknologi (As-Is)
 
 - **Tanpa build-step development:** ES Modules native → wajib diserve via HTTP (`python3 -m http.server 4173`), `file://` merusak module loading.
-- **Layout repo (flat, concerns terpisah):**
+- **Layout repo:** modul dikelompokkan per domain di `src/`; facade cloud tetap di root agar entry point stabil.
 
 ```text
 chord-sheet/
 ├── index.html
-├── src/ (app.js, events.js, render.js, store.js, notation.js, chordPro.js,
-│         chordProEditor.js, pdf.js, pdfOptions.js, dom.js, cloud.js, cloudUI.js,
-│         firebase-config.js, + chordBank.js, chordEditor.js, beatMenu.js,
-│         fermataEditor.js, history.js, clipboard.js, identity.js, playback.js,
-│         sampleCache.js, share.js, synth.js, youtube.js)
-├── styles/ (styles.css tokens, ui.css shell, preview.css canvas+print,
-│            chordpro.css self-contained, fonts.css Inter + Noto Serif JP subset)
+├── src/
+│   ├── app.js, events.js, firebase-config.js
+│   ├── cloud.js, cloudUI.js                 # stable public facades
+│   ├── core/                                # dom, store, clipboard, history
+│   ├── notation/                            # notation, chordPro, chordBank
+│   ├── render/                              # score view + ChordPro workspace
+│   ├── editor/                              # chord editor, beat menu, fermata, bindings/
+│   ├── pdf/                                 # PDF pipeline + options
+│   ├── playback/                            # piano playback, synth, sample cache
+│   ├── util/                                # share, youtube, identity
+│   ├── cloud/data/                          # Firebase runtime and CRUD domains
+│   └── cloud/ui/                            # cloud UI composition and screen concerns
+├── styles/
+│   ├── base/          tokens.css, fonts.css, print.css
+│   ├── layout/        shell.css
+│   ├── components/    editor.css, gallery.css, album.css, library.css
+│   ├── score/         preview.css, chordpro.css
+│   ├── themes/        dark.css
+│   └── pages/         auth.css
 ├── assets/ (favicon, icons PWA, fonts woff2 + lisensi OFL 1.1)
 ├── docs/ (FIREBASE-SETUP.md, ALBUM-FEATURE.md, DESIGN.md, PRD.md)
-├── tests/ (unit.test.mjs, regression.mjs, playback.test.mjs)
+├── tests/ (unit.test.mjs, playback.test.mjs, e2e/*.spec.mjs)
 ├── sw.js, manifest.webmanifest, .nojekyll
 └── .github/workflows/deploy.yml
 ```
 
 - **Graf dependensi dan invariant modul:** peta yang dipelihara ada di `AGENTS.md` §§2–3. Kode dan tes terkait adalah sumber akhir bila ringkasan ini berbeda.
-- **Cloud terisolasi:** `cloudUI` ↔ `cloud.js` ↔ Firebase CDN (lazy-load auth + Firestore); editor tidak tahu Firebase secara langsung.
+- **Cloud terisolasi:** `cloudUI.js` facade → `cloud/ui/controller.js` → `cloud.js` facade → `cloud/data/*` → Firebase CDN. `events.js` supplies the editor bridge; cloud UI does not import it, and the editor does not import Firebase modules.
 - **Cache sampel piano:** `sampleCache.js` menyimpan raw ArrayBuffers (bukan AudioBuffers, agar bebas dari konteks audio) di IndexedDB `wns-sample-cache` v1, store `samples`, key `SAMPLE_CACHE_KEY = "salamander-piano-tonejs-v1"` + nama nada (`synth.js`); semua kegagalan cache bersifat non-fatal (playback tetap jalan via jaringan ulang).
-- **Deploy:** push ke `master` → unit test → stage `_site` + injeksi `__BUILD__` → `r<run>-<sha7>` → verifikasi ulang di `_site` → GitHub Pages. Source Pages harus `GitHub Actions` (fallback branch `master /root` tetap jalan tapi tanpa stamping). Empat artifact distempel: `sw.js`, `index.html`, `styles/chordpro.css` (via `--chordpro-css-version`), dan semua `?v=`; workflow gagal bila tidak ada placeholder `__BUILD__` atau masih ada sisa placeholder di artifact ter-stage.
-- **Testing existing:** `node --test tests/unit.test.mjs` (transpose, normalisasi, slot, kontrak print, konsistensi versi); regresi layout butuh Chrome remote debugging (`python3 -m http.server 4173` + Chrome `--remote-debugging-port=9223` + `node tests/regression.mjs`).
+- **Deploy:** push ke `master` → unit + playback + E2E → stage `_site` + injeksi `__BUILD__` → `r<run>-<sha7>` → verifikasi ulang di `_site` → GitHub Pages. Source Pages harus `GitHub Actions` (fallback branch `master /root` tetap jalan tapi tanpa stamping). Empat artifact distempel: `sw.js`, `index.html`, `styles/score/chordpro.css` (via `--chordpro-css-version`), dan semua `?v=`; workflow gagal bila tidak ada placeholder `__BUILD__` atau masih ada sisa placeholder di artifact ter-stage.
+- **Testing existing:** `npm run test:unit` (transpose, normalisasi, slot, kontrak print, konsistensi versi), `npm run test:playback` (kontrak audio), dan `npm run test:e2e` (Playwright, Chromium, server otomatis di `127.0.0.1:4175`). Seluruh cakupan browser kini berada di `tests/e2e/`.
 
 ---
 
@@ -302,7 +314,7 @@ Format: ID — Nama — User story — Perilaku existing — Kriteria penerimaan
 ### FR-10 — PWA, Offline, Theme, Aksesibilitas Dasar
 
 - **Story:** Sebagai pengguna, saya bisa install, offline, dan ganti tema.
-- **Existing:** Manifest (`Spartio.app`, standalone, icons 192/512/1024 + maskable + svg, kategori music/productivity/utilities); `sw.js` network-first untuk navigasi + shell tanpa `?v=`, cache-first + background refresh untuk aset `?v=` (hanya exact match; `ignoreSearch` hanya saat offline); purge-on-refresh via stamp `__WNS_BUILD__` vs localStorage (reload tepat sekali); `?reset=1/?fresh=1` purge + unregister; font precache; Firebase CDN tidak diintercept (butuh online). Deteksi CSS ChordPro basi: `styles/chordpro.css` mendeklarasikan `--chordpro-css-version: __BUILD__`, dibaca `render.js` untuk toast "ChordPro styles didn't load / out of date" bila service worker menyajikan CSS lama. Theme light/dark (persist `chordSheetTheme`, hormati `prefers-color-scheme`); zoom; `prefersTap/isPhone` + media query sinkron; dialog `role=dialog aria-modal`, toast `role=status aria-live=polite`, label aria pada kontrol utama; nilai ♯/♭ tersimpan di DOM tersembunyi agar terseleksi & terbaca screen reader.
+- **Existing:** Manifest (`Spartio.app`, standalone, icons 192/512/1024 + maskable + svg, kategori music/productivity/utilities); `sw.js` network-first untuk navigasi + shell tanpa `?v=`, cache-first + background refresh untuk aset `?v=` (hanya exact match; `ignoreSearch` hanya saat offline); purge-on-refresh via stamp `__WNS_BUILD__` vs localStorage (reload tepat sekali); `?reset=1/?fresh=1` purge + unregister; font precache; Firebase CDN tidak diintercept (butuh online). Deteksi CSS ChordPro basi: `styles/score/chordpro.css` mendeklarasikan `--chordpro-css-version: __BUILD__`, dibaca `render.js` untuk toast "ChordPro styles didn't load / out of date" bila service worker menyajikan CSS lama. Theme light/dark (persist `chordSheetTheme`, hormati `prefers-color-scheme`); zoom; `prefersTap/isPhone` + media query sinkron; dialog `role=dialog aria-modal`, toast `role=status aria-live=polite`, label aria pada kontrol utama; nilai ♯/♭ tersimpan di DOM tersembunyi agar terseleksi & terbaca screen reader.
 - **AC:** (1) Kunjungan kedua offline tetap boot. (2) Deploy baru terlihat pada refresh pertama tanpa clear manual. (3) Print tidak mengandung chrome app.
 
 ---
@@ -446,10 +458,10 @@ Matriks peran (existing):
 Bagian ini memeriksa kecocokan dokumentasi dengan repo, bukan menyatakan semua fitur telah lulus pengujian atau siap rilis. Perilaku aktual harus ditelusuri ke kode, tes, dan Firestore Rules.
 
 1. Deskripsi FR-01…FR-10 konsisten dengan implementasi di `src/`, markup, dan tes terkait. Label *As-Is* tidak berarti setiap alur sudah diuji end-to-end.
-2. Jalankan `node --test tests/unit.test.mjs` dan `node --test tests/playback.test.mjs` untuk kontrak logika dan audio.
+2. Jalankan `npm run test:unit` dan `npm run test:playback` untuk kontrak logika dan audio, lalu `npm run test:e2e` untuk alur browser utama.
 3. Alur §9 yang melibatkan auth, Firestore, share, dan Albums adalah uji manual. Uji ini memerlukan koneksi online, Firebase config, Authorized Domains, dan rules yang dipublish; catat kegagalan setup sebagai prasyarat, bukan hasil lulus.
 4. Uji deploy memeriksa stamping `__BUILD__` di artifact `_site`; uji ini terpisah dari tes unit.
-5. Uji geometri PDF memakai `tests/regression.mjs` dan Chrome remote debugging. Periksa bahwa chrome app tidak masuk ke hasil cetak pada mode dan lebar layar yang relevan.
+5. Uji geometri PDF memakai spec Playwright `tests/e2e/pdf/options-and-print.spec.mjs` dan `tests/e2e/pdf/print-geometry.spec.mjs`. Periksa bahwa chrome app tidak masuk ke hasil cetak pada mode dan lebar layar yang relevan.
 
 PRD ini belum menetapkan ambang performa numerik. Jangan menyatakan performa telah memenuhi target sampai target dan metode pengukurannya ditentukan.
 
@@ -462,7 +474,7 @@ PRD ini belum menetapkan ambang performa numerik. Jangan menyatakan performa tel
 - **Authorized domains kurang:** login Firebase gagal di host baru bila domain belum didaftarkan.
 - **Enharmonik & keterbacaan:** aturan ejaan transpose disengaja (bukan always-sharp/flat); perubahan di sini berisiko membingungkan pemain.
 - **Lebar token Nashville:** slash coret absolute agar pengukuran `markMidRowBars` & paginasi PDF tidak rusak — jangan ubah menjadi in-flow tanpa menguji PDF.
-- **Print parity:** setiap overlay chrome baru wajib ditambahkan ke blok print `ui.css` (contoh preseden: `.album-banner`).
+- **Print parity:** setiap overlay chrome baru wajib ditambahkan ke blok print `styles/base/print.css` (contoh preseden: `.album-banner`).
 - **Member readonly:** setiap handler mutasi baru wajib memanggil `blockedForEdit()` (yang sekaligus memblokir member album dan pengguna phone) + affordance di `applyReadOnlyAffordances()`; satu call site terlewat = celah tulis.
 
 ---
@@ -494,14 +506,15 @@ Peta modul dan dependensi dipelihara di `AGENTS.md` §§2 dan 7. Peta stylesheet
 ## Lampiran B — Referensi Internal
 
 - `README.md` — fitur, cara jalan, deploy, arsitektur, kontrak responsif, testing.
-- `docs/DESIGN.md` — prinsip desain (7 prinsip, antara lain "Preview adalah kebenaran", "Kertas tidak mengandung chrome"), design tokens per stylesheet (styles.css/ui.css/preview.css/chordpro.css), tipografi & font, shell, komponen, beat grid, ChordPro, home, dark theme, responsif, print, motion, ikon/PWA, a11y, konvensi. Berbahasa Indonesia, As-Is.
+- `docs/DESIGN.md` — prinsip desain (7 prinsip, antara lain "Preview adalah kebenaran", "Kertas tidak mengandung chrome"), design tokens per stylesheet (`styles/base/*`, `styles/layout/*`, `styles/components/*`, `styles/score/*`), tipografi & font, shell, komponen, beat grid, ChordPro, home, dark theme, responsif, print, motion, ikon/PWA, a11y, konvensi. Berbahasa Indonesia, As-Is.
 - `docs/ALBUM-FEATURE.md` — keputusan akses, model data album, arah simpan, read-only canvas, resep uji manual.
 - `docs/FIREBASE-SETUP.md` — rules lengkap, model data personal vs album, checklist go-live.
 - `index.html` — shell app + semua dialog (mode picker, version, YouTube, login, My Songs, album detail, join/new album, edit album, add song, choose album, how-to).
 - `sw.js` — strategi network-first shell vs cache-first aset versi.
-- `.github/workflows/deploy.yml` — gate unit test 2x + injeksi versi (gagal bila placeholder `__BUILD__` hilang atau bersisa).
+- `.github/workflows/deploy.yml` — gate unit, playback, dan E2E + injeksi versi (gagal bila placeholder `__BUILD__` hilang atau bersisa).
 - `tests/unit.test.mjs` — kontrak logika: transpose (sweep semua kunci × semua shift), normalisasi, slot, kontrak print, konsistensi versi, fermata.
-- `tests/regression.mjs` — geometri layout/print via Chrome remote debugging (port 9223, bisa dioverride `CDP_PORT`).
+- `tests/e2e/*.spec.mjs` — Playwright E2E: smoke, chord entry dan saran, rhythm, bars/sections, transpose, export/import termasuk lyrics, navigation guard, library, home/login, mobile, PDF dan print geometry.
+- `tests/e2e/pdf/print-geometry.spec.mjs` — geometri print/PDF: meter 1/4, marker ritme, marker nested, dan layout export.
 - `tests/playback.test.mjs` — kontrak audio: `chordToMidiNotes` untuk semua keluarga kualitas (termasuk `ø7`, `+`, `°`, add9, slash bass, bentuk aksidental sharp/flat/unicode), aturan oktaf-lift `resolveEntryNotes` (angka satu oktaf di atas chord-nya; ketuk kosong membunyikan chord row), `buildPlaybackQueue` membawa chord row ke subdivisi, `fermataPulseTimes`.
 
 ---

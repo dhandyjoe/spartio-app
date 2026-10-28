@@ -1,0 +1,2287 @@
+/* Cloud auth, My Songs gallery, lobby cards and the home FAB. */
+/* ======================================================================
+   CLOUD SYNC UI — login page + My Songs gallery.
+   Reuses the theme tokens (var(--surface|ink|line|green|...)) so it tracks
+   light/dark automatically. Centered-modal mechanics mirror .device-hint.
+   ====================================================================== */
+
+/* ---- Auth gate ----
+   Before the first auth-state result is known we hide the app chrome to avoid a
+   flash of the editor. `data-auth-gate` is set to "pending" inline in <head>,
+   then to "login" or "app" once cloudUI routes. */
+html[data-auth-gate="pending"] body > .topbar,
+html[data-auth-gate="pending"] body > main,
+html[data-auth-gate="login"] body > .topbar,
+html[data-auth-gate="login"] body > main {
+   visibility: hidden;
+}
+html[data-auth-gate="pending"] {
+   background: var(--app-bg);
+}
+
+/* My Songs is a full-viewport screen laid over the editor, so the editor behind
+   it must not contribute a scrollbar. Locking the page (rather than hiding the
+   editor) keeps the editor's scroll position intact when we route back to it. */
+html[data-screen="home"],
+html[data-screen="home"] body {
+   overflow: hidden;
+}
+
+/* Login page styles moved to styles/pages/auth.css (auth visual refresh). The
+   .cloud-modal backdrop below is SHARED with My Songs/Albums — it stays. */
+
+/* Shared modal backdrop (login + gallery). */
+.cloud-modal {
+   position: fixed;
+   inset: 0;
+   z-index: 130;
+   display: grid;
+   place-items: center;
+   padding: 24px;
+   background: rgba(12, 28, 20, 0.46);
+   -webkit-backdrop-filter: blur(9px);
+   backdrop-filter: blur(9px);
+   opacity: 0;
+   transition: opacity 0.28s ease;
+}
+.cloud-modal[hidden] {
+   display: none;
+}
+.cloud-modal.is-open {
+   opacity: 1;
+}
+.cloud-modal-card {
+   position: relative;
+   width: min(400px, 100%);
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   gap: 14px;
+   padding: 34px 30px 30px;
+   text-align: center;
+   border: 1px solid var(--line);
+   border-radius: var(--radius-lg);
+   background: var(--surface);
+   box-shadow: var(--shadow-md);
+   transform: translateY(14px) scale(0.98);
+   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cloud-modal.is-open .cloud-modal-card {
+   transform: translateY(0) scale(1);
+}
+.cloud-modal-close {
+   position: absolute;
+   top: 12px;
+   right: 12px;
+   width: 34px;
+   height: 34px;
+   display: grid;
+   place-items: center;
+   border: 1px solid transparent;
+   border-radius: 50%;
+   background: transparent;
+   color: var(--muted);
+   font-size: 15px;
+   cursor: pointer;
+   transition:
+      background 0.16s ease,
+      color 0.16s ease,
+      border-color 0.16s ease;
+}
+.cloud-modal-close:hover {
+   background: var(--soft);
+   color: var(--ink);
+   border-color: var(--line);
+}
+.cloud-modal-title {
+   margin: 0;
+   font-size: 20px;
+   font-weight: 800;
+   color: var(--ink);
+   letter-spacing: -0.01em;
+}
+.cloud-modal-sub {
+   margin: 0;
+   font-size: 13px;
+   color: var(--muted);
+   max-width: 30ch;
+}
+
+/* Login-only form controls (cloud-google-btn, cloud-divider, cloud-field,
+   cloud-email-form, cloud-auth-error, cloud-auth-primary) moved to
+   styles/pages/auth.css and re-scoped under .login-page. */
+
+/* ---- Account button (topbar) ---- */
+.account-button {
+   display: inline-flex;
+   align-items: center;
+   gap: 6px;
+}
+.account-avatar {
+   width: 20px;
+   height: 20px;
+   display: grid;
+   place-items: center;
+   border-radius: 50%;
+   background: var(--soft);
+   font-size: 12px;
+   overflow: hidden;
+}
+.account-avatar img {
+   width: 100%;
+   height: 100%;
+   object-fit: cover;
+}
+.account-button.is-authed .account-avatar {
+   background: var(--green);
+   color: #fff;
+}
+
+/* ---- Profile card (popover anchored under the account button) ---- */
+.account-menu {
+   position: relative;
+}
+.account-popover {
+   position: absolute;
+   top: calc(100% + 10px);
+   right: 0;
+   z-index: 40;
+   width: 244px;
+   padding: 8px;
+   border: 1px solid var(--line);
+   border-radius: 16px;
+   background: var(--surface);
+   box-shadow:
+      0 2px 6px rgba(16, 40, 28, 0.06),
+      0 22px 48px -18px rgba(16, 40, 28, 0.34);
+   opacity: 0;
+   transform: translateY(-6px) scale(0.98);
+   transform-origin: top right;
+   transition:
+      opacity 0.16s ease,
+      transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.account-popover[hidden] {
+   display: none;
+}
+.account-popover.is-open {
+   opacity: 1;
+   transform: translateY(0) scale(1);
+}
+.account-popover-id {
+   display: flex;
+   align-items: center;
+   gap: 10px;
+   padding: 10px 10px 12px;
+   min-width: 0;
+}
+/* Initials avatar: a soft brand tint so the popover identity reads like the
+   card covers; photos fill the circle unchanged. */
+.account-popover-avatar {
+   flex: 0 0 auto;
+   width: 34px;
+   height: 34px;
+   display: grid;
+   place-items: center;
+   border-radius: 50%;
+   background: color-mix(in srgb, var(--green) 16%, var(--soft));
+   color: var(--dark-green);
+   font-family: "Sora", "Inter", system-ui, sans-serif;
+   font-size: 15px;
+   font-weight: 800;
+   overflow: hidden;
+}
+.account-popover-avatar img {
+   width: 100%;
+   height: 100%;
+   object-fit: cover;
+}
+html[data-theme="dark"] .account-popover-avatar {
+   background: #1d211e;
+   color: #7fd3a4;
+}
+.account-popover-who {
+   display: flex;
+   flex-direction: column;
+   min-width: 0;
+}
+.account-popover-who strong {
+   font-family: "Sora", "Inter", system-ui, sans-serif;
+   font-size: 13.5px;
+   font-weight: 700;
+   letter-spacing: -0.01em;
+   color: var(--ink);
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+.account-popover-who small {
+   font-size: 11.5px;
+   color: var(--muted);
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+.account-popover-sep {
+   height: 1px;
+   margin: 2px 4px 6px;
+   background: var(--line);
+}
+.account-popover-item {
+   width: 100%;
+   display: flex;
+   align-items: center;
+   gap: 9px;
+   padding: 9px 10px;
+   border: none;
+   border-radius: 10px;
+   background: transparent;
+   color: var(--ink);
+   font: inherit;
+   font-size: 13px;
+   font-weight: 600;
+   text-align: left;
+   cursor: pointer;
+   transition:
+      background 0.15s ease,
+      color 0.15s ease;
+}
+.account-popover-item:hover,
+.account-popover-item:focus-visible {
+   background: var(--soft);
+   outline: none;
+}
+.account-popover-item.is-signout {
+   color: #b42318;
+}
+.account-popover-item.is-signout:hover,
+.account-popover-item.is-signout:focus-visible {
+   background: rgba(180, 35, 24, 0.1);
+}
+.account-popover-item[hidden] {
+   display: none;
+}
+.account-popover-item:disabled {
+   opacity: 0.45;
+   cursor: not-allowed;
+   background: transparent;
+}
+.account-popover-item:disabled:hover,
+.account-popover-item:disabled:focus-visible {
+   background: transparent;
+}
+/* ---- Version switcher (editor topbar pill + arrangements popover) ---- */
+.version-switcher {
+   position: relative;
+}
+.version-switcher-btn {
+   display: inline-flex;
+   align-items: center;
+   gap: 6px;
+}
+.version-switcher-btn:focus-visible {
+   outline: 2px solid var(--green);
+   outline-offset: 2px;
+}
+.version-switcher-caret {
+   font-size: 10px;
+   opacity: 0.7;
+}
+.version-popover {
+   width: 280px;
+   right: auto;
+   left: 0;
+   transform-origin: top left;
+}
+.version-popover-head {
+   padding: 8px 10px 4px;
+   font-size: 11px;
+   font-weight: 800;
+   letter-spacing: 0.08em;
+   text-transform: uppercase;
+   color: var(--muted);
+}
+.version-list {
+   display: flex;
+   flex-direction: column;
+   gap: 2px;
+   margin: 4px 0 6px;
+   max-height: 240px;
+   overflow-y: auto;
+}
+.version-list-empty {
+   padding: 10px;
+   font-size: 12.5px;
+   color: var(--muted);
+}
+.version-list-item {
+   display: flex;
+   align-items: center;
+   gap: 2px;
+   padding: 2px;
+   border-radius: 12px;
+   transition: background 0.15s ease;
+}
+.version-list-item.is-current {
+   background: rgba(31, 112, 74, 0.1);
+}
+.version-item-switch {
+   flex: 1;
+   min-width: 0;
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 8px;
+   padding: 7px 8px;
+   border: none;
+   border-radius: 9px;
+   background: transparent;
+   color: var(--ink);
+   font: inherit;
+   font-size: 13px;
+   font-weight: 600;
+   text-align: left;
+   cursor: pointer;
+   transition:
+      background 0.15s ease,
+      color 0.15s ease;
+}
+.version-item-switch:hover,
+.version-item-switch:focus-visible {
+   background: var(--soft);
+   outline: none;
+}
+.version-list-item.is-current .version-item-switch {
+   color: var(--dark-green);
+}
+.version-item-label {
+   min-width: 0;
+   overflow: hidden;
+   text-overflow: ellipsis;
+   white-space: nowrap;
+}
+/* Small mode glyph at the head of each version row (♪ / # / ♬), so the writing
+   mode of every arrangement is visible in the dropdown. */
+.version-item-mode {
+   display: inline-block;
+   min-width: 15px;
+   margin-right: 6px;
+   color: var(--muted);
+   font-weight: 700;
+   text-align: center;
+}
+.version-item-current {
+   flex: 0 0 auto;
+   font-size: 11px;
+   font-weight: 700;
+   color: var(--green);
+}
+.version-item-edit {
+   flex: none;
+   width: 28px;
+   height: 28px;
+   display: grid;
+   place-items: center;
+   border: none;
+   border-radius: 8px;
+   background: transparent;
+   color: var(--muted);
+   font-size: 13px;
+   cursor: pointer;
+   opacity: 0.45;
+   transition:
+      opacity 0.15s ease,
+      background 0.15s ease,
+      color 0.15s ease;
+}
+.version-list-item:hover .version-item-edit,
+.version-item-edit:focus-visible {
+   opacity: 1;
+}
+.version-item-edit:hover,
+.version-item-edit:focus-visible {
+   background: var(--soft);
+   color: var(--ink);
+}
+.account-popover-item.is-version-danger {
+   color: #b42318;
+}
+.account-popover-item.is-version-danger:hover,
+.account-popover-item.is-version-danger:focus-visible {
+   background: rgba(180, 35, 24, 0.1);
+}
+/* ---- Version details dialog: fields, YouTube preview, danger action ---- */
+.vd-fields {
+   display: flex;
+   flex-direction: column;
+   gap: 4px;
+   margin: 4px 0 2px;
+}
+/* ---- Version dialog: per-version WRITING MODE picker ----
+   One song can hold versions written in different modes, so the Create-version
+   dialog lets you pick the mode the new arrangement starts in. */
+.vd-mode-picker {
+   margin: 12px 0 2px;
+}
+.vd-mode-options {
+   display: grid;
+   grid-template-columns: repeat(3, 1fr);
+   gap: 8px;
+}
+.vd-mode-btn {
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   gap: 4px;
+   padding: 10px 8px;
+   border: 1.5px solid var(--line);
+   border-radius: 10px;
+   background: var(--surface);
+   color: var(--ink);
+   font: inherit;
+   font-size: 12px;
+   font-weight: 700;
+   text-align: center;
+   cursor: pointer;
+   transition:
+      border-color 0.16s ease,
+      box-shadow 0.16s ease,
+      background 0.16s ease,
+      color 0.16s ease;
+}
+.vd-mode-btn:hover {
+   border-color: color-mix(in srgb, var(--green) 45%, var(--line));
+}
+.vd-mode-btn:focus-visible {
+   outline: none;
+   border-color: var(--green);
+   box-shadow: 0 0 0 3px rgba(35, 122, 80, 0.14);
+}
+.vd-mode-btn.is-active {
+   border-color: var(--green);
+   background: color-mix(in srgb, var(--green) 12%, transparent);
+   color: var(--dark-green);
+}
+.vd-mode-btn-mark {
+   font-size: 18px;
+   line-height: 1;
+}
+.vd-mode-btn-label {
+   line-height: 1.2;
+}
+html[data-theme="dark"] .vd-mode-btn.is-active {
+   color: var(--green);
+   background: color-mix(in srgb, var(--green) 22%, transparent);
+}
+.vd-youtube .new-song-name-input {
+   font-family: inherit;
+}
+.vd-youtube-preview {
+   display: flex;
+   align-items: center;
+   gap: 10px;
+   margin-top: 10px;
+}
+.vd-youtube-preview[hidden] {
+   display: none;
+}
+.vd-youtube-thumb {
+   width: 160px;
+   height: 90px;
+   border-radius: 8px;
+   object-fit: cover;
+   border: 1px solid var(--line);
+   background: #000;
+   cursor: pointer;
+   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+   transition:
+      transform 0.15s ease,
+      box-shadow 0.15s ease;
+}
+.vd-youtube-thumb:hover {
+   transform: scale(1.03);
+   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+}
+.vd-youtube-preview .icon-button {
+   color: var(--muted);
+}
+.vd-delete-row {
+   justify-content: flex-start;
+   margin-top: 18px;
+}
+.button.button-danger {
+   background: #b42318;
+   color: #fff;
+}
+.button.button-danger:hover {
+   filter: brightness(0.95);
+}
+/* ---- Version list: YouTube indicator + gallery card watch chip ---- */
+.version-item-yt {
+   font-size: 10px;
+   margin-left: 4px;
+   color: var(--green);
+   opacity: 0.9;
+}
+/* ---- Editor header: Back affordance + document controls ---- */
+.topbar-nav {
+   display: flex;
+   align-items: center;
+   gap: 12px;
+   min-width: 0;
+}
+.editor-back {
+   flex: 0 0 auto;
+}
+/* Help button in the topbar — high-visibility affordance so first-time users
+   can always find the editing guide. */
+.topbar-help-btn {
+   display: inline-flex;
+   align-items: center;
+   gap: 0;
+   flex: 0 0 auto;
+   margin-left: 0;
+   /* Icon-only: symmetric padding keeps the ? circle optically centered. */
+   padding: 6px;
+   border: 1.5px solid color-mix(in srgb, var(--green) 45%, var(--line));
+   border-radius: 999px;
+   background: color-mix(in srgb, var(--green) 8%, var(--surface));
+   color: var(--dark-green);
+   font-size: 13px;
+   font-weight: 600;
+   line-height: 1;
+   cursor: pointer;
+   transition:
+      background 0.18s ease,
+      border-color 0.18s ease,
+      transform 0.12s ease,
+      box-shadow 0.18s ease;
+}
+.topbar-help-btn:hover {
+   background: var(--green);
+   border-color: var(--green);
+   color: #fff;
+   transform: translateY(-1px);
+   box-shadow: 0 4px 12px color-mix(in srgb, var(--green) 32%, transparent);
+}
+.topbar-help-btn:hover .topbar-help-icon {
+   background: #fff;
+   color: var(--green);
+}
+.topbar-help-btn:active {
+   transform: translateY(0);
+}
+.topbar-help-icon {
+   display: grid;
+   place-items: center;
+   width: 20px;
+   height: 20px;
+   border-radius: 50%;
+   background: var(--green);
+   color: #fff;
+   font-size: 13px;
+   font-weight: 800;
+   line-height: 1;
+   transition:
+      background 0.18s ease,
+      color 0.18s ease;
+}
+html[data-theme="dark"] .topbar-help-btn {
+   color: #cdeede;
+}
+/* Contextual "Back to editor": only rendered when a document is already open. */
+.gallery-resume[hidden] {
+   display: none;
+}
+
+/* Keep cloud topbar buttons usable on phones (base/tokens.css hides .button-ghost
+   at <=560px). We re-show the ghost ones (Back, account) — Save to Cloud and
+   Export .pdf are filled buttons now, so they're never hidden. */
+@media (max-width: 560px) {
+   #backToSongsBtn.button-ghost,
+   #accountBtn.button-ghost {
+      display: inline-flex !important;
+      align-items: center;
+      padding: 8px 10px;
+   }
+   /* "Attach Link" is a SECONDARY ghost button, so base/tokens.css drops it entirely at
+      this width. Keep the action as an icon-only square instead of losing it —
+      and note the ID-level `[hidden]` guard further down (home toolbar) so this
+      re-show can never beat the Albums tab's `hidden`. */
+   #attachLinkBtn.button-ghost {
+      display: inline-flex !important;
+      align-items: center;
+      justify-content: center;
+      min-width: 46px;
+      min-height: 44px;
+      padding: 8px;
+   }
+   /* "Join Album" (Albums tab) is a ghost button too — same trap, same fix. */
+   #joinAlbumBtn.button-ghost {
+      display: inline-flex !important;
+      align-items: center;
+      justify-content: center;
+      min-width: 46px;
+      min-height: 44px;
+      padding: 8px;
+   }
+   /* …and so is the album-detail "← Back to Albums" BACK button, which left a phone user
+      with no way back to the album list. */
+   #albumBackBtn.button-ghost {
+      display: inline-flex !important;
+      align-items: center;
+      padding: 8px 12px;
+   }
+   /* Same trap for the album detail actions: Invite / Members / Add from My Songs /
+      Leave are ghost buttons too, so an album OWNER lost them entirely on a phone. */
+   #albumInviteBtn.button-ghost,
+   #albumMembersBtn.button-ghost,
+   #albumAddFromBtn.button-ghost,
+   #albumLeaveBtn.button-ghost {
+      display: inline-flex !important;
+      align-items: center;
+      padding: 8px 10px;
+   }
+   /* Login responsive rules moved to styles/pages/auth.css (uses the documented
+      ≤680px band instead of the legacy 560px breakpoint). */
+}
+
+/* ======================= My Songs gallery ========================= */
+/* ======================================================================
+   LOBBY THEME — the cloud gallery is ALWAYS dark.
+   My Songs / Albums / Album detail are a "lobby" in front of the editor:
+   they keep their own near-black green stage regardless of the light/dark
+   theme toggle (which keeps controlling the editor only). Mechanism: the two
+   modal roots re-map the CORE tokens for their whole subtree, so every
+   descendant that already consumes var(--surface), var(--ink) etc. is
+   re-skinned for free — no per-rule dark duplicates needed.
+   House rule (from auth.css): --spark is an accent, never a surface.
+   ====================================================================== */
+.cloud-gallery,
+.cloud-album {
+   --app-bg: #0a0a0a; /* near-black stage */
+   --surface: #111211; /* card / shell surface */
+   --soft: #1b1c1a; /* tinted fills (chips, icon tiles, inactive tracks) */
+   --line: #2b2d2a; /* hairlines */
+   --ink: #f2f2ef; /* primary text */
+   --muted: #a3a8a0; /* secondary text (~7:1 on --surface) */
+   --green: #5a8f6d; /* structural green — focus rings, hover fills */
+   --dark-green: #cfe8bf; /* retargeted: pale-green TEXT accent, legible on dark */
+}
+/* Stage: a deep near-black gradient + one static lime aura at the top. Static
+   decoration — no animation loops in the lobby (entrance + hover only). */
+.cloud-gallery .cloud-gallery-shell,
+.cloud-album .cloud-album-shell {
+   background:
+      radial-gradient(120% 60% at 50% -10%, rgba(184, 232, 92, 0.06), transparent 60%),
+      linear-gradient(160deg, #111311 0%, #0a0a0a 55%, #0c0d0b 100%);
+}
+/* Header bars: transparent over the stage, hairline below. */
+.cloud-gallery-head,
+.cloud-album-head {
+   background: transparent;
+   border-bottom-color: var(--line);
+}
+/* Brand lockup: the icon carries its own tile, so no tinted chip behind it. */
+.cloud-gallery .home-brand-icon {
+   background: transparent;
+}
+/* Page title: bigger display voice — the lobby is a destination, not a dialog. */
+.cloud-gallery .home-intro h1 {
+   font-size: clamp(17px, 1.8vw, 21px);
+   letter-spacing: -0.02em;
+}
+.cloud-gallery .library-count {
+   color: var(--spark);
+}
+/* Hook #1 — one-shot title shimmer, adapted from the mirage-shimmer-text
+   pattern (a highlight sweeping a background-clipped gradient). Fired by
+   .is-shimmer on #mySongsTitle each time the gallery opens; JS removes the
+   class on animationend so it never repeats while idling. */
+@media (prefers-reduced-motion: no-preference) {
+   .home-intro h1.is-shimmer {
+      background: linear-gradient(100deg, var(--ink) 40%, var(--spark) 50%, var(--ink) 60%);
+      background-size: 220% 100%;
+      background-position: 120% 0;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: lobby-shimmer 1.4s var(--lobby-ease) 1 both;
+   }
+   @keyframes lobby-shimmer {
+      to {
+         background-position: -120% 0;
+      }
+   }
+}
+/* Primary actions go lime-on-dark (was green-on-white): the lobby's one loud
+   fill, matched to the active tab pill and the FAB. */
+.cloud-gallery .button-primary,
+.cloud-album .button-primary {
+   background: var(--spark);
+   color: var(--spark-ink);
+}
+.cloud-gallery .button-primary:hover,
+.cloud-album .button-primary:hover {
+   background: color-mix(in srgb, var(--spark) 88%, #fff);
+}
+/* Ghost secondary buttons keep the dark fill; text goes pale green. */
+.cloud-gallery .button-ghost,
+.cloud-album .button-ghost {
+   background: var(--soft);
+   color: var(--ink);
+   border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+}
+/* Search: dark pill field, lime focus ring. */
+.cloud-gallery .cloud-search input,
+.cloud-album .cloud-search input {
+   background: var(--soft);
+   border-color: var(--line);
+}
+.cloud-gallery .cloud-search input:focus-visible,
+.cloud-album .cloud-search input:focus-visible {
+   border-color: color-mix(in srgb, var(--spark) 60%, transparent);
+   box-shadow: 0 0 0 3px var(--lobby-glow);
+}
+/* Help "?" button sits only in the gallery — retint freely. */
+.cloud-gallery .topbar-help-btn {
+   background: var(--soft);
+   border-color: color-mix(in srgb, var(--spark) 35%, var(--line));
+   color: var(--spark);
+}
+/* Hook #5 — tabs: an inset pill track; the ACTIVE segment is a lime pill with
+   near-black text (the lobby's most visible accent hook). */
+.cloud-gallery .home-tabs {
+   border-color: var(--line);
+   background: var(--soft);
+}
+.cloud-gallery .home-tab.is-active,
+.cloud-gallery .home-tab[aria-selected="true"] {
+   color: var(--spark-ink);
+   background: var(--spark);
+}
+.cloud-gallery .home-tab:focus-visible {
+   outline: 2px solid var(--spark);
+   outline-offset: 2px;
+}
+/* Account popover: token remap already re-surfaces it; add the dark polish
+   (deeper panel + lime avatar tint) on top. */
+.cloud-gallery .account-popover,
+.cloud-album .account-popover {
+   background: #161715;
+   border-color: var(--line);
+   box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.4),
+      0 22px 48px -18px rgba(0, 0, 0, 0.6);
+}
+.cloud-gallery .account-popover-avatar,
+.cloud-album .account-popover-avatar {
+   background: color-mix(in srgb, var(--spark) 16%, var(--soft));
+   color: var(--spark);
+}
+/* Danger (sign out) stays red, tuned for dark. */
+.cloud-gallery .account-popover-item.is-signout,
+.cloud-album .account-popover-item.is-signout {
+   color: #ff9b8f;
+}
+.cloud-gallery .account-popover-item.is-signout:hover,
+.cloud-gallery .account-popover-item.is-signout:focus-visible,
+.cloud-album .account-popover-item.is-signout:hover,
+.cloud-album .account-popover-item.is-signout:focus-visible {
+   background: rgba(255, 100, 85, 0.12);
+}
+/* Album header "Leave" keeps the single rose accent — the base rule below
+   (in the ALBUM section) stays byte-identical for the member-actions contract;
+   the dark variant there already covers the lobby. */
+/* Album context pill inside the lobby header. */
+.cloud-album .album-pill {
+   background: var(--soft);
+   color: var(--spark);
+   border-color: color-mix(in srgb, var(--spark) 30%, transparent);
+}
+/* Member read-only banner inside the lobby. */
+.cloud-gallery .album-banner,
+.cloud-album .album-banner {
+   background: var(--soft);
+   color: var(--ink);
+}
+
+.cloud-gallery {
+   place-items: stretch;
+   padding: 0;
+   /* Pin the single grid cell to the viewport so a wide scrolling card grid
+      inside can never stretch the shell (and header) past the screen. */
+   grid-template-columns: minmax(0, 1fr);
+   grid-template-rows: minmax(0, 1fr);
+}
+.cloud-gallery-shell {
+   position: relative;
+   width: 100%;
+   max-width: 100%;
+   min-width: 0;
+   height: 100%;
+   overflow: hidden;
+   display: flex;
+   flex-direction: column;
+   background: var(--app-bg);
+   transform: translateY(14px);
+   opacity: 0;
+   transition:
+      transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.28s ease;
+}
+.cloud-gallery.is-open .cloud-gallery-shell {
+   transform: translateY(0);
+   opacity: 1;
+}
+.cloud-gallery-head {
+   flex: 0 0 auto;
+   /* 3-column header: brand (left) · compact page title (center) · actions (right).
+      The side columns share equal width (1fr) so the centered title stays
+      optically centered in the header regardless of how wide each side is. */
+   display: grid;
+   grid-template-columns: 1fr auto 1fr;
+   align-items: center;
+   gap: 18px;
+   padding: 14px clamp(20px, 4vw, 56px);
+   border-bottom: 1px solid var(--line);
+   background: var(--surface);
+}
+.cloud-gallery-heading {
+   min-width: 0;
+   justify-self: start;
+}
+.cloud-gallery-heading .cloud-modal-title {
+   text-align: left;
+}
+.cloud-gallery-heading .cloud-modal-sub {
+   text-align: left;
+   max-width: none;
+}
+/* Brand lockup. This lives on My Songs because My Songs is the home screen;
+   the editor is a sub-page and leads with a Back affordance instead. */
+.home-brand {
+   display: inline-flex;
+   align-items: center;
+   gap: 11px;
+   min-width: 0;
+}
+.home-brand-icon {
+   flex: 0 0 auto;
+   display: grid;
+   place-items: center;
+   width: 36px;
+   height: 36px;
+   border-radius: 11px;
+   background: transparent;
+}
+.home-brand-icon img {
+   width: 100%;
+   height: 100%;
+}
+.home-brand-text {
+   display: flex;
+   flex-direction: column;
+   min-width: 0;
+   font-size: 15.5px;
+   font-weight: 700;
+   letter-spacing: -0.01em;
+   color: var(--ink);
+   line-height: 1.2;
+}
+.home-brand-text small {
+   font-size: 11px;
+   font-weight: 500;
+   color: var(--muted);
+   letter-spacing: 0;
+}
+.cloud-gallery-actions {
+   display: flex;
+   align-items: center;
+   justify-content: flex-end;
+   justify-self: end;
+   gap: 10px;
+   flex-wrap: wrap;
+}
+/* The hidden attribute must always win inside the home toolbar (e.g. #newSongBtn
+   / #attachLinkBtn are hidden on the Albums tab, #backToEditorBtn is hidden until
+   a song is open). Without this, any future rule that sets `display` on .button
+   would silently override the UA [hidden] default and show them anyway. */
+.cloud-gallery-actions > [hidden] {
+   display: none !important;
+}
+/* …but that generic rule is NOT enough, because the phone re-shows carry an ID
+   selector AND !important — `#attachLinkBtn.button-ghost { display: inline-flex
+   !important }` at ≤560px outranks `.cloud-gallery-actions > [hidden]`, so on a
+   phone the 🔗 Attach Link (a MY SONGS action) stayed visible on the ALBUMS tab,
+   exactly where it must be hidden. [hidden] means "not shown", so it has to win
+   with the same ID-level weight, for every button in the app that is toggled
+   through the hidden attribute. Placed AFTER those re-shows: at equal specificity
+   the later rule wins, and this selector is deliberately higher anyway. */
+#attachLinkBtn[hidden],
+#newSongBtn[hidden],
+#newAlbumBtn[hidden],
+#joinAlbumBtn[hidden],
+#backToEditorBtn[hidden],
+#backToSongsBtn[hidden],
+#albumBackBtn[hidden],
+#albumInviteBtn[hidden],
+#albumMembersBtn[hidden],
+#albumAddFromBtn[hidden],
+#albumLeaveBtn[hidden],
+#albumNewSongBtn[hidden],
+#newVersionBtn[hidden] {
+   display: none !important;
+}
+/* Hero + search stack. The hero moved here from the editor: only the home
+   screen gets to state what the product does. */
+/* Compact, centered page title in the header's middle column (Option B). Short
+   and functional — the user is already signed in, so no marketing tagline. */
+.home-intro {
+   margin: 0;
+   padding: 0;
+   text-align: center;
+   justify-self: center;
+   min-width: 0;
+}
+.home-intro h1 {
+   margin: 0;
+   font-family: "Sora", "Inter", system-ui, sans-serif;
+   font-size: clamp(15px, 1.6vw, 18px);
+   font-weight: 700;
+   letter-spacing: -0.01em;
+   line-height: 1.2;
+   color: var(--ink);
+}
+.home-intro p {
+   margin: 3px 0 0;
+   font-size: 12px;
+   color: var(--muted);
+}
+/* Search bar stands on its own row between the hero and the list. */
+.cloud-gallery-searchbar {
+   flex: 0 0 auto;
+   display: flex;
+   flex-wrap: wrap;
+   align-items: center;
+   justify-content: center;
+   gap: 12px;
+   padding: 14px clamp(20px, 4vw, 56px) 6px;
+}
+/* Live library count — now the standalone subtitle under the centered title. */
+.library-count {
+   font-weight: 600;
+   color: var(--dark-green);
+   font-variant-numeric: tabular-nums;
+}
+.cloud-search {
+   position: relative;
+   display: flex;
+   align-items: center;
+   width: min(560px, 100%);
+}
+.cloud-search-icon {
+   position: absolute;
+   left: 16px;
+   color: var(--muted);
+   font-size: 17px;
+   pointer-events: none;
+}
+.cloud-search input {
+   min-height: 48px;
+   width: 100%;
+   padding: 10px 16px 10px 42px;
+   border: 1px solid var(--line);
+   border-radius: 999px;
+   background: var(--surface);
+   color: var(--ink);
+   font-size: 14.5px;
+   transition:
+      border-color 0.16s ease,
+      box-shadow 0.16s ease;
+}
+.cloud-search input::placeholder {
+   color: var(--muted);
+}
+.cloud-search input:focus-visible {
+   outline: none;
+   border-color: var(--green);
+   box-shadow: 0 0 0 3px rgba(35, 122, 80, 0.16);
+}
+.cloud-gallery-close {
+   position: static;
+}
+
+.cloud-gallery-body {
+   position: relative;
+   flex: 1 1 auto;
+   min-height: 0;
+   width: 100%;
+   max-width: 100%;
+   overflow: hidden; /* the scrolling grid lives INSIDE here, so it never pushes the shell wider than the viewport */
+   display: flex;
+   align-items: flex-start; /* pin the grid to the top so the gap below the search bar stays constant */
+   justify-content: center;
+}
+/* Two-row grid that scrolls horizontally. Cards flow column-by-column (top card
+   then bottom card of each column), and columns alternate a small vertical
+   offset to create a zigzag wave. The grid is the scroll container, so it never
+   pushes the shell (or header) wider than the viewport — fixing the drift bug. */
+.cloud-cards {
+   flex: 1 1 auto;
+   min-width: 0; /* let the flex item shrink so overflow-x can scroll instead of stretching the shell */
+   width: 100%;
+   max-width: 100%;
+   height: 100%;
+   display: grid;
+   grid-template-rows: repeat(2, min-content);
+   grid-auto-flow: column;
+   grid-auto-columns: max-content;
+   gap: 14px 8px;
+   align-content: center;
+   justify-content: start;
+   overflow-x: auto;
+   overflow-y: hidden;
+   /* Side padding = half the viewport minus half a card, so the FIRST and LAST
+      columns can scroll all the way to the horizontal center (where they become
+      sharp/active). Few cards still sit centered because the padding fills the
+      sides evenly. `align-content:center` centers the card rows VERTICALLY in
+      the body so they line up with the left/right nudge icons (which sit at the
+      body's vertical midpoint); the symmetric top/bottom padding keeps a minimum
+      inset from the search bar and shell edge on shorter windows. */
+   padding: 28px max(16px, calc(50% - 105px));
+   scrollbar-width: none; /* hide native scrollbar; nudge buttons + swipe drive it */
+   -webkit-overflow-scrolling: touch;
+   touch-action: pan-x pan-y;
+   list-style: none;
+   margin: 0;
+}
+.cloud-cards::-webkit-scrollbar {
+   display: none;
+}
+.cloud-cards:focus-visible {
+   outline: 2px solid var(--green);
+   outline-offset: -4px;
+   border-radius: var(--radius-lg);
+}
+
+/* Card. Cards sit in the grid; each column is nudged up or down (zigzag) via
+   --shift, and cards near the scroll edges get blurred via --blur (set by JS).
+   Hovering/focusing a card lifts it (via --lift) and reveals its actions +
+   detail. Visual language: a hairline frame with a cover photo (or a quiet
+   typographic motif) at the top — flat surfaces, colour carried by the data
+   on the cover rather than by the chrome. */
+.song-card {
+   --shift: 0px;
+   --lift: 0px;
+   position: relative;
+   width: 214px;
+   /* Height ADAPTS to the viewport: the two-row carousel (2 × height + gap +
+      zigzag ±20px + the grid's vertical padding) must fit inside the gallery
+      body, or overflow-y:hidden clips whole cards away. The 260px floor also
+      guarantees room for the reserved reveal strip (detail + actions) without
+      crushing the identity zone; 344px is the design size on tall screens. */
+   height: clamp(260px, calc(50vh - 152px), 344px);
+   display: flex;
+   flex-direction: column;
+   padding: 0;
+   border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+   border-radius: 22px;
+   background: var(--surface);
+   cursor: pointer;
+   transform: translateY(calc(var(--shift) + var(--lift))) scale(var(--scale, 1));
+   filter: blur(var(--blur, 0px));
+   transition:
+      transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+      filter 0.3s ease,
+      box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 0.3s ease;
+   overflow: hidden;
+}
+/* Zigzag: columns alternate up / down. With 2 rows and column flow the cards
+   come in pairs (col1 = cards 1&2, col2 = cards 3&4 …), so a period-4 pattern
+   raises odd columns and lowers even columns. */
+.song-card:nth-child(4n + 1),
+.song-card:nth-child(4n + 2) {
+   --shift: -20px;
+}
+.song-card:nth-child(4n + 3),
+.song-card:nth-child(4n + 4) {
+   --shift: 20px;
+}
+/* Hover choreography (lobby hook #2): lift + lime hairline + a soft mode-
+   agnostic glow. The cover tints carry the mode colour; the card chrome
+   stays neutral lime so every card reacts the same way. */
+.song-card:hover,
+.song-card:focus-visible {
+   --lift: -8px;
+   border-color: color-mix(in srgb, var(--spark) 55%, transparent);
+   box-shadow:
+      0 24px 48px -20px rgba(0, 0, 0, 0.65),
+      0 0 0 1px color-mix(in srgb, var(--spark) 25%, transparent),
+      0 0 32px -8px var(--lobby-glow);
+   outline: none;
+   z-index: 3;
+}
+/* Press feedback: sink the lift instead of scaling (scale would fight the
+   JS-set --scale used by the edge-blur ramp). */
+.song-card:active {
+   --lift: -3px;
+   border-color: color-mix(in srgb, var(--spark) 35%, transparent);
+}
+/* Dimmed (blurred, off-center) cards are not interactive: they can't be
+   clicked, hovered, or focused. Scroll them to the middle to activate them. */
+.song-card.is-dim {
+   pointer-events: none;
+   cursor: default;
+}
+/* Legacy hook kept harmless: JS no longer sets .is-active on this grid. */
+.song-card.is-active {
+   box-shadow: var(--shadow-md);
+   border-color: var(--green);
+   outline: none;
+}
+/* ---- Cover: the card's 16:9 top zone ----
+   Either a real YouTube thumbnail (.is-photo) or a quiet typographic motif
+   (.is-motif) that states what the song IS — its glyph and its opening
+   tokens. Colour lives on the cover (the data), not on the card chrome. */
+.song-card-cover {
+   position: relative;
+   flex: none;
+   width: 100%;
+   aspect-ratio: 16 / 9;
+   background: var(--soft);
+   overflow: hidden;
+}
+.song-card-cover.is-photo img.song-card-cover-img {
+   position: absolute;
+   inset: 0;
+   width: 100%;
+   height: 100%;
+   object-fit: cover;
+   /* Fade in over a quiet tint once decoded; on load failure the img is
+      hidden and the cover repaints as a motif (delegated listeners in JS). */
+   opacity: 0;
+   transition: opacity 0.3s ease;
+}
+.song-card-cover.is-photo img.song-card-cover-img.is-loaded {
+   opacity: 1;
+}
+/* No white flash while a thumbnail loads (lobby is always dark). */
+.song-card-cover.is-photo {
+   background: #121311;
+}
+/* Typographic motif cover: mode tint + large Sora glyph + a token strip. */
+.song-card-cover.is-motif {
+   display: flex;
+   align-items: center;
+   justify-content: center;
+}
+/* Motif tints: the lobby is always dark, so the (former dark-theme) deep
+   tints are the default. Cards only ever render inside the gallery. */
+.song-card-cover.is-motif[data-mode="chords"] {
+   background: #171b16;
+}
+.song-card-cover.is-motif[data-mode="numbers"] {
+   background: #1b1a26;
+}
+.song-card-cover.is-motif[data-mode="album"] {
+   background: var(--soft);
+}
+/* When a photo fails to load, the cover repaints as a motif (same tints). */
+.song-card-cover.is-photo.is-fallback {
+   display: flex;
+   align-items: center;
+   justify-content: center;
+}
+.song-card-cover.is-photo.is-fallback[data-mode="chords"] {
+   background: #171b16;
+}
+.song-card-cover.is-photo.is-fallback[data-mode="numbers"] {
+   background: #1b1a26;
+}
+/* Large display glyph used inside the motif cover (mode mark or album letter). */
+.song-card-mode-mark {
+   font-family: "Sora", "Inter", system-ui, sans-serif;
+   font-size: 64px;
+   line-height: 1;
+   font-weight: 800;
+   pointer-events: none;
+   user-select: none;
+   opacity: 0.16;
+   color: var(--green);
+}
+/* The legacy numeric ink (#4f46e5) only applies to the OLD text-glyph mark.
+   The shared `.mode-tile` component owns the colour of the new mode icons, so
+   a Nashville row and a Nashville filter option can never drift apart. */
+.song-card.is-numbers .song-card-mode-mark:not(.mode-mark),
+.song-card-cover.is-motif[data-mode="numbers"] .song-card-mode-mark:not(.mode-mark) {
+   color: #4f46e5;
+}
+/* Lobby is always dark → the higher-contrast mark opacity is the default. */
+.song-card-mode-mark {
+   opacity: 0.22;
+}
+/* Hover "breath" on the motif cover: the mode tint brightens for a beat.
+   A transition (not a loop) — it settles while the card is hovered. */
+.song-card-cover.is-motif {
+   transition: filter 0.35s ease;
+}
+.song-card:hover .song-card-cover.is-motif,
+.song-card:focus-visible .song-card-cover.is-motif {
+   filter: saturate(1.15) brightness(1.08);
+}
+/* One-shot sheen sweeping the cover on hover-entry (restarts on re-entry).
+   Sits on the cover, not the card — the card's ::before/::after are off-limits
+   (the old radial glow lived there and was removed for good). */
+@media (prefers-reduced-motion: no-preference) {
+   .song-card-cover::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(105deg, transparent 42%, rgba(255, 255, 255, 0.09) 50%, transparent 58%);
+      transform: translateX(-120%);
+      pointer-events: none;
+   }
+   .song-card:hover .song-card-cover::after,
+   .song-card:focus-visible .song-card-cover::after {
+      animation: lobby-sheen 0.9s var(--lobby-ease) 1 both;
+   }
+   @keyframes lobby-sheen {
+      to {
+         transform: translateX(120%);
+      }
+   }
+}
+/* Token strip at the bottom of a motif cover: the song's honest content
+   (first tokens / section marks) instead of fake imagery. */
+.song-card-cover-tokens {
+   position: absolute;
+   left: 12px;
+   right: 12px;
+   bottom: 10px;
+   font-family: "Sora", "Inter", system-ui, sans-serif;
+   font-size: 10.5px;
+   font-weight: 600;
+   letter-spacing: 0.02em;
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+   color: var(--muted);
+   font-variant-numeric: tabular-nums;
+}
+/* Version-count chip: "3 versions" — uniform font-size, count emphasised. */
+.song-card-chip.is-version {
+   font-weight: 600;
+}
+.song-card-chip.is-version strong {
+   font-weight: 800;
+   letter-spacing: -0.01em;
+   font-variant-numeric: tabular-nums;
+}
+/* Identity zone between cover and dock: Sora display voice for the title. */
+.song-card-identity {
+   flex: 1 1 auto;
+   min-height: 0;
+   padding: 12px 16px 0;
+}
+.song-card-title {
+   margin: 0;
+   font-family: "Sora", "Inter", system-ui, sans-serif;
+   font-size: 16px;
+   font-weight: 700;
+   letter-spacing: -0.01em;
+   line-height: 1.3;
+   color: var(--ink);
+   display: -webkit-box;
+   -webkit-line-clamp: 2;
+   line-clamp: 2;
+   -webkit-box-orient: vertical;
+   overflow: hidden;
+}
+.song-card-creator {
+   margin-top: 3px;
+   font-size: 12.5px;
+   color: var(--muted);
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+/* Bottom dock: the Key/Time chips and (on reveal) the action row. NOTHING in
+   this card moves on hover any more — the old slide-up made the chips travel
+   up and collide with the identity/detail data above. Instead the dock owns a
+   RESERVED strip: the detail line and the action row are laid out in their own
+   fixed slots (always occupying space), and hover only fades them in. Zero
+   overlap is possible by construction, on desktop and phone alike. */
+.song-card-dock {
+   flex: none;
+   margin: 0;
+   padding: 4px 16px 12px;
+   display: flex;
+   flex-direction: column;
+   align-items: flex-start;
+}
+.song-card-meta {
+   display: flex;
+   gap: 16px;
+   flex-wrap: wrap;
+}
+/* Key / Time are the most scanned values on the card, so they carry weight
+   through typography alone - no pill, no fill. The value is large, bold and
+   full-contrast; the label above it stays small, quiet and uppercase. */
+.song-card-chip {
+   display: inline-flex;
+   align-items: baseline;
+   gap: 6px;
+   font-size: 15px;
+   font-weight: 700;
+   letter-spacing: -0.01em;
+   color: var(--ink);
+   font-variant-numeric: tabular-nums;
+}
+.song-card-chip small {
+   font-weight: 600;
+   color: var(--muted);
+   font-size: 9px;
+   text-transform: uppercase;
+   letter-spacing: 0.06em;
+}
+/* Section count + last-updated: hidden until the card is hovered/focused. It
+   stays in the flow the whole time (only opacity animates — no transform, no
+   reflow, no overlap with the data above it). */
+.song-card-detail {
+   margin-top: 4px;
+   font-size: 11.5px;
+   line-height: 1.4;
+   color: var(--muted);
+   opacity: 0;
+   overflow: hidden;
+   display: -webkit-box;
+   -webkit-line-clamp: 2;
+   line-clamp: 2;
+   -webkit-box-orient: vertical;
+   transition: opacity 0.26s ease 0.06s;
+}
+.song-card:hover .song-card-detail,
+.song-card:focus-visible .song-card-detail,
+.song-card:focus-within .song-card-detail {
+   opacity: 1;
+}
+/* Actions (export / duplicate / delete) live in their own slot below the
+   chips; they fade in on reveal and can never cover the title or the chips. */
+.song-card-actions {
+   margin-top: 8px;
+   display: flex;
+   gap: 8px;
+   opacity: 0;
+   pointer-events: none;
+   transition: opacity 0.22s ease;
+}
+.song-card:hover .song-card-actions,
+.song-card:focus-visible .song-card-actions,
+.song-card:focus-within .song-card-actions {
+   opacity: 1;
+   pointer-events: auto;
+   transition-delay: 0.08s;
+}
+.song-card-action {
+   position: relative;
+   width: 32px;
+   height: 32px;
+   display: grid;
+   place-items: center;
+   border: none;
+   border-radius: 50%;
+   background: color-mix(in srgb, var(--soft) 55%, transparent);
+   box-shadow: none;
+   color: var(--muted);
+   font-size: 14px;
+   cursor: pointer;
+   transition:
+      background 0.18s ease,
+      color 0.18s ease,
+      transform 0.18s ease,
+      box-shadow 0.18s ease;
+}
+.song-card-action:hover,
+.song-card-action:focus-visible {
+   transform: translateY(-2px);
+   box-shadow: 0 6px 14px -5px rgba(16, 40, 28, 0.3);
+   color: var(--ink);
+   outline: none;
+}
+/* The Edit shortcut is a PHONE-ONLY affordance (the tap-to-reveal overlay). On
+   desktop/tablet a card click already opens the editor, so the button would be
+   redundant — hide it here and re-enable it inside the phone media query. */
+.song-card-action.is-edit {
+   display: none;
+}
+/* Buttons are named by their native `title` attribute instead of a CSS
+   tooltip: a floating ::after label sat ON TOP of the Key/Time chips and the
+   detail line that share the reveal moment, and a 214px-wide card clips any
+   tooltip that drifts past its edge. The browser's own title bubble never
+   collides with card content. */
+.song-card-action.is-delete:hover {
+   background: rgba(180, 35, 24, 0.12);
+   color: #b42318;
+}
+/* Export .pdf is the primary per-card action, so it carries the spark. */
+.song-card-action.is-pdf:hover,
+.song-card-action.is-pdf:focus-visible {
+   background: color-mix(in srgb, var(--spark) 16%, transparent);
+   color: var(--spark);
+}
+.song-card-action.is-duplicate:hover {
+   background: color-mix(in srgb, var(--spark) 14%, transparent);
+   color: var(--ink);
+}
+/* Copy Link — same visual treatment as is-duplicate */
+.song-card-action.is-copy-link:hover {
+   background: color-mix(in srgb, var(--spark) 14%, transparent);
+   color: var(--ink);
+}
+.song-card-action.is-export:hover {
+   background: color-mix(in srgb, var(--spark) 14%, transparent);
+   color: var(--ink);
+}
+/* Edit album details (name + description) — the same spark treatment as the
+   other secondary actions. Deliberately NOT `is-edit`: that class is the phone-only
+   "Open" shortcut, which is hidden on desktop (see above). */
+.song-card-action.is-details:hover,
+.song-card-action.is-details:focus-visible {
+   background: color-mix(in srgb, var(--spark) 14%, transparent);
+   color: var(--ink);
+}
+
+/* ---- Micro-motion: staggered entrance (Hook #3) ----
+   Only under no-preference, and the `from` keyframe carries the resting
+   --shift/--scale so the animation never fights the zigzag or the JS-set
+   edge-blur scale. Fill mode is `backwards` (NOT `both`): a forwards fill
+   would keep overriding the inline opacity/transform that JS sets on the
+   dimmed edge cards after the animation ends. If this CSS fails to parse,
+   cards simply appear unstyled — no content is ever hidden behind an
+   animation. */
+@media (prefers-reduced-motion: no-preference) {
+   @keyframes card-in {
+      from {
+         opacity: 0;
+         transform: translateY(calc(var(--shift) - 18px)) scale(calc(var(--scale, 1) * 0.985));
+      }
+   }
+   .cloud-cards .song-card {
+      animation: card-in 0.38s var(--lobby-ease) backwards;
+      animation-delay: calc(min(var(--card-i, 0), 14) * 36ms);
+   }
+}
+
+/* Left/right nudge buttons. */
+.cloud-nudge {
+   position: absolute;
+   top: 50%;
+   transform: translateY(-50%);
+   z-index: 8;
+   width: 46px;
+   height: 46px;
+   display: grid;
+   place-items: center;
+   border: 1px solid var(--line);
+   border-radius: 50%;
+   background: var(--surface);
+   color: var(--ink);
+   font-size: 24px;
+   line-height: 1;
+   cursor: pointer;
+   box-shadow: var(--shadow-sm);
+   transition:
+      background 0.16s ease,
+      transform 0.16s ease,
+      border-color 0.16s ease;
+}
+.cloud-nudge[hidden] {
+   display: none;
+}
+.cloud-nudge:hover {
+   border-color: var(--green);
+   background: var(--soft);
+}
+.cloud-nudge-left {
+   left: clamp(8px, 2vw, 22px);
+}
+.cloud-nudge-right {
+   right: clamp(8px, 2vw, 22px);
+}
+
+/* Gallery states (loading / empty / no-results) overlay the body center. */
+.cloud-gallery-state {
+   position: absolute;
+   inset: 0;
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   justify-content: center;
+   gap: 8px;
+   text-align: center;
+   color: var(--muted);
+   pointer-events: none;
+}
+.cloud-gallery-state[hidden] {
+   display: none;
+}
+.cloud-gallery-state p {
+   margin: 4px 0 0;
+   font-family: "Sora", "Inter", system-ui, sans-serif;
+   font-size: 19px;
+   font-weight: 700;
+   color: var(--ink);
+}
+.cloud-gallery-state span {
+   font-size: 13px;
+   max-width: 34ch;
+}
+/* Lobby hook #4: the state glyph sits in a soft tile with a faint lime ring,
+   and its strokes DRAW themselves in one-shot when the state becomes visible
+   (the display flip restarts the animation automatically). */
+.cloud-gallery-state-icon {
+   width: 72px;
+   height: 72px;
+   display: grid;
+   place-items: center;
+   border-radius: 22px;
+   background: var(--soft);
+   box-shadow: 0 0 0 1px color-mix(in srgb, var(--spark) 18%, transparent);
+   color: var(--spark);
+}
+.cloud-gallery-state-icon svg {
+   width: 34px;
+   height: 34px;
+   display: block;
+}
+@media (prefers-reduced-motion: no-preference) {
+   .cloud-gallery-state:not([hidden]) .cloud-gallery-state-icon svg :is(path, circle, line) {
+      stroke-dasharray: 80;
+      stroke-dashoffset: 80;
+      animation: lobby-draw 0.9s var(--lobby-ease) 0.15s forwards;
+   }
+   @keyframes lobby-draw {
+      to {
+         stroke-dashoffset: 0;
+      }
+   }
+}
+/* Retry after a load failure: a spark-outlined ghost. */
+#galleryRetry {
+   border: 1px solid color-mix(in srgb, var(--spark) 45%, transparent);
+   color: var(--spark);
+   pointer-events: auto;
+}
+#galleryRetry:hover {
+   background: color-mix(in srgb, var(--spark) 14%, transparent);
+}
+.cloud-spinner {
+   width: 38px;
+   height: 38px;
+   border: 3px solid var(--line);
+   border-top-color: var(--green);
+   border-radius: 50%;
+   animation: cloud-spin 0.8s linear infinite;
+}
+@keyframes cloud-spin {
+   to {
+      transform: rotate(360deg);
+   }
+}
+
+/* Phone tweaks for the gallery. */
+@media (max-width: 680px) {
+   .cloud-gallery-head {
+      /* Stack the three header columns on phones: brand, then the centered
+         title, then the full-width actions. */
+      grid-template-columns: 1fr;
+      align-items: stretch;
+      gap: 12px;
+      padding: 16px 18px;
+   }
+   /* The brand lockup and the page title are CENTERED on phones (the header is a
+      single column there), while the action row keeps the primary action
+      ("+ New Song" / "+ New Album") on the LEFT and pushes the secondary actions
+      + profile to the RIGHT edge. */
+   .cloud-gallery-heading {
+      justify-self: center;
+      text-align: center;
+   }
+   .cloud-gallery-actions {
+      width: 100%;
+      justify-self: stretch;
+      justify-content: flex-start;
+   }
+   .cloud-gallery-actions #newSongBtn,
+   .cloud-gallery-actions #newAlbumBtn {
+      margin-right: auto;
+   }
+   /* Secondary header actions collapse to icon-only squares (the accessible name
+      comes from aria-label). "Attach Link" (🔗) is re-shown at ≤560 by the
+      ghost-button rule; the account button keeps its avatar and drops its name. */
+   .cloud-gallery-actions #attachLinkBtn .btn-label,
+   .cloud-gallery-actions .account-label {
+      display: none;
+   }
+   .cloud-gallery-actions #attachLinkBtn,
+   .cloud-gallery-actions #accountBtn {
+      min-width: 46px;
+      min-height: 44px;
+      padding: 8px;
+      justify-content: center;
+   }
+   .cloud-gallery-actions #accountBtn .account-avatar {
+      width: 26px;
+      height: 26px;
+   }
+   /* "How to use" (?) shares ONE row with the search field, to its left. */
+   #songsPanel .cloud-gallery-searchbar {
+      flex-wrap: nowrap;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 10px;
+   }
+   #songsPanel .cloud-gallery-searchbar .cloud-search {
+      flex: 1 1 auto;
+      width: auto;
+      min-width: 0;
+   }
+   /* The page title + count are centered on phones too. */
+   .home-intro {
+      justify-self: center;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+   }
+   .cloud-gallery-searchbar {
+      padding: 12px 18px 4px;
+   }
+   .home-brand-text {
+      font-size: 14px;
+   }
+   .home-brand-text small {
+      font-size: 9.5px;
+   }
+   .home-brand-icon {
+      width: 32px;
+      height: 32px;
+   }
+   /* Keep the card anchored to the button but never wider than the viewport. */
+   .account-popover {
+      width: min(244px, calc(100vw - 24px));
+   }
+   .cloud-search {
+      width: 100%;
+   }
+   .cloud-search input {
+      width: 100%;
+   }
+   /* On phones the desktop 2-row HORIZONTAL carousel doesn't fit: two 228px
+      cards stacked need ~540px of height, far more than a phone's gallery body
+      (~380-410px), so the bottom row was clipped. Switch to a natural
+      vertical-scrolling grid: cards flow left-to-right and wrap onto new rows,
+      and the whole grid scrolls DOWN. Nothing is clipped — you just scroll. */
+   .cloud-gallery-body {
+      align-items: stretch;
+   }
+   .cloud-cards {
+      display: grid;
+      grid-template-rows: none;
+      grid-auto-flow: row;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      grid-auto-columns: auto;
+      gap: 14px 12px;
+      height: 100%;
+      align-content: start;
+      justify-content: stretch;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      padding: 16px 16px calc(20px + env(safe-area-inset-bottom));
+   }
+   .song-card {
+      /* Cards fill their grid cell; no fixed width, and no zigzag shift/blur
+         (that was a horizontal-carousel affordance). Height follows the new
+         cover anatomy; the tap-to-reveal action overlay still needs the card
+         itself as its positioning context, which .song-card provides. */
+      --shift: 0px;
+      --lift: 0px;
+      width: 100%;
+      height: auto;
+      min-height: 196px;
+      padding: 0;
+      transform: none;
+      filter: none;
+      opacity: 1;
+   }
+   .song-card:nth-child(4n + 1),
+   .song-card:nth-child(4n + 2) {
+      --shift: 0px;
+   }
+   .song-card:nth-child(4n + 3),
+   .song-card:nth-child(4n + 4) {
+      --shift: 0px;
+   }
+   /* ---- Phone tap-to-reveal action overlay ----
+      On phones a card's dock (chips) stays tucked away. Tapping a card adds
+      .is-selected (JS), which blurs the card's own content and floats a centered
+      grid of enlarged action buttons (Edit / Export .pdf / Export .file /
+      Duplicate / Delete) over it. Tapping the card again or tapping outside
+      removes .is-selected. */
+   .song-card {
+      overflow: hidden;
+   }
+   /* Resting state: the dock is a normal quiet footer; the tiny action row is
+      hidden (the overlay is the only way to act on a card on phones). The dock
+      must NOT create a containing block (any transform/will-change here would
+      make the absolutely-positioned action overlay size against the ~17px dock
+      instead of the whole card), so keep it transform-free. */
+   .song-card-dock {
+      padding: 4px 14px 12px;
+   }
+   .song-card-actions {
+      display: none;
+   }
+   .song-card-detail {
+      opacity: 1;
+   }
+   /* Phone identity zone: tighter padding, single-line Sora title. */
+   .song-card-identity {
+      padding: 10px 12px 0;
+   }
+   .song-card-title {
+      font-size: 14px;
+      -webkit-line-clamp: 1;
+      line-clamp: 1;
+      white-space: nowrap;
+   }
+   .song-card-creator {
+      font-size: 11.5px;
+   }
+   .song-card-cover-tokens {
+      font-size: 9.5px;
+   }
+   .song-card-mode-mark {
+      font-size: 52px;
+   }
+   /* Explicit resting filter so selecting a card interpolates blur(0)->blur(3px)
+      deterministically (transitioning from the `none` keyword can stick). NOTE:
+      we blur the dock's META content, never the .song-card-dock element itself —
+      the action overlay lives inside the dock in the DOM, and a filter on the
+      dock would create a containing block that shrinks the overlay to dock size. */
+   .song-card-title,
+   .song-card-creator,
+   .song-card-detail,
+   .song-card-meta,
+   .song-card-cover {
+      filter: blur(0);
+      transition:
+         filter 0.24s ease,
+         opacity 0.24s ease;
+   }
+   /* Blur + fade the card's own content once selected so the actions read clearly. */
+   .song-card.is-selected .song-card-title,
+   .song-card.is-selected .song-card-creator,
+   .song-card.is-selected .song-card-detail,
+   .song-card.is-selected .song-card-meta,
+   .song-card.is-selected .song-card-cover {
+      filter: blur(3px);
+      opacity: 0.35;
+      pointer-events: none;
+   }
+   .song-card.is-selected {
+      /* Lobby variant: the shell is always dark here, so the green light-theme
+         shadow would vanish — the selected edge glows spark instead. */
+      border-color: color-mix(in srgb, var(--spark) 45%, transparent);
+      box-shadow:
+         0 2px 6px rgba(0, 0, 0, 0.25),
+         0 20px 42px -18px rgba(0, 0, 0, 0.6),
+         0 0 24px -6px var(--lobby-glow);
+   }
+   /* Floated, centered action grid. Sits above the blurred content and animates
+      in from a slight scale/offset so it reads as sliding to the card center. */
+   .song-card-actions {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 5;
+      margin: 0;
+      display: none;
+      flex-wrap: wrap;
+      align-content: center;
+      justify-content: center;
+      gap: 8px 6px;
+      padding: 10px;
+      opacity: 0;
+      transform: scale(0.9);
+      transition:
+         opacity 0.24s ease,
+         transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+   }
+   .song-card.is-selected .song-card-actions {
+      display: flex;
+      opacity: 1;
+      transform: scale(1);
+   }
+   /* Edit is phone-only — restore it here (hidden on desktop/tablet above). */
+   .song-card-action.is-edit {
+      display: grid;
+   }
+   /* 40px buttons + tight gap/padding so all THREE fit per row even on the
+      narrowest phone card (~158px wide at 360px vp): 3×40 + 2×6 gap = 132px fits
+      inside the ~138px content box. Five actions then always wrap as a centered
+      3+2 grid (justify/align-content:center centre both the rows and the short
+      last row), so Delete is never orphaned on its own row or clipped. */
+   .song-card-action {
+      flex: 0 0 auto;
+      width: 40px;
+      height: 40px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 17px;
+      box-shadow: var(--shadow-sm);
+   }
+   .song-card-chip {
+      font-size: 14px;
+   }
+   .cloud-nudge {
+      width: 40px;
+      height: 40px;
+      font-size: 20px;
+   }
+}
+
+/* Touch devices have no hover, so the dock would stay closed until the card is
+   focused. On touch TABLETS (which keep the desktop horizontal carousel) keep it
+   open: the chips sit up and the actions + detail are permanently visible, which
+   is the friendlier tap target there. Phones (<=680px) use a different model —
+   tap a card to reveal a centered action overlay — so this is scoped to >680px. */
+@media (hover: none) and (min-width: 681px) {
+   /* Nothing slides on touch devices; the reveal strip is simply pinned open. */
+   .song-card-actions,
+   .song-card-detail {
+      opacity: 1;
+      pointer-events: auto;
+   }
+   /* The CSS tooltip is gone (native `title` names the buttons); this guard
+      stays so any future ::after label can't get stuck on after a tap. */
+   .song-card-action::after {
+      display: none;
+   }
+}
+
+/* Lobby fine-tuning (most colors already come from the token remap).
+   Login-only dark overrides (google-btn / field / auth-error) live in
+   styles/pages/auth.css. The lobby search rule above already covers My Songs;
+   the delete hover keeps ONE dark rose treatment (was dark-theme-only). */
+.song-card-action.is-delete:hover {
+   color: #ff9b8f;
+   background: rgba(255, 100, 85, 0.12);
+   border-color: rgba(255, 100, 85, 0.4);
+}
+
+/* ============================================================================
+   HOME — Floating quick menu (FAB speed-dial) for tablet & phone.
+   On ≤1050px the tab row AND the header's create/import buttons give way to a
+   floating speed-dial in the bottom-right corner that holds view navigation
+   (My Songs / Albums) and the primary actions. Desktop (≥1051px) keeps the tab
+   row + header buttons EXACTLY as before, so nothing about the desktop home
+   changes. Screen-only: the gallery never prints, and the print rule below is a
+   belt-and-braces guard.
+   ============================================================================ */
+.home-fab {
+   /* One source of truth for the dial diameter: it drives the trigger size, the
+      menu offset above it, and the visual scale from phone → tablet. */
+   --fab-size: clamp(58px, 9vw, 80px);
+   position: fixed;
+   right: max(18px, env(safe-area-inset-right));
+   bottom: max(18px, env(safe-area-inset-bottom));
+   z-index: 12;
+   display: none;
+}
+/* Lobby hook #6: the FAB trigger goes lime (the lobby's loudest accent) with
+   near-black text; the overshoot rotation stays. */
+.home-fab-trigger {
+   display: grid;
+   place-items: center;
+   width: var(--fab-size);
+   height: var(--fab-size);
+   border: none;
+   border-radius: 50%;
+   background: linear-gradient(150deg, #cdef7d, var(--spark) 55%, #9ccb43);
+   color: var(--spark-ink);
+   font-size: clamp(26px, 4.4vw, 40px);
+   line-height: 1;
+   cursor: pointer;
+   box-shadow:
+      0 8px 20px -6px rgba(0, 0, 0, 0.6),
+      0 0 24px -6px var(--lobby-glow);
+   transition:
+      transform 0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+      background 0.25s ease,
+      box-shadow 0.25s ease;
+}
+.home-fab-trigger:focus-visible {
+   outline: 2px solid var(--spark);
+   outline-offset: 3px;
+}
+.home-fab.is-open .home-fab-trigger {
+   transform: rotate(135deg);
+   background: var(--spark);
+}
+/* Press feedback lives on the plus glyph (NOT the trigger) so it never fights
+   the trigger's open/close rotation transform. Reduced-motion safe. */
+.home-fab-plus {
+   display: inline-block;
+   transition: transform 0.16s ease;
+}
+@media (prefers-reduced-motion: no-preference) {
+   .home-fab-trigger:active .home-fab-plus {
+      transform: scale(0.88);
+   }
+}
+/* Blur + dim the page behind the dial so the focus lands on the menu: a
+   full-viewport layer INSIDE the FAB's stacking context but BELOW the dial
+   (z-index -1). It fades in AND out, so opening and closing both animate.
+   Clicking it bubbles to the document → closes the menu. */
+.home-fab::before {
+   content: "";
+   position: fixed;
+   inset: 0;
+   z-index: -1;
+   background: rgba(12, 28, 20, 0.42);
+   -webkit-backdrop-filter: blur(18px) saturate(1.15);
+   backdrop-filter: blur(18px) saturate(1.15);
+   opacity: 0;
+   pointer-events: none;
+   transition: opacity 0.3s ease;
+}
+.home-fab.is-open::before {
+   opacity: 1;
+   pointer-events: auto;
+}
+.home-fab-menu {
+   position: absolute;
+   right: 0;
+   bottom: calc(var(--fab-size) + 16px);
+   display: flex;
+   flex-direction: column;
+   align-items: flex-end;
+   gap: clamp(8px, 1vw, 12px);
+}
+.home-fab-menu[hidden] {
+   display: none;
+}
+/* Modern speed-dial card: a tinted rounded-square icon badge on the LEFT, a bold
+   label, soft elevation and a hairline. It scales from its bottom-right corner
+   (the trigger), so the reveal reads as "fanning out" from the dial. */
+.home-fab-item {
+   display: inline-flex;
+   align-items: center;
+   gap: clamp(9px, 1.1vw, 14px);
+   padding: clamp(8px, 1vw, 12px) clamp(15px, 1.8vw, 22px) clamp(8px, 1vw, 12px) clamp(8px, 1vw, 12px);
+   border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+   border-radius: 16px;
+   background: color-mix(in srgb, var(--surface) 92%, transparent);
+   color: var(--ink);
+   font-family: inherit;
+   font-size: clamp(13.5px, 1.5vw, 17px);
+   font-weight: 700;
+   letter-spacing: -0.01em;
+   white-space: nowrap;
+   cursor: pointer;
+   box-shadow:
+      0 10px 26px -14px rgba(16, 40, 28, 0.5),
+      0 2px 6px rgba(16, 40, 28, 0.08);
+   -webkit-backdrop-filter: blur(8px);
+   backdrop-filter: blur(8px);
+   opacity: 0;
+   transform: translateY(12px) scale(0.9);
+   transform-origin: bottom right;
+   transition:
+      opacity 0.22s ease,
+      transform 0.34s cubic-bezier(0.34, 1.56, 0.64, 1),
+      border-color 0.18s ease,
+      background 0.18s ease;
+}
+.home-fab-item[hidden] {
+   display: none;
+}
+.home-fab-item:hover,
+.home-fab-item:focus-visible {
+   border-color: color-mix(in srgb, var(--green) 45%, var(--line));
+   background: color-mix(in srgb, var(--green) 9%, var(--surface));
+   outline: none;
+}
+.home-fab.is-open .home-fab-item {
+   opacity: 1;
+   transform: translateY(0) scale(1);
+}
+/* Stagger the reveal from the item CLOSEST to the trigger upward. */
+.home-fab.is-open .home-fab-item:nth-child(2) {
+   transition-delay: 45ms;
+}
+.home-fab.is-open .home-fab-item:nth-child(3) {
+   transition-delay: 90ms;
+}
+.home-fab.is-open .home-fab-item:nth-child(4) {
+   transition-delay: 135ms;
+}
+.home-fab.is-open .home-fab-item:nth-child(5) {
+   transition-delay: 180ms;
+}
+.home-fab-item.is-active {
+   border-color: color-mix(in srgb, var(--spark) 55%, transparent);
+   background: color-mix(in srgb, var(--spark) 14%, var(--surface));
+   color: var(--spark);
+}
+/* The icon badge keeps the SAME (filled) look whether the item is active or not,
+   so the dial reads consistently. The ACTIVE view is still shown by the card's
+   tint + border — only the icon no longer flips colour. */
+.home-fab-item-icon {
+   display: inline-grid;
+   place-items: center;
+   flex: none;
+   width: clamp(32px, 3.8vw, 46px);
+   height: clamp(32px, 3.8vw, 46px);
+   border-radius: 12px;
+   font-size: clamp(16px, 1.9vw, 22px);
+   background: var(--spark);
+   color: var(--spark-ink);
+   box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.6);
+   transition:
+      background 0.18s ease,
+      color 0.18s ease;
+}
+.home-fab-item:hover .home-fab-item-icon,
+.home-fab-item:focus-visible .home-fab-item-icon {
+   background: color-mix(in srgb, var(--spark) 85%, #fff);
+}
+/* Inline stroke glyphs replacing the emoji/text icons. */
+.home-fab-item-icon svg {
+   display: block;
+   width: 55%;
+   height: 55%;
+}
+
+/* Tablet + phone: the floating menu replaces the tab row and the header's
+   create/import buttons. The header keeps the brand/title + the profile button. */
+@media (max-width: 1050px) {
+   .home-tabs {
+      display: none !important;
+   }
+   .home-fab {
+      display: block;
+   }
+   .cloud-gallery-actions #newSongBtn,
+   .cloud-gallery-actions #newAlbumBtn,
+   .cloud-gallery-actions #attachLinkBtn {
+      display: none !important;
+   }
+}
+
+/* Phone: two tidy rows — the BRAND lockup stays CENTERED on top; below it the
+   dynamic title + count sit on the LEFT and the profile button on the RIGHT
+   (same row). The profile keeps its usual phone size (unchanged rules). */
+@media (max-width: 680px) {
+   .cloud-gallery-head {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+         "heading heading"
+         "intro   actions";
+      align-items: center;
+      gap: 8px 12px;
+   }
+   .cloud-gallery-heading {
+      grid-area: heading;
+      justify-self: center;
+      text-align: center;
+   }
+   .home-intro {
+      grid-area: intro;
+      justify-self: start;
+      text-align: left;
+      margin: 0;
+   }
+   /* Profile sits on the title row, right-aligned; its size rules (min-width/
+      min-height/padding/avatar) are untouched so it matches the previous look. */
+   .cloud-gallery-actions {
+      grid-area: actions;
+      justify-self: end;
+      align-self: center;
+      width: auto;
+      justify-content: flex-end;
+      flex-wrap: nowrap;
+   }
+   /* "Back to editor" collapses to its arrow so the title row never overflows
+      when a song is open behind the library. */
+   .cloud-gallery-actions #backToEditorBtn .btn-label {
+      display: none;
+   }
+   /* Keep the last card row clear of the floating button. */
+   .cloud-cards {
+      padding-bottom: calc(96px + env(safe-area-inset-bottom));
+   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+   .home-fab-trigger,
+   .home-fab-item,
+   .home-fab::before {
+      transition: none;
+   }
+   /* The staggered card entrance is animation-only chrome; disable it entirely
+      (the `both` fill would otherwise pin opacity during its delay). */
+   .cloud-cards .song-card {
+      animation: none;
+   }
+   /* Lobby one-shots off: title shimmer, state-icon line-draw, hero scale-in,
+      cover sheen. Content simply appears at rest. */
+   .home-intro h1.is-shimmer,
+   .cloud-gallery-state-icon svg :is(path, circle, line),
+   .song-card-cover::after {
+      animation: none;
+   }
+   .home-intro h1.is-shimmer {
+      background: none;
+      -webkit-background-clip: initial;
+      background-clip: initial;
+      -webkit-text-fill-color: currentColor;
+   }
+   .cloud-gallery-state:not([hidden]) .cloud-gallery-state-icon svg :is(path, circle, line) {
+      stroke-dasharray: none;
+      stroke-dashoffset: 0;
+   }
+   .cloud-album .cloud-album-hero {
+      transform: none;
+      transition: none;
+   }
+   /* Hover-reveal transitions become instant so content never lags behind. */
+   .song-card-dock,
+   .song-card-detail,
+   .song-card-actions,
+   .song-card {
+      transition: none;
+   }
+}
+
+
+/* ============================================================================
+   TABLET — bigger, RESPONSIVE song cards.
+   On 681–1050px the desktop 214×252 cards look small and leave a lot of dead
+   space in the two-row carousel, so the cards scale with the viewport instead of
+   staying static. This targets BOTH the My Songs grid (#songCards) and the album
+   song list (#albumSongCards) — they share `.cloud-cards`/`.song-card`. Desktop
+   (≥1051px) keeps the original size, and the phone layout (≤680px, full-width
+   grid cells) is untouched.
+   ============================================================================ */
+@media (min-width: 681px) and (max-width: 1050px) {
+   .cloud-cards {
+      /* ONE source of truth for the card width: it drives the grid's centring
+         padding below AND the cards/skeletons inside it. */
+      --card-w: clamp(232px, 30vw, 320px);
+      padding: 30px max(16px, calc(50% - var(--card-w) / 2 + 2px));
+   }
+   .song-card {
+      width: var(--card-w);
+      /* Height follows the viewport too, but is capped against the VIEWPORT HEIGHT
+         so the two-row carousel never clips its bottom row (the grid is
+         overflow-y:hidden). 46vw alone can get too tall on a landscape tablet. */
+      height: clamp(252px, min(42vw, calc(50vh - 140px)), 430px);
+   }
+   /* The home header title sits TRULY centered now that the create buttons live
+      in the FAB: equal 1fr side columns put the middle (auto) column on the
+      viewport centre instead of leaning right (the old `auto 1fr auto` grid). */
+   .cloud-gallery-head {
+      grid-template-columns: 1fr auto 1fr;
+   }
+   /* Card CONTENT scales with the viewport too (not just the box), so the bigger
+      tablet cards don't keep desktop-sized text inside them. */
+   .song-card-title {
+      font-size: clamp(18px, 2.5vw, 24px);
+   }
+   .song-card-creator {
+      font-size: clamp(13px, 1.7vw, 16px);
+   }
+   .song-card-chip {
+      font-size: clamp(16px, 2.1vw, 20px);
+   }
+   .song-card-chip small {
+      font-size: clamp(9.5px, 1.2vw, 12px);
+   }
+   .song-card-detail {
+      font-size: clamp(12px, 1.5vw, 14px);
+   }
+   .song-card-mode-mark {
+      font-size: clamp(72px, 10vw, 110px);
+   }
+   .song-card-cover-tokens {
+      font-size: clamp(10.5px, 1.2vw, 13px);
+   }
+   .song-card-action {
+      width: clamp(34px, 4vw, 42px);
+      height: clamp(34px, 4vw, 42px);
+      font-size: clamp(15px, 1.8vw, 18px);
+   }
+   /* ---- Header + search bar also scale with the viewport (tablet) ----
+      The brand lockup ("Spartio.app"), the page title, the profile
+      button, the help bubble and the search field all grow with the screen
+      instead of staying pinned to their desktop sizes. */
+   .home-brand-icon {
+      width: clamp(34px, 4.2vw, 46px);
+      height: clamp(34px, 4.2vw, 46px);
+   }
+   .home-brand-icon img {
+      width: 100%;
+      height: 100%;
+   }
+   .home-brand-text {
+      font-size: clamp(15px, 1.9vw, 19px);
+   }
+   .home-brand-text small {
+      font-size: clamp(10.5px, 1.3vw, 13px);
+   }
+   .home-intro h1 {
+      font-size: clamp(17px, 2.2vw, 22px);
+   }
+   .home-intro p {
+      font-size: clamp(12px, 1.5vw, 15px);
+   }
+   .cloud-gallery-actions .account-button {
+      min-height: clamp(44px, 5vw, 54px);
+      font-size: clamp(14px, 1.7vw, 17px);
+      padding-inline: clamp(12px, 1.6vw, 20px);
+   }
+   .cloud-gallery-actions .account-avatar {
+      width: clamp(24px, 3vw, 32px);
+      height: clamp(24px, 3vw, 32px);
+      font-size: clamp(13px, 1.6vw, 16px);
+   }
+   .topbar-help-btn {
+      padding: clamp(6px, 0.9vw, 10px);
+   }
+   .topbar-help-icon {
+      width: clamp(20px, 2.6vw, 28px);
+      height: clamp(20px, 2.6vw, 28px);
+      font-size: clamp(13px, 1.6vw, 17px);
+   }
+   .cloud-search {
+      width: min(clamp(360px, 50vw, 640px), 100%);
+   }
+   .cloud-search-icon {
+      left: clamp(14px, 1.8vw, 22px);
+      font-size: clamp(16px, 2vw, 21px);
+   }
+   .cloud-search input {
+      min-height: clamp(46px, 5.2vw, 58px);
+      font-size: clamp(14px, 1.7vw, 18px);
+      padding: clamp(9px, 1.1vw, 13px) clamp(14px, 1.8vw, 20px) clamp(9px, 1.1vw, 13px) clamp(38px, 4.6vw, 52px);
+   }
+}
+

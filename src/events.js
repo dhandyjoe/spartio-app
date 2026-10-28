@@ -46,12 +46,12 @@ import {
    normalizeEditorMode,
    isSingleBeatMeter,
    barUnitWord,
-} from "./notation.js?v=__BUILD__";
+} from "./notation/notation.js?v=__BUILD__";
 import {
    carryChordProSections,
    transposeChordProText,
-} from "./chordPro.js?v=__BUILD__";
-import { $, prefersTap, isPhone, toast } from "./dom.js?v=__BUILD__";
+} from "./notation/chordPro.js?v=__BUILD__";
+import { $, prefersTap, isPhone, toast } from "./core/dom.js?v=__BUILD__";
 import {
    clearHistory,
    saveState,
@@ -61,8 +61,8 @@ import {
    canRedo,
    getPastLength,
    getFutureLength,
-} from "./history.js?v=__BUILD__";
-import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=__BUILD__";
+} from "./core/history.js?v=__BUILD__";
+import { setClipboard, getClipboard, hasClipboard } from "./core/clipboard.js?v=__BUILD__";
 import {
    getState,
    setState,
@@ -70,25 +70,27 @@ import {
    findSection,
    getSelectedPaletteItem,
    setSelectedPaletteItem,
-} from "./store.js?v=__BUILD__";
+} from "./core/store.js?v=__BUILD__";
 import {
    initRender,
    renderControls,
    renderPreview,
    renderCustomChord,
    chordLabel,
-} from "./render.js?v=__BUILD__";
-import { initPrintListeners, exportToPdf, markMidRowBars, clearMidRowBars } from "./pdf.js?v=__BUILD__";
-import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=__BUILD__";
+} from "./render/render.js?v=__BUILD__";
+import { markMidRowBars, clearMidRowBars } from "./pdf/pdf.js?v=__BUILD__";
+import { getPdfOptions, setPdfOptions } from "./pdf/pdfOptions.js?v=__BUILD__";
 import { initCloudUI, syncYoutubePreview } from "./cloudUI.js?v=__BUILD__";
-import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=__BUILD__";
-import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=__BUILD__";
-import { openFermataEditor, closeFermataEditor } from "./fermataEditor.js?v=__BUILD__";
-import { initChordProEditor, syncChordProWorkspace } from "./chordProEditor.js?v=__BUILD__";
-import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback.js?v=__BUILD__";
-import { youtubeFields } from "./youtube.js?v=__BUILD__";
+import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./editor/chordEditor.js?v=__BUILD__";
+import { openBeatMenu, closeBeatMenu } from "./editor/beatMenu.js?v=__BUILD__";
+import { openFermataEditor, closeFermataEditor } from "./editor/fermataEditor.js?v=__BUILD__";
+import { initChordProEditor, syncChordProWorkspace } from "./render/chordProEditor.js?v=__BUILD__";
+import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback/playback.js?v=__BUILD__";
+import { youtubeFields } from "./util/youtube.js?v=__BUILD__";
+import { bindPreview as bindPreviewEventListeners } from "./editor/bindings/preview.js?v=__BUILD__";
+import { bindControlListeners as bindControlEventListeners } from "./editor/bindings/controls.js?v=__BUILD__";
 
-// ---- UI-only state (not part of the serializable document) ----
+// UI-only state is not part of the serializable document.
 // Which cloud document is currently open in the editor:
 //   { songId, versionId, versionLabel, scope, albumId, albumName, role }
 //   — or null for an unsaved local draft.
@@ -173,7 +175,7 @@ function save() {
 }
 function syncEditor() {}
 
-// ---- Palette selection ----
+// Palette selection.
 function updatePlacingBanner(item) {
    const banner = $("#placingBanner");
    if (!banner) return;
@@ -279,7 +281,7 @@ function bindDraggableChords() {
       .forEach((chord) => bindPaletteItem(chord, { type: "chord", value: chord.dataset.chord }));
 }
 
-// ---- Placing chords/durations ----
+// Place chords and durations.
 function placePaletteItem(section, beat, item) {
    if (!item || !section) return false;
    if (item.type === "chord") {
@@ -337,7 +339,7 @@ function flashDropTarget(sectionId, slot) {
    });
 }
 
-// ---- Inline chord editor (type → pick a suggestion) ----
+// Inline chord editor: type and pick a suggestion.
 // Resolve a beat element by section+slot after a re-render (elements are rebuilt
 // on every renderPreview, so we can't hold references across commits).
 function findBeatEl(sectionId, slot) {
@@ -368,7 +370,6 @@ function commitChordToBeat(sectionId, slot, value) {
    save();
    flashDropTarget(sectionId, slot);
 }
-// ---------------------------------------------------------------------------
 // READ-ONLY CANVAS — two causes, one guard:
 //   • MEMBER (album role = member): may ONLY change Key, Time signature, BPM and
 //     Transpose. Every other mutation — chords/Nashville numbers, lyrics,
@@ -381,7 +382,6 @@ function commitChordToBeat(sectionId, slot, value) {
 // blockedForEdit() is called at the top of every mutating handler, and
 // applyReadOnlyAffordances() disables the edit affordances in the DOM so the UI
 // matches the rule.
-// ---------------------------------------------------------------------------
 function memberReadOnly() {
    return document.body?.dataset?.memberReadonly === "1";
 }
@@ -496,7 +496,7 @@ function commitChordAbove(sectionId, slot, value) {
    save();
 }
 
-// ---- Rhythm context menu (right-click / long-press) ----
+// Rhythm context menu, opened by right-click or long-press.
 // Apply a subdivision by reusing the existing placePaletteItem duration path, so
 // the (well-tested) split/merge + lyric-preservation logic stays single-sourced.
 function applyDuration(beat, durationValue) {
@@ -543,7 +543,7 @@ function removeDurationAt(beat) {
    save();
    toast("Rhythm marker removed");
 }
-// ---- Fermata (hold) ---------------------------------------------------------
+// Fermata hold.
 // A fermata pauses for N EXTRA beats before the next beat plays (PLAYBACK only; the
 // score just shows the glyph). The mark is stored on the beat's own slot, so it rides
 // along with the chord/number through copy/paste, clone, transpose and undo/redo.
@@ -632,13 +632,13 @@ function openRhythmMenu(beat, x, y) {
    openBeatMenu({ x, y, items });
 }
 
-// ---- Preview binding (re-run after every renderPreview) ----
+// Preview binding runs after every renderPreview.
 // Reflect member read-only mode in the DOM. Called at the END of bindPreview() —
 // i.e. after every render — because renderPreview() rebuilds these controls, so
 // the disabled state has to be re-applied with them (no MutationObserver needed).
 // The controls that live OUTSIDE the preview (ribbon / footer / toolbars) are
 // covered by the `body[data-member-readonly="1"]` / `body[data-view-only="1"]`
-// rules in styles/ui.css.
+// rules in styles/layout/shell.css.
 function applyReadOnlyAffordances() {
    const member = memberReadOnly();
    const phone = phoneViewOnly();
@@ -701,622 +701,33 @@ function applyReadOnlyAffordances() {
 }
 
 function bindPreview() {
-   const state = getState();
-   document.querySelectorAll(".drop-target").forEach((beat) => {
-      beat.addEventListener("dragover", (event) => {
-         event.preventDefault();
-         event.dataTransfer.dropEffect = "copy";
-         beat.classList.add("dragover");
-      });
-      beat.addEventListener("dragleave", () => beat.classList.remove("dragover"));
-      beat.addEventListener("drop", (event) => {
-         event.preventDefault();
-         // Dropping a chord onto a beat is an arrangement edit.
-         if (blockedForEdit()) {
-            event.stopPropagation();
-            beat.classList.remove("dragover");
-            document.body.classList.remove("is-dragging");
-            return;
-         }
-         event.stopPropagation();
-         let item;
-         try {
-            item = JSON.parse(event.dataTransfer.getData("application/chord-sheet"));
-         } catch {}
-         const section = findSection(beat.dataset.section),
-            slot = beat.dataset.slot;
-         beat.classList.remove("dragover");
-         document.body.classList.remove("is-dragging");
-         if (!placePaletteItem(section, beat, item)) return;
-         syncEditor();
-         renderPreview();
-         save();
-         flashDropTarget(section.id, slot);
-      });
-      // Long-press bookkeeping (declared before the click handler so it can honor
-      // the suppression window a just-fired long-press sets up).
-      let pressTimer = null;
-      let pressPoint = null;
-      let suppressClickUntil = 0;
-      const cancelPress = () => {
-         if (pressTimer) clearTimeout(pressTimer);
-         pressTimer = null;
-      };
-      beat.addEventListener("click", (event) => {
-         if (event.target.closest(".placed-chord,.duration-line,.nested-duration-line,.lyric-input")) return;
-         // On touch, lifting the finger after a long-press emits a synthetic
-         // click on the beat. Without this guard it would open the chord editor
-         // right on top of the rhythm menu the long-press just opened.
-         if (Date.now() < suppressClickUntil) {
-            suppressClickUntil = 0;
-            event.stopPropagation();
-            return;
-         }
-         // ---- Multi-bar selection mode intercept ----
-         if (isSelectionActiveFor(beat.dataset.section)) {
-            const barEl = beat.closest(".bar");
-            const bar = Number(barEl?.dataset.bar);
-            if (!Number.isNaN(bar)) {
-               handleBarSelectionClick(beat.dataset.section, bar);
-            }
-            event.stopPropagation();
-            return;
-         }
-         // Members cannot place/replace chords from the palette nor type them.
-         if (blockedForEdit()) {
-            event.stopPropagation();
-            return;
-         }
-         // ---- Normal beat click flow below ----
-         const selectedItem = getSelectedPaletteItem();
-         // Legacy palette flow (arrangement tools) still works when an item is
-         // selected. Otherwise, clicking an empty beat opens the inline editor.
-         if (selectedItem) {
-            event.stopPropagation();
-            const section = findSection(beat.dataset.section),
-               slot = beat.dataset.slot;
-            if (!placePaletteItem(section, beat, selectedItem)) return;
-            if (prefersTap()) clearPaletteSelection();
-            syncEditor();
-            renderPreview();
-            save();
-            flashDropTarget(section.id, slot);
-            return;
-         }
-         event.stopPropagation();
-         openBeatEditor(beat, { selectQuery: false });
-      });
-
-      // Rhythm context menu: right-click (desktop) + long-press (touch).
-      beat.addEventListener("contextmenu", (event) => {
-         event.preventDefault();
-         event.stopPropagation();
-         openRhythmMenu(beat, event.clientX, event.clientY);
-      });
-      beat.addEventListener(
-         "touchstart",
-         (event) => {
-            if (event.touches.length !== 1) return;
-            const touch = event.touches[0];
-            pressPoint = { x: touch.clientX, y: touch.clientY };
-            cancelPress();
-            pressTimer = setTimeout(() => {
-               pressTimer = null;
-               // Arm the guard so the trailing synthetic click (on finger lift)
-               // is swallowed and doesn't open the chord editor over the menu.
-               suppressClickUntil = Date.now() + 900;
-               openRhythmMenu(beat, pressPoint.x, pressPoint.y);
-            }, 500);
-         },
-         { passive: true },
-      );
-      beat.addEventListener(
-         "touchmove",
-         (event) => {
-            if (!pressPoint || !event.touches.length) return;
-            const touch = event.touches[0];
-            if (Math.hypot(touch.clientX - pressPoint.x, touch.clientY - pressPoint.y) > 10) cancelPress();
-         },
-         { passive: true },
-      );
-      // If the long-press already fired, keep the click-suppression window alive
-      // (touchend arrives right before the synthetic click). A normal short tap
-      // clears nothing — its click proceeds and opens the chord editor.
-      beat.addEventListener("touchend", cancelPress, { passive: true });
-      beat.addEventListener("touchcancel", cancelPress, { passive: true });
+   bindPreviewEventListeners({
+      applyReadOnlyAffordances,
+      beginBarSelection,
+      blockedForEdit,
+      cancelBarSelection,
+      clearPaletteSelection,
+      copyBar,
+      copySection,
+      copySelectedBars,
+      flashDropTarget,
+      getBarSelection,
+      handleBarSelectionClick,
+      insertSectionAfter,
+      isSelectionActiveFor,
+      memberReadOnly,
+      openBeatEditor,
+      openChordAboveEditor,
+      openRhythmMenu,
+      pasteBar,
+      pasteSection,
+      placePaletteItem,
+      save,
+      scoreUnit,
+      syncEditor,
    });
-   document.querySelectorAll(".placed-chord").forEach((chord) => {
-      const removeOrReplace = (event) => {
-         event.stopPropagation();
-         // Members in an album cannot modify placed chords (the toast explains
-         // which controls are still available to them).
-         if (blockedForEdit()) return;
-         // Block all editing while in bar-selection mode.
-         if (isSelectionActiveFor(chord.closest(".drop-target")?.dataset.section)) return;
-         const beat = chord.closest(".drop-target"),
-            section = findSection(beat.dataset.section);
-         const viaRemoveBadge = event.target?.closest?.(".chord-remove");
-         const selectedItem = viaRemoveBadge ? null : getSelectedPaletteItem();
-         if (selectedItem) {
-            if (!placePaletteItem(section, beat, selectedItem)) return;
-            if (prefersTap()) clearPaletteSelection();
-            syncEditor();
-            renderPreview();
-            save();
-            flashDropTarget(section.id, beat.dataset.slot);
-            return;
-         }
-         // Clicking the chord body (not the × badge) re-opens the editor so the
-         // user can change it; the × badge removes the chord.
-         if (!viaRemoveBadge) {
-            openBeatEditor(beat, { selectQuery: true });
-            return;
-         }
-         // Animate the chord out before removing
-         chord.classList.add("chord-leaving");
-         const animEnd = async () => {
-            chord.removeEventListener("transitionend", animEnd);
-            delete section.beats[beat.dataset.slot];
-            renderPreview();
-            save();
-            toast("Chord removed");
-         };
-         chord.addEventListener("transitionend", animEnd);
-         // Safety net: if transitionend doesn't fire
-         setTimeout(() => {
-            chord.removeEventListener("transitionend", animEnd);
-            if (section.beats[beat.dataset.slot]) {
-               delete section.beats[beat.dataset.slot];
-               renderPreview();
-               save();
-               toast("Chord removed");
-            }
-         }, 200);
-      };
-      chord.addEventListener("click", removeOrReplace);
-      chord.addEventListener("keydown", (event) => {
-         if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            removeOrReplace(event);
-         }
-      });
-   });
-   document.querySelectorAll(".nested-duration-line").forEach((line) =>
-      line.addEventListener("click", (event) => {
-         event.stopPropagation();
-         // Removing a nested subdivision is an arrangement edit.
-         if (blockedForEdit()) return;
-         // Block all editing while in bar-selection mode.
-         if (isSelectionActiveFor(line.dataset.section)) return;
-         const section = findSection(line.dataset.section),
-            splitSlots = (line.dataset.splitSlots || "").split("|").filter(Boolean);
-         if (!section) return;
-         splitSlots.forEach((splitSlot) => {
-            const childSlots = Object.keys(section.beats)
-               .filter((slot) => slot.startsWith(`${splitSlot}.`))
-               .sort();
-            const firstChord = childSlots.map((slot) => beatValue(section, slot).chord).find(Boolean) || null;
-            const splitHold = Math.max(
-               fermataValue(section, splitSlot),
-               0,
-               ...childSlots.map((slot) => fermataValue(section, slot)),
-            );
-            const lyricSlots = Object.keys(section.lyricBeats || {})
-               .filter((slot) => slot.startsWith(`${splitSlot}.`))
-               .sort();
-            const mergedLyrics = lyricSlots
-               .map((slot) => lyricValue(section, slot))
-               .filter(Boolean)
-               .join(" ");
-            childSlots.forEach((slot) => delete section.beats[slot]);
-            lyricSlots.forEach((slot) => delete section.lyricBeats[slot]);
-            restoreCollapsedBeat(section, splitSlot, firstChord, splitHold);
-            setLyric(section, splitSlot, mergedLyrics);
-            // Same rule for the chord row of the nested split's children.
-            collapseChordAbove(section, splitSlot);
-         });
-         state.activeId = section.id;
-         renderPreview();
-         save();
-         toast("Nested half-beat subdivision removed");
-      }),
-   );
-   document.querySelectorAll(".duration-line").forEach((line) =>
-      line.addEventListener("click", (event) => {
-         event.stopPropagation();
-         // Removing a rhythm subdivision is an arrangement edit.
-         if (blockedForEdit()) return;
-         const group = line.closest(".beat-group"),
-            section = findSection(group.dataset.section),
-            baseSlot = group.dataset.baseSlot;
-         if (!section) return;
-         // Block all editing while in bar-selection mode.
-         if (isSelectionActiveFor(group.dataset.section)) return;
-         const descendantSlots = Object.keys(section.beats)
-            .filter((slot) => slot.startsWith(`${baseSlot}:`))
-            .sort();
-         const firstChord = descendantSlots.map((slot) => beatValue(section, slot).chord).find(Boolean) || null;
-         const baseHold = Math.max(
-            fermataValue(section, baseSlot),
-            0,
-            ...descendantSlots.map((slot) => fermataValue(section, slot)),
-         );
-         const lyricSlots = Object.keys(section.lyricBeats || {})
-            .filter((slot) => slot.startsWith(`${baseSlot}:`))
-            .sort();
-         const mergedLyrics = lyricSlots
-            .map((slot) => lyricValue(section, slot))
-            .filter(Boolean)
-            .join(" ");
-         descendantSlots.forEach((slot) => delete section.beats[slot]);
-         lyricSlots.forEach((slot) => delete section.lyricBeats[slot]);
-         restoreCollapsedBeat(section, baseSlot, firstChord, baseHold);
-         setLyric(section, baseSlot, mergedLyrics);
-         // ...and for the chord row of the subdivisions being merged away.
-         collapseChordAbove(section, baseSlot);
-         state.activeId = section.id;
-         renderPreview();
-         save();
-         toast("Rhythm marker removed");
-      }),
-   );
-   document.querySelectorAll(".lyric-input").forEach((input) => {
-      input.addEventListener("click", (event) => event.stopPropagation());
-      input.addEventListener("input", () => {
-         // Lyrics are part of the arrangement → read-only for members. The
-         // re-render restores the committed value instead of the typed text.
-         if (blockedForEdit()) {
-            renderPreview();
-            return;
-         }
-         const section = findSection(input.dataset.section);
-         if (!section) return;
-         // Block lyric edits while in bar-selection mode.
-         if (isSelectionActiveFor(input.dataset.section)) {
-            renderPreview();
-            return;
-         }
-         setLyric(section, input.dataset.slot, input.value);
-         state.activeId = section.id;
-         save();
-      });
-      input.addEventListener("blur", () => {
-         // Silent guard (no toast): nothing was typed, so don't re-commit the
-         // value just to mark the document dirty.
-         if (memberReadOnly()) return;
-         const section = findSection(input.dataset.section);
-         if (!section) return;
-         input.value = input.value.trim();
-         setLyric(section, input.dataset.slot, input.value);
-         save();
-      });
-      input.addEventListener("keydown", (event) => {
-         if (event.key === "Escape") {
-            input.blur();
-            return;
-         }
-         if (event.key !== "Enter") return;
-         event.preventDefault();
-         const inputs = [...document.querySelectorAll(".lyric-input")],
-            index = inputs.indexOf(input),
-            target = inputs[index + (event.shiftKey ? -1 : 1)];
-         target?.focus();
-         target?.select();
-      });
-      input.addEventListener("paste", (event) => {
-         if (memberReadOnly()) {
-            event.preventDefault();
-            return;
-         }
-         const pasted = event.clipboardData?.getData("text") || "",
-            words = pasted.trim().split(/\s+/).filter(Boolean);
-         if (words.length < 2) return;
-         event.preventDefault();
-         const inputs = [...document.querySelectorAll(".lyric-input")],
-            start = inputs.indexOf(input),
-            available = inputs.slice(start);
-         available.forEach((field, index) => {
-            if (index >= words.length) return;
-            const section = findSection(field.dataset.section);
-            const value =
-               index === available.length - 1 && words.length > available.length
-                  ? words.slice(index).join(" ")
-                  : words[index];
-            field.value = value;
-            if (section) setLyric(section, field.dataset.slot, value);
-         });
-         save();
-         const next = available[Math.min(words.length, available.length) - 1];
-         next?.focus();
-         next?.select();
-         toast(`${words.length} words distributed across beats`);
-      });
-   });
-   // Chord-above inputs (Chord Chart mode): the chord row above the numbers.
-   // Focusing a cell hands over to the "type → pick a suggestion" popover (the
-   // same one the beats use), so stored chords are always normalized; the plain
-   // input/blur handlers stay as a paste-friendly fallback.
-   document.querySelectorAll(".chord-above-input").forEach((input) => {
-      input.addEventListener("click", (event) => event.stopPropagation());
-      input.addEventListener("focus", () => openChordAboveEditor(input));
-      input.addEventListener("input", () => {
-         // Chord-above letters are part of the arrangement → read-only for members.
-         if (blockedForEdit()) {
-            renderPreview();
-            return;
-         }
-         const section = findSection(input.dataset.section);
-         if (!section) return;
-         if (isSelectionActiveFor(input.dataset.section)) {
-            renderPreview();
-            return;
-         }
-         setChordAbove(section, input.dataset.slot, input.value);
-         state.activeId = section.id;
-         save();
-      });
-      input.addEventListener("blur", () => {
-         // Silent guard — see the lyric-input blur guard above.
-         if (memberReadOnly()) return;
-         // The suggestion popover just took focus. Re-rendering here would destroy
-         // the element the popover is anchored to, so wait until it closes.
-         if (isChordEditorOpen()) return;
-         const section = findSection(input.dataset.section);
-         if (!section) return;
-         input.value = input.value.trim();
-         setChordAbove(section, input.dataset.slot, input.value);
-         renderPreview();
-         save();
-      });
-      input.addEventListener("keydown", (event) => {
-         if (event.key === "Escape") {
-            input.blur();
-            return;
-         }
-         if (event.key !== "Enter") return;
-         event.preventDefault();
-         const inputs = [...document.querySelectorAll(".chord-above-input")],
-            index = inputs.indexOf(input),
-            target = inputs[index + (event.shiftKey ? -1 : 1)];
-         target?.focus();
-         target?.select();
-      });
-   });
-   document.querySelectorAll(".section-lyrics-toggle").forEach((button) =>
-      button.addEventListener("click", (event) => {
-         event.stopPropagation();
-         // Per-section display/edit toggles are arrangement edits.
-         if (blockedForEdit()) return;
-         const section = findSection(button.dataset.section);
-         if (!section) return;
-         section.lyricsEnabled = section.lyricsEnabled === false;
-         state.activeId = section.id;
-         renderPreview();
-         save();
-         toast(`Lyrics ${section.lyricsEnabled ? "enabled" : "hidden"} for ${section.name}`);
-      }),
-   );
-   document.querySelectorAll(".section-chord-above-toggle").forEach((button) =>
-      button.addEventListener("click", (event) => {
-         event.stopPropagation();
-         // Per-section display/edit toggles are arrangement edits.
-         if (blockedForEdit()) return;
-         const section = findSection(button.dataset.section);
-         if (!section) return;
-         // The section's own default: ON/OFF for every bar of this section.
-         section.chordAboveEnabled = section.chordAboveEnabled !== true;
-         state.activeId = section.id;
-         renderPreview();
-         save();
-         toast(`Chords above ${section.chordAboveEnabled ? "enabled" : "hidden"} for ${section.name}`);
-      }),
-   );
-   document.querySelectorAll(".add-bar").forEach((button) =>
-      button.addEventListener("click", () => {
-         // Adding bars changes the arrangement — refused for members.
-         if (blockedForEdit()) return;
-         const section = findSection(button.dataset.section);
-         if (!section) return;
-         section.bars += 1;
-         state.activeId = section.id;
-         syncEditor();
-         renderPreview();
-         save();
-         toast(`1 ${scoreUnit().unit} added to ${section.name}`);
-      }),
-   );
-   document.querySelectorAll(".add-section").forEach((button) =>
-      button.addEventListener("click", (event) => {
-         event.stopPropagation();
-         insertSectionAfter(button.dataset.section);
-      }),
-   );
-   document.querySelectorAll(".delete-bar").forEach((button) =>
-      button.addEventListener("click", (event) => {
-         event.stopPropagation();
-         // Deleting a bar changes the arrangement — refused for members.
-         if (blockedForEdit()) return;
-         const section = findSection(button.dataset.section),
-            bar = Number(button.dataset.bar);
-         if (!section) return;
-         const { unit, Unit } = scoreUnit();
-         if (section.bars <= 1) {
-            toast(`At least one ${unit} must remain`);
-            return;
-         }
-         if (
-            barHasContent(section, bar) &&
-            !window.confirm(`${Unit} ${bar + 1} contains chords or lyrics. Delete this ${unit}?`)
-         )
-            return;
-         removeBar(section, bar);
-         state.activeId = section.id;
-         renderPreview();
-         save();
-         toast(`${Unit} ${bar + 1} deleted`);
-      }),
-   );
-   // Long-press on mobile must not trigger selection/callout or accidental hover reflow around the bar.
-   document.querySelectorAll(".bar").forEach((bar) => {
-      bar.addEventListener("contextmenu", (event) => {
-         if (event.target.closest(".lyric-input,.section-title-input,input,textarea,select")) return;
-         event.preventDefault();
-      });
-      // While bar-selection mode is active, the ENTIRE bar becomes one big clickable target.
-      // A capture-phase listener runs before any inner editing handler (chords, rhythm lines,
-      // lyric inputs, tool buttons), so it both (a) widens the hit area to the whole bar and
-      // (b) blocks all content edits — clicking anywhere inside the bar only (de)selects it.
-      bar.addEventListener(
-         "click",
-         (event) => {
-            const sel = getBarSelection();
-            const sectionId = bar.closest(".preview-section")?.dataset.section;
-            if (!sel || !sel.active || sel.sectionId !== sectionId) return;
-            event.stopPropagation();
-            event.preventDefault();
-            const barIndex = Number(bar.dataset.bar);
-            if (Number.isNaN(barIndex)) return;
-            handleBarSelectionClick(sel.sectionId, barIndex);
-         },
-         true, // capture phase: intercept before inner beat/chord/lyric handlers
-      );
-   });
-   document.querySelectorAll(".delete-section").forEach((button) =>
-      button.addEventListener("click", (event) => {
-         event.stopPropagation();
-         // Deleting a section changes the arrangement — refused for members.
-         if (blockedForEdit()) return;
-         if (state.sections.length <= 1) {
-            toast("At least one section must remain");
-            return;
-         }
-         const index = state.sections.findIndex((item) => item.id === button.dataset.section),
-            section = state.sections[index];
-         if (!section) return;
-         const hasContent =
-            Object.keys(section.beats || {}).length ||
-            Object.values(section.lyricBeats || {}).some((text) => String(text).trim());
-         if (hasContent && !window.confirm(`Section “${section.name}” contains chords or lyrics. Delete this section?`))
-            return;
-         state.sections.splice(index, 1);
-         state.activeId = state.sections[Math.min(index, state.sections.length - 1)].id;
-         state.editingId = null;
-         syncEditor();
-         renderPreview();
-         save();
-         toast(`Section “${section.name}” deleted`);
-      }),
-   );
-   document.querySelectorAll(".copy-section").forEach((button) =>
-      button.addEventListener("click", (event) => {
-         event.stopPropagation();
-         // Copy/paste of sections & bars is an arrangement edit tool.
-         if (blockedForEdit()) return;
-         copySection(button.dataset.section);
-      }),
-   );
-   document.querySelectorAll(".paste-section").forEach((button) => {
-      button.disabled = !hasClipboard("section") || memberReadOnly();
-      button.addEventListener("click", (event) => {
-         event.stopPropagation();
-         if (blockedForEdit()) return;
-         pasteSection(button.dataset.section);
-      });
-   });
-   document.querySelectorAll(".copy-bar").forEach((button) =>
-      button.addEventListener("click", (event) => {
-         event.stopPropagation();
-         // Copy/paste of sections & bars is an arrangement edit tool.
-         if (blockedForEdit()) return;
-         copyBar(button.dataset.section, Number(button.dataset.bar));
-      }),
-   );
-   document.querySelectorAll(".paste-bar").forEach((button) => {
-      button.disabled = (!hasClipboard("bar") && !hasClipboard("bars")) || memberReadOnly();
-      button.addEventListener("click", (event) => {
-         event.stopPropagation();
-         if (blockedForEdit()) return;
-         pasteBar(button.dataset.section, Number(button.dataset.bar));
-      });
-   });
-   document.querySelectorAll(".select-bars").forEach((button) =>
-      button.addEventListener("click", (event) => {
-         event.stopPropagation();
-         // "Copy bars" (range selection) is an arrangement edit tool.
-         if (blockedForEdit()) return;
-         // Close the ••• menu, then enter selection mode for this section.
-         button.closest(".section-menu")?.removeAttribute("open");
-         beginBarSelection(button.dataset.section);
-      }),
-   );
-   document.querySelectorAll(".bar-selection-copy").forEach((button) =>
-      button.addEventListener("click", (event) => {
-         event.stopPropagation();
-         if (blockedForEdit()) return;
-         copySelectedBars();
-      }),
-   );
-   document.querySelectorAll(".bar-selection-cancel").forEach((button) =>
-      button.addEventListener("click", (event) => {
-         event.stopPropagation();
-         cancelBarSelection();
-      }),
-   );
-   document
-      .querySelectorAll(".section-menu")
-      .forEach((menu) => menu.addEventListener("click", (event) => event.stopPropagation()));
-   document.querySelectorAll(".section-title").forEach((button) =>
-      button.addEventListener("click", (event) => {
-         event.stopPropagation();
-         // Renaming a section is an arrangement edit — refused for members.
-         if (blockedForEdit()) return;
-         state.activeId = button.dataset.section;
-         state.editingId = button.dataset.section;
-         syncEditor();
-         renderPreview();
-         requestAnimationFrame(() => $(".section-title-input")?.focus());
-      }),
-   );
-   document.querySelectorAll(".section-title-input").forEach((input) => {
-      const commit = () => {
-         // Silent guard: members can't reach the rename input (the button is
-         // disabled), so never commit a change on their behalf.
-         if (memberReadOnly()) return;
-         const section = findSection(input.dataset.section);
-         if (!section) return; // bug fix: guard against section removed during blur
-         section.name = input.value.trim() || "Untitled section";
-         state.activeId = section.id;
-         state.editingId = null;
-         syncEditor();
-         renderPreview();
-         save();
-      };
-      input.addEventListener("blur", commit);
-      input.addEventListener("keydown", (event) => {
-         if (event.key === "Enter") {
-            event.preventDefault();
-            input.blur();
-         }
-         if (event.key === "Escape") {
-            state.editingId = null;
-            renderPreview();
-         }
-      });
-      input.addEventListener("click", (event) => event.stopPropagation());
-   });
-   document.querySelectorAll(".preview-section").forEach((el) =>
-      el.addEventListener("click", () => {
-         state.activeId = el.dataset.section;
-         syncEditor();
-         renderPreview();
-      }),
-   );
-   // Re-apply the member read-only affordances: renderPreview() just rebuilt the
-   // section/bar controls, so disabled states have to be restored with them.
-   applyReadOnlyAffordances();
 }
-
-// ---- Viewport / zoom / print layout ----
+// Viewport, zoom, and print layout.
 // Minimum width for one beat slot ("leaf"). Below this the line scrolls instead
 // of shrinking further, so dots never get cramped.
 const MIN_LEAF = 60;
@@ -1385,7 +796,7 @@ function setPrintLayoutPreview(enabled, { announce = true } = {}) {
    document.documentElement.classList.toggle("is-print-layout", printLayoutPreview);
    applyPreviewZoom();
    // Keep this preview HONEST: the export tags every bar that does not start a printed row
-   // (.pdf-mid-bar, src/pdf.js) and the bar-number rules key off that tag to number only the
+   // (.pdf-mid-bar, src/pdf/pdf.js) and the bar-number rules key off that tag to number only the
    // line starts. Without it this mode would number EVERY bar while the PDF numbers the line
    // starts — the exact "preview lies about the export" class of bug. Same call the export and
    // the PDF-options pane make, and clearMidRowBars() restores the widths it pins.
@@ -1399,7 +810,7 @@ function setPrintLayoutPreview(enabled, { announce = true } = {}) {
    });
 }
 
-// ---- Transpose ----
+// Transpose.
 function transposeSheet(semitones) {
    const state = getState();
    // Every transposed chord is spelled for the TARGET key (sharp keys get F♯/C♯, flat keys get
@@ -1454,7 +865,7 @@ function transposeSheet(semitones) {
    );
 }
 
-// ---- Undo/Redo ----
+// Undo and redo.
 // Guard flag: true while applyProject() is replaying a history snapshot, so the
 // save() call inside applyProject doesn't record the restore as a fresh edit.
 let isRestoring = false;
@@ -1508,7 +919,7 @@ function redoSheet() {
    updateUndoRedoButtons();
 }
 
-// ---- Playback --------------------------------------------------------------
+// Playback.
 // One play button in the topbar starts at the ACTIVE section and continues to
 // the end. Per-section buttons start at their own section. Both share the same
 // pending guard so a slow sample load can never start two timelines.
@@ -1572,7 +983,7 @@ async function togglePlayback() {
    if (section) await playFromSection(section.id);
 }
 
-// ---- Copy / paste (sections & bars) ----
+// Copy and paste sections and bars.
 // Copy an entire section (deep-cloned) into the in-memory clipboard.
 function copySection(sectionId) {
    const section = findSection(sectionId);
@@ -1645,7 +1056,7 @@ function pasteBar(sectionId, bar) {
    toast(`Pasted into ${scoreUnit().unit} ${bar + 1}`);
 }
 
-// ---- Multi-bar selection (transient UI state; NOT part of undo history) ----
+// Multi-bar selection is transient UI state and is not part of undo history.
 // { active, sectionId, anchor, focus } — anchor is the first-clicked bar, focus
 // the most recent (shift+)clicked bar. The inclusive range [min,max] is copied.
 let barSelection = null;
@@ -1663,10 +1074,10 @@ function isSelectionActiveFor(sectionId) {
    return !!(barSelection && barSelection.active && barSelection.sectionId === sectionId);
 }
 
-// ---- Score unit ("bar" vs "beat") ------------------------------------------
+// Score unit: bar or beat.
 // In a `1/4` meter the bar IS a beat: the score is one growing bar with no bar
 // line, so every user-facing "bar" word becomes "beat". The word comes from
-// notation.js so the renderer (src/render.js) and these handlers can never
+// notation.js so the renderer (src/render/render.js) and these handlers can never
 // disagree about what the unit of the score is.
 function scoreUnit() {
    const unit = barUnitWord(getState().meter);
@@ -1920,7 +1331,7 @@ function applyProject(project) {
    setDirty(false);
 }
 
-// ---- Inline meta editing (title/artist/key/meter) ----
+// Inline metadata editing: title, artist, key, and meter.
 function beginMetaEdit(kind) {
    // Title / artist are sheet metadata, and a member may only change Key / Time
    // signature / BPM / Transpose — refuse here too, so no future call site can
@@ -1975,7 +1386,7 @@ function beginMetaEdit(kind) {
    });
 }
 
-// ---- Ribbon / theme ----
+// Ribbon and theme.
 const ribbonLabels = {
    chord: "Chord palette",
    slash: "Slash chord builder",
@@ -2027,8 +1438,8 @@ function applyTheme(theme, { persist = true, announce = false } = {}) {
    if (announce) toast(`${dark ? "Dark" : "Light"} mode enabled`);
 }
 
-// ---- Wire up all listeners (called once at bootstrap) ----
-// ---- YouTube chip + link dialog -------------------------------------------
+// Wire up all listeners once at bootstrap.
+// YouTube chip and link dialog.
 // The link of the arrangement being edited is part of the DOCUMENT (see youtubeFields in
 // youtube.js), so the editor can show it without asking the cloud: render.js paints the topbar
 // chip from `state`, and this module owns the two ways to change it —
@@ -2156,384 +1567,7 @@ function bindYoutubeChip() {
    }
 }
 
-function bindControlListeners() {
-   const state = getState();
-   $("#keySelect").addEventListener("change", (event) => {
-      state.key = event.target.value;
-      renderPreview();
-      save();
-   });
-   $("#chordRootPicker").addEventListener("click", (event) => {
-      if (!event.target.dataset.root) return;
-      // Palette tools exist to write chords — not available to members.
-      if (blockedForEdit()) return;
-      clearPaletteSelection();
-      getState().chordRoot = event.target.dataset.root;
-      renderControls();
-      save();
-   });
-   $("#customChordInput").addEventListener("input", (event) => {
-      if (blockedForEdit()) {
-         renderControls();
-         return;
-      }
-      clearPaletteSelection();
-      getState().customChord = event.target.value;
-      renderCustomChord();
-      save();
-   });
-   $("#addSlashBtn").addEventListener("click", () => {
-      if (blockedForEdit()) return;
-      const chord = `${$("#slashRoot").value}${$("#slashQuality").value}/${$("#slashBass").value}`;
-      const slashChords = getState().slashChords;
-      if (!slashChords.includes(chord)) slashChords.push(chord);
-      renderControls();
-      save();
-      toast(`${chord} is ready to drag`);
-   });
-   $("#nashvilleRootPicker").addEventListener("click", (event) => {
-      const button = event.target.closest(".nashville-key");
-      if (!button) return;
-      if (blockedForEdit()) return;
-      clearPaletteSelection();
-      getState().nashvilleNumber = button.dataset.number;
-      renderControls();
-      save();
-   });
-   $("#nashvilleAccidentalPicker").addEventListener("click", (event) => {
-      if (event.target.dataset.accidental === undefined) return;
-      if (blockedForEdit()) return;
-      clearPaletteSelection();
-      getState().nashvilleAccidental = event.target.dataset.accidental;
-      renderControls();
-      save();
-   });
-   // Transpose stays available to members (matched by the album role rules).
-   $("#transposeDown").addEventListener("click", () => transposeSheet(-1));
-   $("#transposeUp").addEventListener("click", () => transposeSheet(1));
-
-   // Playback controls: the topbar transport starts from the ACTIVE section;
-   // section play buttons start at their own section. Both share playPending.
-   const bpmInput = $("#bpmInput");
-   $("#playBtn")?.addEventListener("click", () => {
-      void togglePlayback();
-   });
-
-   bpmInput?.addEventListener("input", (event) => {
-      const bpm = Math.min(240, Math.max(40, Number(event.target.value)));
-      getState().bpm = bpm || 120;
-      // Persist to the song (history + dirty flag) and re-sync the control so
-      // it reflects the new tempo (each song keeps its own BPM, not a static 120).
-      save();
-      renderControls();
-   });
-   // The BPM input sits in the sticky header now, so a wheel gesture meant for
-   // the page must never nudge the tempo. Blur first; the wheel then scrolls.
-   bpmInput?.addEventListener(
-      "wheel",
-      () => {
-         if (document.activeElement === bpmInput) bpmInput.blur();
-      },
-      { passive: true },
-   );
-   updatePlayButton();
-
-
-   // Undo/Redo stay available to members: the history stack is cleared whenever a
-   // project is loaded (applyProject → clearHistory), so undo can only move
-   // between the album document as loaded and the edits a member is allowed to
-   // make (Key / Time / BPM / Transpose). It can never introduce bars, sections
-   // or chords the member couldn't create in the first place.
-   // Undo/Redo are editor history — refused in a view-only phone (members keep them).
-   $("#undoBtn")?.addEventListener("click", () => {
-      if (phoneViewOnly()) return;
-      undoSheet();
-   });
-   $("#redoBtn")?.addEventListener("click", () => {
-      if (phoneViewOnly()) return;
-      redoSheet();
-   });
-   $("#lyricsEnabled").addEventListener("change", (event) => {
-      // The lyrics switch changes the document — owner-only.
-      if (blockedForEdit()) {
-         event.target.checked = getState().lyricsEnabled;
-         return;
-      }
-      getState().lyricsEnabled = event.target.checked;
-      renderControls();
-      renderPreview();
-      save();
-      toast(getState().lyricsEnabled ? "Lyrics mode enabled" : "Lyrics hidden from score");
-   });
-   // Global lyrics toggle in the topbar (mirrors the hidden ribbon switch, which
-   // remains the source of truth so renderControls keeps both in sync).
-   $("#lyricsEnabledTop")?.addEventListener("change", (event) => {
-      if (blockedForEdit()) {
-         event.target.checked = getState().lyricsEnabled;
-         return;
-      }
-      const ribbonToggle = $("#lyricsEnabled");
-      ribbonToggle.checked = event.target.checked;
-      ribbonToggle.dispatchEvent(new Event("change"));
-   });
-   bindAutoSyllable();
-   document.querySelectorAll(".ribbon-tab").forEach((tab) => {
-      tab.addEventListener("click", () => activateRibbon(tab));
-      tab.addEventListener("keydown", (event) => {
-         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-         event.preventDefault();
-         const tabs = [...document.querySelectorAll(".ribbon-tab:not([hidden])")],
-            index = tabs.indexOf(tab);
-         const next =
-            event.key === "Home"
-               ? tabs[0]
-               : event.key === "End"
-                 ? tabs.at(-1)
-                 : tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
-         activateRibbon(next, { focus: true });
-      });
-   });
-   $("#ribbonToggle").addEventListener("click", () => toggleRibbon());
-   $("#themeToggle").addEventListener("click", () =>
-      applyTheme(activeTheme === "dark" ? "light" : "dark", { announce: true }),
-   );
-   $("#previewViewport").addEventListener("scroll", updateViewportOverflow, { passive: true });
-   $("#previewTitle").addEventListener("click", (event) => {
-      if (event.target.matches("input")) return;
-      // Title / artist are part of the sheet — read-only for members. A phone is
-      // view-only too, but its metadata stays editable (see the allowed list).
-      if (memberReadOnly()) return;
-      beginMetaEdit("title");
-   });
-   $("#previewArtist").addEventListener("click", (event) => {
-      if (event.target.matches("input")) return;
-      if (memberReadOnly()) return;
-      beginMetaEdit("artist");
-   });
-   // Key & time signature remain editable for members (see the album role rules).
-   $("#previewKey").addEventListener("click", (event) => {
-      if (!event.target.matches("select")) beginMetaEdit("key");
-   });
-   $("#previewMeter").addEventListener("click", (event) => {
-      if (!event.target.matches("select")) beginMetaEdit("meter");
-   });
-   // Time signature & BPM stay editable for members. On a PHONE, though, the time
-   // signature is locked (only Key / Transpose / BPM stay live there).
-   $("#timeSignature").addEventListener("change", (event) => {
-      if (phoneViewOnly()) {
-         event.target.value = getState().meter;
-         toastPhoneViewOnly();
-         return;
-      }
-      getState().meter = event.target.value;
-      renderPreview();
-      save();
-      toast(`Preview updated to ${getState().meter}`);
-   });
-   $("#songTitle").addEventListener("input", () => {
-      if (memberReadOnly()) {
-         renderPreview();
-         return;
-      }
-      renderPreview();
-      save();
-   });
-   $("#artist").addEventListener("input", () => {
-      if (memberReadOnly()) {
-         renderPreview();
-         return;
-      }
-      renderPreview();
-      save();
-   });
-   $("#placingCancel")?.addEventListener("click", () => {
-      clearPaletteSelection();
-      toast("Selection cleared");
-   });
-   $("#addSectionBtn").addEventListener("click", () => {
-      // Adding a section is an arrangement edit — refused for members.
-      if (blockedForEdit()) return;
-      const currentState = getState();
-      if (currentState.sections.length >= MAX_SECTIONS) {
-         toast(`Maximum of ${MAX_SECTIONS} sections reached`);
-         return;
-      }
-      const section = newSection(nextSectionName(currentState.sections));
-      currentState.sections.push(section);
-      currentState.activeId = section.id;
-      syncEditor();
-      renderPreview();
-      save();
-      toast("Section added at the end");
-   });
-   $("#resetSheetBtn").addEventListener("click", () => {
-      // Wiping the whole score is never available to a member.
-      if (blockedForEdit()) return;
-      if (!window.confirm("Reset the entire score to its default state?")) return;
-      resetState();
-      clearPaletteSelection();
-      $("#songTitle").value = "Song Title";
-      $("#artist").value = "Artist / Composer";
-      $("#timeSignature").value = "4/4";
-      syncEditor();
-      renderControls();
-      renderPreview();
-      $("#previewViewport")?.scrollTo(0, 0);
-      save();
-      toast("Score reset to default");
-   });
-   // "How to use this score app?" help dialog (single source of truth for what
-   // the app can do: cloud library + versions, shared albums, editing, export).
-   // Explains the click-to-type / right-click-for-rhythm live-editing model.
-   {
-      const howToDialog = $("#howToDialog");
-      const openBtn = $("#howToUseBtn");
-      let lastFocused = null;
-      const openHowTo = () => {
-         if (!howToDialog) return;
-         lastFocused = document.activeElement;
-         howToDialog.hidden = false;
-         void howToDialog.offsetHeight; // commit start state before fade-in
-         setTimeout(() => howToDialog.classList.add("is-open"), 20);
-         setTimeout(() => $("#howToCloseBtn")?.focus(), 60);
-         document.addEventListener("keydown", onKey);
-      };
-      const closeHowTo = () => {
-         if (!howToDialog) return;
-         howToDialog.classList.remove("is-open");
-         document.removeEventListener("keydown", onKey);
-         setTimeout(() => {
-            howToDialog.hidden = true;
-         }, 260);
-         if (lastFocused && typeof lastFocused.focus === "function") lastFocused.focus();
-      };
-      function onKey(event) {
-         if (event.key === "Escape") closeHowTo();
-      }
-      openBtn?.addEventListener("click", openHowTo);
-      // Backdrop and any element flagged data-howto-dismiss (Got it button) close.
-      howToDialog?.addEventListener("click", (event) => {
-         if (event.target.closest("[data-howto-dismiss]")) closeHowTo();
-      });
-   }
-   $("#saveBtn")?.addEventListener("click", downloadProject);
-   $("#projectFileInput")?.addEventListener("change", async (event) => {
-      // Loading a project file REPLACES the open document — not a member action.
-      if (blockedForEdit()) {
-         event.target.value = "";
-         return;
-      }
-      const file = event.target.files[0];
-      if (!file) return;
-      try {
-         applyProject(JSON.parse(await file.text()));
-         toast("Score loaded and ready to edit");
-      } catch (error) {
-         toast("Invalid file or not a Spartio.app project");
-      } finally {
-         event.target.value = "";
-      }
-   });
-   $("#exportBtn").addEventListener("click", () => {
-      renderPreview();
-      // The Export .pdf button now opens the PDF options dialog (initPdfOptions
-      // wires the actual click→open). renderPreview() first so the adopted
-      // #previewCard shows the current score. The real export runs from the
-      // dialog's own "Export PDF" button via the onExport callback below.
-   });
-   // PDF options dialog: tweaks --print-* tokens live (mirrors into the on-screen
-   // PDF layout preview) without touching the live editor. Opened by #exportBtn.
-   pdfOptionsControl = initPdfOptions({
-      setPreview: (on, opts) => setPrintLayoutPreview(on, opts),
-      isPreviewOn: () => printLayoutPreview,
-      // Bar numbers only make sense on the Chord Chart beat grid: Numbers mode prints
-      // the numbers as the notation itself and ChordPro has no bars, so the option is
-      // taken out of the dialog there (the print CSS enforces the same rule). A `1/4`
-      // score has no bars either — it is ONE growing bar without a bar line — so the
-      // stamp is taken out there too (the print CSS hides it in 1/4 as well).
-      barNumbersAvailable: () =>
-         normalizeEditorMode(getState().editorMode) === "chords" && !isSingleBeatMeter(getState().meter),
-      // ChordPro mode prints its own card; every other mode keeps using the original
-      // #previewCard (the default), so existing behaviour is untouched.
-      getCard: () =>
-         normalizeEditorMode(getState().editorMode) === "chordpro" ? $("#cpPreviewCard") : $("#previewCard"),
-      onExport: () => {
-         // Multi-bar selection ("Copy bars") is transient EDITOR state: its green
-         // ring/tint/✓ badge must never reach the PDF. Clearing it here (and the
-         // print CSS neutralising it) is what keeps the exported score clean even
-         // when the user exports mid-selection.
-         cancelBarSelection();
-         renderPreview();
-         exportToPdf({ printLayoutPreview, onAfterFrame: updateViewportOverflow });
-      },
-   });
-   // PDF options are part of each song's document (per-song PDF options), so
-   // tweaking them marks the song as having unsaved changes. For a MEMBER they
-   // are export-only (nothing can be written back to the album), so skip the
-   // flag — otherwise adjusting an export layout would light the unsaved badge
-   // and trigger the "Save a copy?" prompt when leaving.
-   window.addEventListener("chordsheet:pdfoptionschange", () => {
-      if (memberReadOnly()) return;
-      setDirty(true);
-   });
-   window.addEventListener(
-      "scroll",
-      () => {
-         const editor = document.querySelector(".editor-card");
-         editor.classList.toggle("is-scrolled", editor.getBoundingClientRect().top <= 80);
-      },
-      { passive: true },
-   );
-   window.addEventListener("resize", updateViewportOverflow, { passive: true });
-
-   // Register beforeprint/afterprint so the `is-print-layout` geometry is the
-   // single source of truth for printed output (see src/pdf.js).
-   // Registered BEFORE initPrintListeners() on purpose: beforeprint handlers run
-   // in registration order, so the transient bar selection is dropped (and the
-   // DOM re-rendered without its green ring) before pdf.js measures mid-row bars.
-   window.addEventListener("beforeprint", () => cancelBarSelection());
-   initPrintListeners();
-
-   document.addEventListener("keydown", (event) => {
-      const editing = event.target?.matches?.('input,textarea,select,[contenteditable="true"]') ?? false;
-
-      // Undo/Redo shortcuts: Ctrl+Z / Ctrl+Shift+Z (standard modern shortcut for redo)
-      if (!editing && (event.ctrlKey || event.metaKey)) {
-         if (event.key.toLowerCase() === "z" && !event.shiftKey) {
-            event.preventDefault();
-            undoSheet();
-            return;
-         }
-         if (event.key.toLowerCase() === "z" && event.shiftKey) {
-            event.preventDefault();
-            redoSheet();
-            return;
-         }
-      }
-
-      if (event.altKey && !editing && /^[1-5]$/.test(event.key)) {
-         event.preventDefault();
-         const tab = document.querySelectorAll(".ribbon-tab:not([hidden])")[Number(event.key) - 1];
-         if (tab) activateRibbon(tab, { focus: true });
-         return;
-      }
-      if (event.key === "Escape" && !editing && printLayoutPreview) {
-         event.preventDefault();
-         setPrintLayoutPreview(false);
-         return;
-      }
-      if (event.key === "Escape" && !editing && getSelectedPaletteItem()) {
-         event.preventDefault();
-         clearPaletteSelection();
-         toast("Selection cleared · tap a placed chord to remove it");
-         return;
-      }
-      if (event.key === "Escape" && !editing && $("#ribbonToggle").getAttribute("aria-expanded") === "true")
-         toggleRibbon(false);
-   });
-}
-
-// ---- Auto-syllable: split a pasted line into singable syllables across beats ----
+// Split a pasted lyric line into singable syllables across beats.
 // The lyric inputs are already laid out in visual (beat) order in the DOM, so we
 // reuse that ordering — the same approach the per-input paste handler uses.
 function bindAutoSyllable() {
@@ -2617,7 +1651,7 @@ function bindAutoSyllable() {
    });
 }
 
-// ---- Public bootstrap entry point ----
+// Public bootstrap entry point.
 // Desktop-recommendation hint: on PHONES only, gently suggest a larger screen
 // for a roomier arranging + preview experience. Shown on EVERY load/refresh (no
 // persistence) as a centered modal over a blurred backdrop. NOT shown on
@@ -2646,7 +1680,7 @@ function initDeviceHint() {
    $("#deviceHintClose")?.addEventListener("click", dismiss);
 }
 
-// ---- Touch: tap-to-reveal a bar's tools (tablets have no hover) ----
+// Touch reveals bar tools on tablets without hover.
 // Reveal the per-bar tools (⧉ copy, ⎘ paste, × delete) AND the × chord
 // badge for the bar the user just touched. The class is toggled DIRECTLY on the DOM
 // (no re-render): re-rendering here would replace the beat node the chord-editor
@@ -2687,7 +1721,7 @@ function bindBarToolReveal() {
    );
 }
 
-// ---- Sticky editor topbar -------------------------------------------------
+// Sticky editor topbar.
 // Only the document bar follows the scroll: the paper itself keeps scrolling
 // normally. The `is-stuck` class adds the single tone line that separates the
 // bar from the sheet; it is screen-only and never part of print/PDF geometry.
@@ -2723,7 +1757,33 @@ export function initEvents() {
       // Album members are read-only: the YouTube chip hides its edit affordances.
       isMemberReadOnly: () => memberReadOnly(),
    });
-   bindControlListeners();
+   pdfOptionsControl = bindControlEventListeners({
+      activateRibbon,
+      applyProject,
+      applyTheme,
+      beginMetaEdit,
+      bindAutoSyllable,
+      blockedForEdit,
+      cancelBarSelection,
+      clearPaletteSelection,
+      downloadProject,
+      getActiveTheme: () => activeTheme,
+      isPrintLayoutPreview: () => printLayoutPreview,
+      memberReadOnly,
+      phoneViewOnly,
+      redoSheet,
+      save,
+      setDirty,
+      setPrintLayoutPreview,
+      syncEditor,
+      toastPhoneViewOnly,
+      togglePlayback,
+      toggleRibbon,
+      transposeSheet,
+      undoSheet,
+      updatePlayButton,
+      updateViewportOverflow,
+   });
    bindBarToolReveal();
    bindYoutubeChip();
    localStorage.removeItem("chordSheetPreview");

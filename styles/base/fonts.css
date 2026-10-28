@@ -1,0 +1,78 @@
+/* fonts.css — self-hosted Inter (variable, latin subset).
+ *
+ * WHY: the whole app asks for `font-family: Inter, ui-sans-serif, system-ui, …`
+ * but Inter was never actually loaded, so each OS substituted its own UI font.
+ * macOS fell back to San Francisco (a VARIABLE font → the `font-weight: 850/900`
+ * chords rendered exactly), while Windows fell back to Segoe UI (STATIC weights
+ * → the browser SYNTHESISED a bold, which reads heavier and tighter). Chords
+ * like `B♭m/F` therefore looked "too bold / too cramped" on Windows only.
+ *
+ * FIX: ship Inter ourselves as a genuine VARIABLE font (wght 100–900) so the
+ * heavy chord weights are rendered — never faked — identically on every OS.
+ *
+ * The family name stays `"Inter"` (not "Inter Variable") so every existing
+ * font stack in the app picks it up without touching a single selector. If the
+ * file ever fails to load, the untouched fallback chain still applies.
+ *
+ * `unicode-range` is the exact latin coverage of this file; glyphs outside it
+ * (e.g. the ♭/♯ accidentals, which the score deliberately draws in Georgia)
+ * keep flowing to the next family in the stack, exactly as before.
+ *
+ * Source: @fontsource-variable/inter@5.3.0 — Inter by The Inter Project Authors,
+ * licensed under the SIL Open Font License 1.1 (see assets/fonts/Inter-LICENSE.txt).
+ */
+@font-face {
+   font-family: "Inter";
+   font-style: normal;
+   font-weight: 100 900;
+   font-display: swap;
+   src:
+      url("../../assets/fonts/inter-latin-wght-normal.woff2?v=__BUILD__") format("woff2-variations"),
+      url("../../assets/fonts/inter-latin-wght-normal.woff2?v=__BUILD__") format("woff2");
+   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* Accidentals — ♭ (U+266D), ♮ (U+266E), ♯ (U+266F).
+ *
+ * Inter ships NO music glyphs (confirmed: neither the latin subset nor the full
+ * 2849-glyph Inter has U+266D), and the score's `.chord-accidental` asks for a
+ * serif family (Georgia / Times New Roman) that ALSO lacks them. So the flat and
+ * sharp used to fall through to whatever symbol font the OS happened to supply:
+ *   • macOS   → Hiragino Mincho ProN
+ *   • Windows → Segoe UI Symbol
+ * i.e. a DIFFERENT glyph on each platform — the remaining `B♭m/F` mismatch.
+ *
+ * This tiny (876-byte) Noto Serif JP subset pins ONE shape everywhere. It is a
+ * mincho face, the same style macOS already fell back to, so the macOS look is
+ * preserved while Windows now matches it. It is registered on the SAME "Inter"
+ * family (disjoint unicode-range) so EVERY ♭/♯ in the app — chord tokens, key
+ * names, everything — resolves through it. Declared `font-weight: 100 900` so the
+ * glyph is used as-is at any weight (never faux-bolded). OFL 1.1. */
+@font-face {
+   font-family: "Inter";
+   font-style: normal;
+   font-weight: 100 900;
+   font-display: swap;
+   src: url("../../assets/fonts/noto-serif-jp-accidentals.woff2?v=__BUILD__") format("woff2");
+   unicode-range: U+266D-266F;
+}
+
+/* Sora — geometric display face for headings & primary actions.
+ *
+ * Adopted in the auth refresh as the DISPLAY voice of the app (aside headline,
+ * card titles, primary buttons) while Inter remains the BODY voice. Registered
+ * as its own family — "Sora" — so it is opt-in per selector and never silently
+ * changes existing text. Weights used: 600–700 for headings, 600 for buttons.
+ *
+ * Source: Google Fonts / @fontsource-variable/sora — Sora by The Sora Project
+ * Authors (sora-xor), licensed under the SIL Open Font License 1.1
+ * (see assets/fonts/Sora-LICENSE.txt).
+ */
+@font-face {
+   font-family: "Sora";
+   font-style: normal;
+   font-weight: 100 800;
+   font-display: swap;
+   src: url("../../assets/fonts/sora-latin-wght-normal.woff2?v=__BUILD__") format("woff2");
+   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}

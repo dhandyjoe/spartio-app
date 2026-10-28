@@ -1,0 +1,51 @@
+// store.js — single source of truth for app state + palette selection.
+// State is reassigned wholesale on import/reset, so consumers must read via getState().
+import { newSection } from "../notation/notation.js?v=__BUILD__";
+
+function defaultState() {
+   const first = newSection("Intro");
+   return {
+      key: "C",
+      chordRoot: "C",
+      customChord: "",
+      meter: "4/4",
+      bpm: 120,
+      lyricsEnabled: false,
+      // The YouTube link of the arrangement being edited. It belongs to the VERSION document
+      // (each version has its own link), so the editor document carries it and every save writes
+      // it back — see youtubeFields() in youtube.js.
+      youtubeUrl: "",
+      youtubeId: "",
+      // The chord row above the numbers is a PER-SECTION feature now (see
+      // section.chordAboveEnabled), so there is no song-wide flag any more.
+      sections: [first],
+      slashChords: [],
+      nashvilleNumber: "1",
+      nashvilleAccidental: "",
+      activeId: first.id,
+      editingId: null,
+      // Touch tap-to-reveal: the bar whose per-bar tools are currently shown
+      // ({ sectionId, bar } | null). Set by events.js and stamped by render.js.
+      activeBar: null,
+      editorMode: "chords", // "chords" or "numbers" - defaults to chords for backward compat
+   };
+}
+
+let state = defaultState();
+let selectedPaletteItem = null;
+
+export const getState = () => state;
+export function setState(next) {
+   state = next;
+}
+export function resetState() {
+   state = defaultState();
+   return state;
+}
+export const activeSection = () => state.sections.find((section) => section.id === state.activeId) || state.sections[0];
+export const findSection = (id) => state.sections.find((section) => section.id === id);
+
+export const getSelectedPaletteItem = () => selectedPaletteItem;
+export function setSelectedPaletteItem(item) {
+   selectedPaletteItem = item;
+}

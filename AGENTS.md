@@ -57,36 +57,46 @@ notation.js  ←  store.js  ←  render.js  ←  events.js  ←  app.js
 
 | Modul | Tanggung jawab | Bergantung pada |
 |--------|---------------|-----------------|
-| `notation.js` | Logika musik murni (transpose, section, bar, grammar Nashville, batasan) | — |
-| `chordPro.js` | Parse/transpose/normalize ChordPro (tanpa DOM) | notation |
-| `dom.js` | Helper tipis (`$`, `toast`, `prefersTap`) | — |
-| `store.js` | Single source of truth + seleksi palet | notation |
-| `render.js` | Bangun HTML skor → DOM | notation, dom, store, chordPro, youtube |
-| `chordProEditor.js` | UI workspace ChordPro (panel + sections) | dom, store, notation |
-| `events.js` | Seluruh interaksi, listener, import/export, bootstrap | notation, chordPro, dom, store, render, chordProEditor, playback, pdf, cloud, ... |
+| `notation/notation.js` | Logika musik murni (transpose, section, bar, grammar Nashville, batasan) | — |
+| `notation/chordPro.js` | Parse/transpose/normalize ChordPro (tanpa DOM) | notation |
+| `notation/chordBank.js` | Saran chord/Nashville dan normalisasi kualitas | notation |
+| `core/dom.js` | Helper tipis (`$`, `toast`, `prefersTap`) | — |
+| `core/store.js` | Single source of truth + seleksi palet | notation |
+| `core/clipboard.js` | Clipboard in-memory untuk section/bar | — |
+| `core/history.js` | Undo/redo stack | — |
+| `render/render.js` | Bangun HTML skor → DOM | notation, core, chordPro, util/youtube |
+| `render/chordProEditor.js` | UI workspace ChordPro (panel + sections) | core, notation |
+| `events.js` | Seluruh interaksi, listener, import/export, bootstrap | notation, render, editor, playback, pdf, cloud, util, ... |
 | `app.js` | Entry point (`initEvents()`) | events |
-| `cloud.js` | Wrapper Firebase (lazy auth + Firestore) | firebase-config, notation |
-| `cloudUI.js` | Modal login + home My Songs/Albums + UI album | cloud, dom, identity, notation |
-| `pdf.js` | Pipeline ekspor PDF (`PDF_PAPER_MM` — kertas A4 saja) | dom, notation |
-| `pdfOptions.js` | Modal opsi PDF (kertas terkunci A4 + margin narrow) | pdf.js |
-| `playback.js` / `synth.js` / `sampleCache.js` | Audio piano + voicing + cache sampel (IndexedDB) | chordBank, notation |
-| `chordBank.js` / `chordEditor.js` / `beatMenu.js` / `fermataEditor.js` | Palet, editor, menu | notation, store |
-| `history.js` / `clipboard.js` / `share.js` / `youtube.js` / `identity.js` | Undo, clipboard, share-link, parse YouTube, nama member | beragam |
+| `cloud.js` | Facade stabil untuk API cloud | cloud/data/* |
+| `cloud/data/runtime.js` | Singleton Firebase SDK, sesi auth, guard user | firebase-config |
+| `cloud/data/auth.js` | API sign-in, sign-out, status auth | cloud/data/runtime |
+| `cloud/data/songs.js` | Firestore My Songs dan versions | cloud/data/runtime, notation |
+| `cloud/data/albums.js` | Firestore albums, invites, members | cloud/data/runtime, cloud/data/songs |
+| `cloudUI.js` | Facade stabil untuk UI cloud | cloud/ui/controller |
+| `cloud/ui/controller.js` | Composition root cloud UI; route, bridge, dan koordinasi screen | cloud facade, dom, notation |
+| `cloud/ui/{auth,dialogs,gallery,album,markup,state}.js` | UI per concern dan helper presentasi cloud | dom, notation, cloud facade |
+| `editor/bindings/{preview,controls}.js` | Listener preview dan kontrol dengan callback injection | dom, store, notation, render, PDF |
+| `pdf/pdf.js` | Pipeline ekspor PDF (`PDF_PAPER_MM` — kertas A4 saja) | core, notation |
+| `pdf/pdfOptions.js` | Modal opsi PDF (kertas terkunci A4 + margin narrow) | pdf.js |
+| `playback/playback.js` / `synth.js` / `sampleCache.js` | Audio piano + voicing + cache sampel (IndexedDB) | notation, core |
+| `editor/chordEditor.js` / `beatMenu.js` / `fermataEditor.js` | Palet, editor, menu | notation, core, render |
+| `util/share.js` / `youtube.js` / `identity.js` | Share-link, parse YouTube, nama member | beragam |
 
-**Aturan kritis**: `render.js` tidak pernah import `events.js` — hook disuntik via `initRender()`. `cloudUI` bicara ke Firebase hanya lewat `cloud.js`, tidak pernah import `events.js`. `chordProEditor` sama (via `initChordProEditor()`) — dan **tidak** import `chordPro.js`.
+**Aturan kritis**: `render.js` tidak pernah import `events.js` — hook disuntik via `initRender()`. `cloud/ui/controller.js` bicara ke Firebase hanya lewat facade `cloud.js` dan ke editor lewat bridge, tidak pernah import `events.js`. `editor/bindings/*` menerima callback dari `events.js` dan tidak mengimpor modul tersebut. `chordProEditor` sama (via `initChordProEditor()`) — dan **tidak** import `chordPro.js`.
 
 ---
 
 ## 3. Invariant & Konvensi Kunci (Jangan Dirombak Sembarangan)
 
 1. **Single source of truth per domain**
-   - `normalizeQuality()` (`src/chordBank.js`) — pemetaan alias kualitas chord
-   - `NASHVILLE_TOKEN_RE` (`src/notation.js`) — satu regex untuk saran, renderer, playback
-   - `NASHVILLE_OCTAVE_UP` / `NASHVILLE_OCTAVE_DOWN` (`src/notation.js`) — combining dot oktaf atas/bawah
-   - `QUALITY_INTERVALS` (`src/playback.js`) — tabel voicing
-   - `spellPitch` / `transposeKeyName` (`src/notation.js`) — standar ejaan
+   - `normalizeQuality()` (`src/notation/chordBank.js`) — pemetaan alias kualitas chord
+   - `NASHVILLE_TOKEN_RE` (`src/notation/notation.js`) — satu regex untuk saran, renderer, playback
+   - `NASHVILLE_OCTAVE_UP` / `NASHVILLE_OCTAVE_DOWN` (`src/notation/notation.js`) — combining dot oktaf atas/bawah
+   - `QUALITY_INTERVALS` (`src/playback/playback.js`) — tabel voicing
+   - `spellPitch` / `transposeKeyName` (`src/notation/notation.js`) — standar ejaan
 
-2. **Token Nashville**: `[♭#♯]?[0-7][̣̇]?(.*)` — aksidental, derajat, titik oktaf (combining), kualitas. `0` = rest (bisu, sengaja). ASCII `b` hanya alias ketik, **disimpan sebagai `♭`**. `foldNashvilleKey()` (`src/chordBank.js`) sengaja membiarkan `b7` terbaca sebagai chord huruf (B7); jangan ubah perilaku ini tanpa memahami alasannya. Aksidental diterapkan ke MIDI final **setelah** oktaf (agar `♭1` di C berbunyi B3 di bawah tonika, bukan B4).
+2. **Token Nashville**: `[♭#♯]?[0-7][̣̇]?(.*)` — aksidental, derajat, titik oktaf (combining), kualitas. `0` = rest (bisu, sengaja). ASCII `b` hanya alias ketik, **disimpan sebagai `♭`**. `foldNashvilleKey()` (`src/notation/chordBank.js`) sengaja membiarkan `b7` terbaca sebagai chord huruf (B7); jangan ubah perilaku ini tanpa memahami alasannya. Aksidental diterapkan ke MIDI final **setelah** oktaf (agar `♭1` di C berbunyi B3 di bawah tonika, bukan B4).
 
 3. **Setengah langkah Nashville (naik ½ / turun ½)**: chip `♮ ♯ ♭` di `chordEditor.js` dan palet Nashville bekerja sebagai **filter keluarga** daftar saran (bukan campuran); aksidental ikut tersimpan di token (`nashvilleAccidental`) serta ikut playback, transpose, dan PDF.
 
@@ -100,14 +110,14 @@ notation.js  ←  store.js  ←  render.js  ←  events.js  ←  app.js
    - Print: grid track zero-height, offset relative, ukuran chord 90%, gap baris 6mm.
    - Ketuk tersubdivisi dicetak sebagai SATU grid (`max-content` + `space-around`).
 
-6. **Beam bersarang (nested)**: `nested-beat-group` / `nested-sub-beat` (`src/render.js`, `styles/preview.css`) — beam ½ bersarang menggantung 5px di bawah beam utama di phone. Hati-hati mengubah geometri ini; terkait pengukuran PDF.
+6. **Beam bersarang (nested)**: `nested-beat-group` / `nested-sub-beat` (`src/render/render.js`, `styles/score/preview.css`) — beam ½ bersarang menggantung 5px di bawah beam utama di phone. Hati-hati mengubah geometri ini; terkait pengukuran PDF.
 
 7. **Paritas cetak** — tiga scope harus identik:
    - `@media print` (PDF sungguhan)
    - `html.is-print-layout` (preview PDF di layar)
    - Pane live di dialog PDF options (menampung `#previewCard` asli)
 
-8. **Setiap overlay shell baru** wajib ditambahkan ke blok print-hide di `styles/ui.css` (preseden: `.album-banner`, `.scroll-affordance`, `.site-footer`, `.toast`, ring seleksi).
+8. **Setiap overlay shell baru** wajib ditambahkan ke blok print-hide di `styles/base/print.css` (preseden: `.album-banner`, `.scroll-affordance`, `.site-footer`, `.toast`, ring seleksi).
 
 9. **Read-only (member album + phone)** ditegakkan 3 lapis (semua harus sepakat):
    - `document.body.dataset.memberReadonly = "1"` (cloudUI) untuk member; `phoneViewOnly()` untuk semua pengguna phone
@@ -120,9 +130,9 @@ notation.js  ←  store.js  ←  render.js  ←  events.js  ←  app.js
 
 11. **Stamping versi** — semua string versi di repo adalah `__BUILD__`. Deploy workflow menggantinya dengan `r<run>-<sha7>` dalam SATU pass (sw.js, index.html, chordpro.css via `--chordpro-css-version`, semua `?v=`). Workflow **gagal** bila placeholder tidak ditemukan atau masih bersisa. Unit test memeriksa konsistensi (dijalankan dua kali: repo + artifact ter-stage). **File aset baru wajib memakai `?v=__BUILD__`.**
 
-12. **Mode editor**: `editorModeMeta` di `src/notation.js` — `chords`, `numbers`, `chordpro`. `normalizeEditorMode()` fallback ke `"chords"` untuk mode tak dikenal/legacy; jangan hapus fallback ini karena data lama bergantung padanya.
+12. **Mode editor**: `editorModeMeta` di `src/notation/notation.js` — `chords`, `numbers`, `chordpro`. `normalizeEditorMode()` fallback ke `"chords"` untuk mode tak dikenal/legacy; jangan hapus fallback ini karena data lama bergantung padanya.
 
-13. **Chrome editor = framed sheet**: token `--editor-*` + blok `EDITOR CHROME REFRESH` di akhir `ui.css`, semuanya dibungkus `@media screen`. Chrome memakai Sora (`--editor-font`); kertas skor tetap Inter + subset aksidental (kontrak PDF), dan kode tetap mono. Jangan memakai emoji sebagai ikon UI — pakai inline SVG stroke di `.btn-icon`/`.icon-glyph` (pola tombol album). Save memakai satu-satunya fill accent; Export outline. Kertas (`#previewCard`) dan seluruh print rule tetap di luar scope perubahan chrome.
+13. **Chrome editor = framed sheet**: token `--editor-*` + blok `EDITOR CHROME REFRESH` di `styles/components/editor-chrome.css`, semuanya dibungkus `@media screen`. Chrome memakai Sora (`--editor-font`); kertas skor tetap Inter + subset aksidental (kontrak PDF), dan kode tetap mono. Jangan memakai emoji sebagai ikon UI — pakai inline SVG stroke di `.btn-icon`/`.icon-glyph` (pola tombol album). Save memakai satu-satunya fill accent; Export outline. Kertas (`#previewCard`) dan seluruh print rule tetap di luar scope perubahan chrome.
 
 ---
 
@@ -138,22 +148,26 @@ python3 -m http.server 4173
 
 ### Testing
 ```bash
+# Instal tooling sekali
+npm install
+npx playwright install chromium
+
 # Unit test (logika murni, tanpa browser)
-node --test tests/unit.test.mjs
+npm run test:unit
 
 # Test playback (kontrak audio: voicing, oktaf, queue, fermata)
-node --test tests/playback.test.mjs
+npm run test:playback
 
-# Test regresi (geometri layout/print — butuh Chrome remote debugging)
-# Terminal 1: python3 -m http.server 4173
-# Terminal 2: /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9223
-# Terminal 3: node tests/regression.mjs   (port bisa dioverride via CDP_PORT)
+# E2E Playwright (Chromium)
+npm run test:e2e
+# Server statis otomatis di 127.0.0.1:4175. Mode ?test= hanya aktif di
+# localhost/127.0.0.1/::1; jangan longgarkan guard ini.
 ```
 
 ### Deploy
 ```bash
 git push origin master
-# GitHub Actions menjalankan unit test (dua kali), stamp __BUILD__, deploy ke Pages
+# GitHub Actions menjalankan unit + playback + E2E, stamp __BUILD__, deploy ke Pages
 ```
 - Source Pages **harus** "GitHub Actions" (Settings → Pages).
 - Firebase Authorized Domains: `localhost`, `127.0.0.1`, `dhandyjoe.github.io`.
@@ -180,10 +194,10 @@ Setup dan rules Firebase ada di `docs/FIREBASE-SETUP.md`; ringkasan model produk
 3. Panggil `save()` di akhir (tandai dirty, catat history)
 4. Panggil `renderPreview()` / `renderControls()` sesuai kebutuhan
 5. Tambah affordance CSS di `applyReadOnlyAffordances()` (events.js) bila memengaruhi tombol preview
-6. Tambah rule print-hide di `styles/ui.css` bila membuat chrome baru
+6. Tambah rule print-hide di `styles/base/print.css` bila membuat chrome baru
 
 ### Menambah fitur yang memengaruhi cetak
-1. Update token di `styles/preview.css` (atau `chordpro.css` untuk ChordPro)
+1. Update token di `styles/score/preview.css` (atau `chordpro.css` untuk ChordPro)
 2. Update rule `@media print` DAN `html.is-print-layout` (kedua scope)
 3. Update preview dialog PDF options (pane menampung `#previewCard` asli)
 4. Jalankan regression test untuk memverifikasi geometri
@@ -200,7 +214,7 @@ Setup dan rules Firebase ada di `docs/FIREBASE-SETUP.md`; ringkasan model produk
 5. Sambungkan di `events.js` + hook `render.js`
 
 ### Menambah fermata / edit ketuk
-- Editor fermata per-beat: `src/fermataEditor.js` (`openFermataEditor({anchor, initialValue, onCommit})`, `closeFermataEditor`, `isFermataEditorOpen`); nilai disimpan di `beat.fermata` melalui `fermataValue()` di `src/notation.js`; batas `MAX_FERMATA = 32`. Playback-only, skor/PDF hanya menampilkan glyph + headroom.
+- Editor fermata per-beat: `src/editor/fermataEditor.js` (`openFermataEditor({anchor, initialValue, onCommit})`, `closeFermataEditor`, `isFermataEditorOpen`); nilai disimpan di `beat.fermata` melalui `fermataValue()` di `src/notation/notation.js`; batas `MAX_FERMATA = 32`. Playback-only, skor/PDF hanya menampilkan glyph + headroom.
 
 ---
 
@@ -209,21 +223,22 @@ Setup dan rules Firebase ada di `docs/FIREBASE-SETUP.md`; ringkasan model produk
 | Area | File |
 |------|------|
 | **Entry & bootstrap** | `app.js`, `events.js` (initEvents) |
-| **State & palet** | `store.js` |
-| **Logika notasi murni** | `notation.js` |
-| **Parser ChordPro** | `chordPro.js` |
-| **Render (DOM)** | `render.js`, `chordProEditor.js` |
-| **Interaksi** | `events.js`, `chordEditor.js`, `beatMenu.js`, `fermataEditor.js` |
-| **PDF** | `pdf.js`, `pdfOptions.js` |
-| **Playback** | `playback.js`, `synth.js`, `sampleCache.js` |
-| **Cloud / Auth** | `cloud.js`, `cloudUI.js`, `firebase-config.js` |
-| **Albums** | `cloudUI.js` (UI album), `cloud.js` (Firestore), `docs/ALBUM-FEATURE.md` |
-| **Styles** | `styles/styles.css` (tokens), `styles/ui.css` (shell, dark, responsif, print-hide), `styles/preview.css` (canvas + print), `styles/chordpro.css` (mandiri), `styles/fonts.css` |
+| **State & palet** | `core/store.js`, `core/clipboard.js`, `core/history.js` |
+| **Logika notasi murni** | `notation/notation.js` |
+| **Parser ChordPro** | `notation/chordPro.js`, `notation/chordBank.js` |
+| **Render (DOM)** | `render/render.js`, `render/chordProEditor.js` |
+| **Interaksi** | `events.js`, `editor/bindings/*`, `editor/chordEditor.js`, `editor/beatMenu.js`, `editor/fermataEditor.js` |
+| **PDF** | `pdf/pdf.js`, `pdf/pdfOptions.js` |
+| **Playback** | `playback/playback.js`, `playback/synth.js`, `playback/sampleCache.js` |
+| **Util** | `util/share.js`, `util/youtube.js`, `util/identity.js` |
+| **Cloud / Auth** | `cloud.js` facade, `cloud/data/*`, `cloud/ui/*`, `firebase-config.js` |
+| **Albums** | `cloud/ui/album.js`, `cloud/ui/controller.js`, `cloud/data/albums.js`, `docs/ALBUM-FEATURE.md` |
+| **Styles** | `styles/base/tokens.css` (legacy tokens), `styles/base/fonts.css`, `styles/base/print.css` (print-hide), `styles/layout/shell.css` (shell, canvas, dialogs), `styles/layout/responsive.css` (responsive shell), `styles/components/editor.css` (popovers, menus, PDF options), `styles/components/editor-chrome.css` (`EDITOR CHROME REFRESH`), `styles/components/gallery.css` (auth, gallery, FAB), `styles/components/album.css` (album), `styles/components/library.css` (library skeletons + rows), `styles/components/library-desktop.css` (desktop index + dialogs), `styles/themes/dark.css` (dark theme), `styles/score/preview.css` (score screen), `styles/score/preview-print.css` (print parity), `styles/score/chordpro.css` (ChordPro), `styles/pages/auth.css` (login/register) |
 | **PWA** | `sw.js`, `manifest.webmanifest` |
 | **Deploy** | `.github/workflows/deploy.yml` |
-| **Tests** | `tests/unit.test.mjs`, `tests/regression.mjs`, `tests/playback.test.mjs` |
+| **Tests** | `tests/unit.test.mjs`, `tests/playback.test.mjs`, `tests/e2e/*.spec.mjs`, `tests/e2e/server.mjs`, `tests/e2e/fixtures/*` |
 
-*(Modul JavaScript berada di `src/` dan stylesheet di `styles/`. Tidak ada `styles.css` di root repo.)*
+*(Modul JavaScript berada di `src/` dan stylesheet di `styles/`. Token legacy ada di `styles/base/tokens.css`, bukan di root repo.)*
 
 ---
 
@@ -231,7 +246,7 @@ Setup dan rules Firebase ada di `docs/FIREBASE-SETUP.md`; ringkasan model produk
 
 - **CSS/JS basi setelah edit**: `/?reset=1` (purge cache SW)
 - **Preview layout print**: buka dialog Export PDF → `html.is-print-layout` aktif
-- **Style ChordPro tidak termuat**: cek console untuk toast "ChordPro styles didn't load / out of date" — detector di `src/render.js` membandingkan token `--chordpro-css-version` dari `styles/chordpro.css`; bila SW menyajikan CSS lama, token tidak cocok
+- **Style ChordPro tidak termuat**: cek console untuk toast "ChordPro styles didn't load / out of date" — detector di `src/render/render.js` membandingkan token `--chordpro-css-version` dari `styles/score/chordpro.css`; bila SW menyajikan CSS lama, token tidak cocok
 - **Versi tidak cocok**: view source → cari `__WNS_BUILD__` — harusnya `rXX-abcdefg`, bukan `__BUILD__`
 - **Error permission Firestore**: cek rules sudah dideploy (`docs/FIREBASE-SETUP.md`), authorized domains
 - **Simpan album nyasar ke My Songs**: cek `currentCloudContext` di `events.js` — field album harus selamat dari normalisasi `setCloudContext`
@@ -247,13 +262,13 @@ Setup dan rules Firebase ada di `docs/FIREBASE-SETUP.md`; ringkasan model produk
 | `blockedForEdit()` | `src/events.js` | Guard untuk member read-only dan phone view-only |
 | `applyReadOnlyAffordances()` | `src/events.js` | Nonaktifkan kontrol dan set field read-only sesuai konteks |
 | `setCloudContext()` | `src/events.js` | Normalisasi cloud context, termasuk konteks album |
-| `normalizeQuality()` | `src/chordBank.js` | Pemetaan kualitas kanonik (alias → kanonik) |
-| `foldNashvilleKey()` | `src/chordBank.js` | Alias ketik ASCII → token kanonik (`b` → `♭`; `b7` tetap chord huruf) |
-| `transposeChord()` | `src/notation.js` | Transpose dengan standar ejaan |
-| `fermataValue()` | `src/notation.js` | Baca/set fermata per-beat (`beat.fermata`) |
-| `markMidRowBars()` | `src/pdf.js` | Tandai bar untuk geometri nomor bar (print) |
-| `writeLatestMeta()` | `src/cloud.js` | Tulis ringkasan `latest*` ke dokumen lagu |
-| `initRender(hooks)` | `src/render.js` | Suntik hook event binding, menjaga graf tetap acyclic |
+| `normalizeQuality()` | `src/notation/chordBank.js` | Pemetaan kualitas kanonik (alias → kanonik) |
+| `foldNashvilleKey()` | `src/notation/chordBank.js` | Alias ketik ASCII → token kanonik (`b` → `♭`; `b7` tetap chord huruf) |
+| `transposeChord()` | `src/notation/notation.js` | Transpose dengan standar ejaan |
+| `fermataValue()` | `src/notation/notation.js` | Baca/set fermata per-beat (`beat.fermata`) |
+| `markMidRowBars()` | `src/pdf/pdf.js` | Tandai bar untuk geometri nomor bar (print) |
+| `writeLatestMeta()` | `src/cloud/data/songs.js` | Tulis ringkasan `latest*` ke dokumen lagu |
+| `initRender(hooks)` | `src/render/render.js` | Suntik hook event binding, menjaga graf tetap acyclic |
 
 ---
 
@@ -262,7 +277,7 @@ Setup dan rules Firebase ada di `docs/FIREBASE-SETUP.md`; ringkasan model produk
 - **Baca PRD** (`docs/PRD.md`) — spec As-Is berbahasa Indonesia dengan kriteria penerimaan
 - **Baca DESIGN doc** (`docs/DESIGN.md`) — tokens, komponen, rule print, konvensi (juga berbahasa Indonesia)
 - **Cek unit test** (`tests/unit.test.mjs`) — mereka mengodekan kontrak
-- **Cari preseden** — mis. rule print-hide baru → grep `.album-banner` di `ui.css`
+- **Cari preseden** — mis. rule print-hide baru → grep `.album-banner` di `styles/base/print.css`
 
 ---
 

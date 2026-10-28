@@ -105,7 +105,7 @@ How it is enforced (three layers, so a single missed handler can't leak):
    handlers for album members and phone users. `applyReadOnlyAffordances()` runs
    at the end of `bindPreview()` after each render, disabling in-preview buttons
    and setting lyric / chord-above fields to read-only.
-3. `styles/ui.css` — `body[data-member-readonly="1"] …` dims and deactivates the
+3. `styles/layout/shell.css` — `body[data-member-readonly="1"] …` dims and deactivates the
    controls that live outside the preview (ribbon panels/tabs, section menu,
    footer buttons, lyrics / chords-above toggles).
 
@@ -115,11 +115,11 @@ document as loaded and the edits a member is allowed to make — it can never
 introduce bars, sections or chords.
 
 The read-only banner itself is **app-shell chrome, not score content**: it is
-hidden for printing (`@media print` in `styles/ui.css` hides `.album-banner`
+hidden for printing (`@media print` in `styles/base/print.css` hides `.album-banner`
 next to `.scroll-affordance` / `.site-footer` / `.toast`), so the member notice
-never appears on an exported PDF. The legacy print rule in `styles/styles.css`
+never appears on an exported PDF. The legacy print rule in `styles/base/tokens.css`
 only covers `.topbar` / `.intro` / `.editor-card` / `.preview-footer` — add any
-new app-shell overlay to the ui.css print block as well.
+new app-shell overlay to the `styles/base/print.css` block as well.
 
 ## Manual test recipe
 

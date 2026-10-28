@@ -1,0 +1,2281 @@
+/* ======================================================================
+   MY SONGS — STITCH-INSPIRED DESKTOP INDEX
+   The library is a songbook index: one white sheet, a quiet toolbar, and
+   scannable rows. All rules below are desktop-only; tablet and phone keep
+   the existing list composition.
+   ====================================================================== */
+
+/* Base: elements that only exist in the desktop composition. */
+.library-count-pill {
+   display: inline-flex;
+   align-items: center;
+   min-height: 24px;
+   margin: 5px 0 0;
+   padding: 2px 9px;
+   border: 1px solid var(--library-line);
+   border-radius: 999px;
+   background: var(--library-key-bg);
+   color: var(--library-muted);
+   font: 600 12px/1.2 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   font-variant-numeric: tabular-nums;
+}
+.library-count-pill[hidden] {
+   display: none !important;
+}
+.topbar-theme-toggle {
+   display: grid;
+   place-items: center;
+   width: 38px;
+   height: 38px;
+   padding: 0;
+   border: 0;
+   border-radius: 8px;
+   background: transparent;
+   color: var(--library-muted);
+   cursor: pointer;
+   font: 400 18px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.theme-toggle-icon {
+   display: grid;
+   place-items: center;
+   width: 18px;
+   height: 18px;
+   margin-right: 0 !important;
+   text-align: center;
+}
+.theme-toggle-icon svg {
+   width: 18px;
+   height: 18px;
+   fill: none;
+   stroke: currentColor;
+   stroke-width: 1.7;
+   stroke-linecap: round;
+   stroke-linejoin: round;
+}
+.theme-icon-sun {
+   display: none;
+}
+html[data-theme="dark"] .theme-icon-sun {
+   display: block;
+}
+html[data-theme="dark"] .theme-icon-moon {
+   display: none;
+}
+.topbar-theme-toggle:hover,
+.topbar-theme-toggle:focus-visible {
+   background: var(--library-surface);
+   color: var(--library-ink);
+   outline: none;
+}
+.topbar-theme-toggle:focus-visible {
+   outline: 3px solid var(--library-accent);
+   outline-offset: 2px;
+}
+.library-filter,
+.library-sort,
+.library-result-line,
+.library-table-head,
+.song-card-media,
+.song-card-open {
+   display: none;
+}
+.library-result-line[hidden] {
+   display: none !important;
+}
+.cloud-gallery.library-redesign .song-card .song-card-open,
+.cloud-gallery.library-redesign .song-card .song-card-media {
+   display: none;
+}
+.library-view-actions .button {
+   gap: 6px;
+   white-space: nowrap;
+}
+.library-view-actions .btn-icon {
+   flex: none;
+   width: 15px;
+   height: 15px;
+   fill: none;
+   stroke: currentColor;
+   stroke-width: 1.9;
+   stroke-linecap: round;
+   stroke-linejoin: round;
+}
+.song-row-menu-trigger {
+   display: inline-grid;
+   place-items: center;
+}
+.song-row-menu-icon {
+   width: 16px;
+   height: 16px;
+   fill: currentColor;
+}
+.library-search-clear[hidden] {
+   display: none !important;
+}
+.library-search-clear {
+   position: absolute;
+   top: 50%;
+   right: 38px;
+   display: grid;
+   width: 26px;
+   height: 26px;
+   padding: 0;
+   border: 0;
+   border-radius: 6px;
+   background: transparent;
+   color: var(--library-muted);
+   cursor: pointer;
+   place-items: center;
+   transform: translateY(-50%);
+}
+.library-search-clear svg {
+   width: 14px;
+   height: 14px;
+   fill: none;
+   stroke: currentColor;
+   stroke-width: 2;
+   stroke-linecap: round;
+}
+.library-search-clear:hover,
+.library-search-clear:focus-visible {
+   background: var(--library-raised);
+   color: var(--library-ink);
+   outline: none;
+}
+.library-search-kbd {
+   position: absolute;
+   top: 50%;
+   right: 12px;
+   display: none;
+   min-width: 20px;
+   padding: 2px 5px;
+   border: 1px solid var(--library-line);
+   border-radius: 5px;
+   background: var(--library-raised);
+   color: var(--library-muted);
+   font: 600 10px/1 Sora, Inter, sans-serif;
+   text-align: center;
+   transform: translateY(-50%);
+}
+.song-card-video {
+   display: inline-flex;
+   align-items: center;
+   color: var(--library-danger);
+}
+.song-card-video svg {
+   width: 14px;
+   height: 14px;
+   fill: none;
+   stroke: currentColor;
+   stroke-width: 1.7;
+   stroke-linecap: round;
+   stroke-linejoin: round;
+}
+.song-card-meter {
+   display: inline-flex;
+   align-items: baseline;
+   gap: 4px;
+}
+.song-card-bpm {
+   margin-left: 4px;
+   color: var(--library-muted);
+   font: 500 11px/1.2 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   white-space: nowrap;
+}
+.mode-mark {
+   display: grid;
+   place-items: center;
+   line-height: 0;
+}
+.mode-mark svg {
+   width: 16px;
+   height: 16px;
+   fill: none;
+   stroke: currentColor;
+   stroke-width: 1.8;
+   stroke-linecap: round;
+   stroke-linejoin: round;
+}
+/* Nashville and ChordPro use the filled Material Symbols glyphs from the
+   Stitch light-mode set; the stroke rules above would hollow them out. */
+.mode-mark svg.is-filled {
+   fill: currentColor;
+   stroke: none;
+}
+.mode-tile .mode-mark svg.is-filled,
+.song-card-cover .mode-mark svg.is-filled {
+   width: 18px;
+   height: 18px;
+}
+.version-item-mode-icon svg {
+   width: 15px;
+   height: 15px;
+   fill: none;
+   stroke: currentColor;
+   stroke-width: 1.8;
+   stroke-linecap: round;
+   stroke-linejoin: round;
+}
+/* The mode mark is a shared token, not a library-only decoration: the version
+   popover and the editor badge read the same value. */
+.mode-mark.is-chords {
+   color: var(--mode-chords-ink);
+}
+.mode-mark.is-numbers {
+   color: var(--mode-numbers-ink);
+}
+.mode-mark.is-chordpro {
+   color: var(--mode-chordpro-ink);
+}
+.cloud-gallery.library-redesign .cloud-search-icon {
+   display: grid;
+   place-items: center;
+}
+.cloud-gallery.library-redesign .cloud-search-icon svg {
+   width: 16px;
+   height: 16px;
+}
+.cloud-search:has(input:not(:placeholder-shown)) .library-search-kbd {
+   display: none;
+}
+.library-sheet .cloud-gallery-state-icon {
+   width: auto;
+   height: auto;
+   border-radius: 0;
+   background: transparent;
+   color: var(--library-accent);
+}
+.library-sheet .cloud-gallery-state-icon svg {
+   width: 32px;
+   height: 32px;
+}
+.library-sheet .cloud-gallery-state .button-ghost {
+   border: 1px solid var(--library-control);
+   background: var(--library-surface);
+   color: var(--library-ink);
+}
+.library-sheet .cloud-gallery-state .button-ghost:hover,
+.library-sheet .cloud-gallery-state .button-ghost:focus-visible {
+   background: var(--library-raised);
+   border-color: var(--library-accent);
+}
+
+@media screen and (min-width: 1101px) {
+   .cloud-gallery.library-redesign .cloud-gallery-head {
+      width: min(1360px, 100%);
+      min-height: 56px;
+      margin: 0 auto;
+      padding: 0 32px;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+   }
+   .cloud-gallery.library-redesign .home-tabs {
+      justify-self: start;
+      justify-content: flex-start;
+      padding-left: 28px;
+   }
+   .cloud-gallery.library-redesign .library-content {
+      width: min(1360px, 100%);
+      padding: 28px 32px 32px;
+   }
+   .cloud-gallery.library-redesign .library-view-head {
+      align-items: center;
+      margin-bottom: 18px;
+   }
+   .cloud-gallery.library-redesign .home-intro {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+   }
+   .cloud-gallery.library-redesign .home-intro h1 {
+      font-size: 32px;
+      font-weight: 650;
+      line-height: 1.1;
+      letter-spacing: -0.04em;
+   }
+   .cloud-gallery.library-redesign .library-count-pill {
+      margin: 0;
+   }
+   .cloud-gallery.library-redesign .library-view-actions {
+      gap: 8px;
+   }
+   .cloud-gallery.library-redesign .library-view-actions .button {
+      min-height: 38px;
+      padding: 0 13px;
+      border-radius: 8px;
+      font-size: 12px;
+   }
+   .cloud-gallery.library-redesign .library-view-actions .btn-icon {
+      width: 15px;
+      height: 15px;
+      margin-right: 6px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+   }
+
+   /* Toolbar */
+   .cloud-gallery.library-redesign .cloud-gallery-searchbar.library-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--library-line);
+      border-radius: 10px;
+      background: var(--library-surface);
+   }
+   .library-toolbar .cloud-search {
+      flex: 1 1 auto;
+      width: auto;
+      min-width: 260px;
+   }
+   .cloud-gallery.library-redesign .library-toolbar .cloud-search input {
+      min-height: 38px;
+      padding: 8px 78px 8px 38px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: var(--library-head);
+      font-size: 13px;
+   }
+   .cloud-gallery.library-redesign .library-toolbar .cloud-search input:focus-visible {
+      border-color: transparent;
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 28%, transparent);
+      outline-offset: 0;
+   }
+   .library-toolbar .cloud-search-icon {
+      left: 13px;
+   }
+   .library-search-kbd {
+      display: block;
+   }
+   .library-toolbar .topbar-help-btn {
+      order: 4;
+      flex: 0 0 38px;
+      width: 38px;
+      height: 38px;
+      min-height: 38px;
+      border-radius: 8px;
+   }
+   .library-toolbar .topbar-help-icon svg {
+      width: 17px;
+      height: 17px;
+   }
+
+   /* Filter */
+   .library-filter {
+      position: relative;
+      display: block;
+      flex: none;
+   }
+   .library-filter-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 38px;
+      padding: 0 10px;
+      border: 1px solid var(--library-primary);
+      border-radius: 8px;
+      background: var(--library-primary);
+      color: var(--library-primary-ink);
+      cursor: pointer;
+      font: 600 12px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      white-space: nowrap;
+   }
+   .library-filter-btn:hover,
+   .library-filter-btn[aria-expanded="true"] {
+      border-color: var(--library-primary-hover);
+      background: var(--library-primary-hover);
+   }
+   .library-filter-btn:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 35%, transparent);
+      outline-offset: 1px;
+   }
+   .library-filter-btn .btn-icon {
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+   }
+   .library-filter-badge {
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: color-mix(in srgb, #ffffff 22%, transparent);
+      color: var(--library-primary-ink);
+      font-size: 10.5px;
+      line-height: 1.2;
+   }
+   .library-filter-chevron {
+      width: 14px;
+      height: 14px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+   }
+   html[data-theme="dark"] .library-filter-btn {
+      color: var(--library-primary-ink);
+   }
+   html[data-theme="dark"] .library-filter-badge {
+      background: color-mix(in srgb, #ffffff 22%, transparent);
+      color: var(--library-primary-ink);
+   }
+   .library-filter-menu {
+      position: absolute;
+      z-index: 40;
+      top: calc(100% + 6px);
+      left: 0;
+      width: 272px;
+      padding: 6px;
+      border: 1px solid var(--library-line);
+      border-radius: 10px;
+      background: var(--library-surface);
+      box-shadow: 0 14px 36px rgba(15, 35, 22, 0.16);
+   }
+   html[data-theme="dark"] .library-filter-menu {
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.52);
+   }
+   .library-filter-menu[hidden] {
+      display: none !important;
+   }
+   .library-filter-menu-head {
+      padding: 6px 9px 8px;
+      color: var(--library-muted);
+      font: 600 11px/1.2 Sora, Inter, sans-serif;
+   }
+   .library-filter-menu-sep {
+      height: 1px;
+      margin: 5px 4px;
+      background: var(--library-line);
+   }
+   .library-filter-option {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) auto 16px;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 38px;
+      padding: 0 8px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--library-ink);
+      cursor: pointer;
+      font: 500 13px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+      text-align: left;
+   }
+   .library-filter-option:hover,
+   .library-filter-option:focus-visible {
+      background: var(--library-raised);
+      outline: none;
+   }
+   .library-filter-option.is-active {
+      background: color-mix(in srgb, var(--library-raised) 72%, var(--library-surface));
+   }
+   .library-filter-option-mark {
+      display: grid;
+      grid-column: 1;
+      width: 26px;
+      height: 26px;
+      border: 1px solid var(--library-line);
+      border-radius: 6px;
+      background: var(--library-key-bg);
+      color: var(--library-muted);
+      font: 700 9px/1 Sora, Inter, sans-serif;
+      place-items: center;
+   }
+   .library-filter-option-mark svg {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+   }
+   .library-filter-option-mark.is-chords {
+      border-color: var(--mode-chords-line);
+      background: var(--mode-chords-fill);
+      color: var(--mode-chords-ink);
+   }
+   .library-filter-option-mark.is-numbers {
+      border-color: var(--mode-numbers-line);
+      background: var(--mode-numbers-fill);
+      color: var(--mode-numbers-ink);
+   }
+   .library-filter-option-mark.is-chordpro {
+      border-color: var(--mode-chordpro-line);
+      background: var(--mode-chordpro-fill);
+      color: var(--mode-chordpro-ink);
+   }
+   .library-filter-option-label {
+      grid-column: 2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+   }
+   .library-filter-count {
+      grid-column: 3;
+      color: var(--library-muted);
+      font: 500 11px/1 Sora, Inter, sans-serif;
+      font-variant-numeric: tabular-nums;
+   }
+   .library-filter-check {
+      grid-column: 4;
+      width: 15px;
+      height: 15px;
+      fill: none;
+      stroke: var(--library-accent);
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0;
+   }
+   .library-filter-option.is-active .library-filter-check {
+      opacity: 1;
+   }
+
+   /* Sort */
+   .library-sort {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: none;
+      color: var(--library-muted);
+      font: 500 11px/1 Sora, Inter, sans-serif;
+      white-space: nowrap;
+   }
+   .library-sort select {
+      min-height: 38px;
+      padding: 0 28px 0 10px;
+      border: 1px solid var(--library-line);
+      border-radius: 8px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+      cursor: pointer;
+      font: 600 12px/1 Sora, Inter, sans-serif;
+   }
+   .library-sort select:focus-visible {
+      border-color: var(--library-accent);
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 30%, transparent);
+      outline-offset: 1px;
+   }
+
+   .library-result-line {
+      display: flex;
+      justify-content: flex-end;
+      min-height: 18px;
+      margin: 0 2px 6px;
+      color: var(--library-muted);
+      font: 500 11px/1.2 Sora, Inter, sans-serif;
+      font-variant-numeric: tabular-nums;
+   }
+
+   /* Sheet + table */
+   .library-sheet {
+      margin-bottom: 16px;
+      border: 1px solid var(--library-line);
+      border-radius: 10px;
+      background: var(--library-surface);
+   }
+   .library-table-head {
+      position: sticky;
+      z-index: 3;
+      top: 0;
+      display: grid;
+      grid-template-columns: 44px minmax(240px, 1.6fr) 96px 132px minmax(180px, 1fr) 88px 120px 120px;
+      align-items: center;
+      gap: 12px;
+      min-height: 36px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--library-line);
+      border-radius: 10px 10px 0 0;
+      background: var(--library-head);
+      color: var(--library-muted);
+      font: 600 11px/1.2 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .library-table-head span:nth-child(2) {
+      grid-column: 2;
+   }
+   .library-table-head span:nth-child(3) {
+      grid-column: 3;
+   }
+   .library-table-head span:nth-child(4) {
+      grid-column: 4;
+   }
+   .library-table-head span:nth-child(5) {
+      grid-column: 5;
+   }
+   .library-table-head span:nth-child(6) {
+      grid-column: 6;
+      text-align: center;
+   }
+   .library-table-head span:nth-child(7) {
+      grid-column: 7;
+   }
+
+   .library-sheet .song-card.is-index-row {
+      display: grid;
+      grid-template-columns: 44px minmax(240px, 1.6fr) 96px 132px minmax(180px, 1fr) 88px 120px 120px;
+      grid-template-areas: "cover identity key meter arrangement media updated actions";
+      align-items: center;
+      gap: 12px;
+      min-height: 64px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--library-rule);
+      background: transparent;
+      transition: background-color 0.14s ease;
+   }
+   .library-sheet .song-card.is-index-row:last-child {
+      border-bottom: 0;
+   }
+   .library-sheet .song-card.is-index-row:hover,
+   .library-sheet .song-card.is-index-row:focus-visible {
+      background: var(--library-hover);
+   }
+   .library-sheet .song-card.is-index-row:focus-visible {
+      outline: 3px solid var(--library-accent);
+      outline-offset: -3px;
+   }
+   .library-sheet .song-card.is-index-row .song-card-cover {
+      grid-area: cover;
+      width: 38px;
+      height: 38px;
+      border-radius: 7px;
+   }
+   .library-sheet .song-card.is-index-row .song-card-mode-mark {
+      font-size: 20px;
+   }
+   .library-sheet .song-card.is-index-row .song-card-identity {
+      grid-area: identity;
+      gap: 2px;
+   }
+   .library-sheet .song-card.is-index-row .song-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.3;
+   }
+   .library-sheet .song-card.is-index-row .song-card-creator {
+      font-size: 12px;
+      line-height: 1.35;
+   }
+   .library-sheet .song-card.is-index-row .song-card-detail,
+   .library-sheet .song-card.is-index-row .song-card-dock,
+   .library-sheet .song-card.is-index-row .song-card-meta {
+      display: contents;
+   }
+   .library-sheet .song-card.is-index-row .song-card-chip.is-key {
+      grid-area: key;
+      justify-self: start;
+      gap: 4px;
+      padding: 5px 10px;
+      border: 1px solid var(--library-line);
+      border-radius: 6px;
+      background: var(--library-key-bg);
+   }
+   .library-sheet .song-card.is-index-row .song-card-chip.is-key strong {
+      font-size: 16px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.01em;
+   }
+   .library-sheet .song-card.is-index-row .song-card-chip.is-meter {
+      grid-area: meter;
+      gap: 4px;
+   }
+   /* Meter + tempo stack vertically: time signature on top, BPM below. */
+   .library-sheet .song-card.is-index-row .song-card-meter {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1px;
+   }
+   .library-sheet .song-card.is-index-row .song-card-bpm {
+      margin-left: 0;
+   }
+   .library-sheet .song-card.is-index-row .song-card-bpm {
+      color: var(--library-muted);
+      font: 500 11px/1.2 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      white-space: nowrap;
+   }
+   .library-sheet .song-card.is-index-row .song-card-chip {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+   }
+   .library-sheet .song-card.is-index-row .song-card-chip small {
+      display: none;
+   }
+   .library-sheet .song-card.is-index-row .song-card-chip strong {
+      overflow: hidden;
+      color: var(--library-ink);
+      font: 600 13px/1.3 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+   }
+   .library-sheet .song-card.is-index-row .song-card-chip.is-empty strong {
+      color: var(--library-muted);
+   }
+   .library-sheet .song-card.is-index-row .song-card-arrangement {
+      grid-area: arrangement;
+      justify-self: start;
+      max-width: 100%;
+      overflow: hidden;
+      padding: 3px 7px;
+      border: 1px solid var(--library-line);
+      border-radius: 6px;
+      background: var(--library-raised);
+      color: var(--library-ink);
+      font: 500 11.5px/1.3 Inter, ui-sans-serif, system-ui, sans-serif;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+   }
+   .library-sheet .song-card.is-index-row .song-card-updated {
+      grid-area: updated;
+      display: block;
+      overflow: hidden;
+      color: var(--library-muted);
+      font: 500 11.5px/1.3 Sora, Inter, sans-serif;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+   }
+   .library-sheet .song-card.is-index-row .song-card-updated-label {
+      display: none;
+   }
+   .library-sheet .song-card.is-index-row .song-card-updated.is-empty {
+      color: var(--library-muted);
+   }
+   .library-sheet .song-card.is-index-row .song-card-media {
+      grid-area: media;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      justify-self: center;
+      width: 28px;
+      height: 28px;
+      color: var(--library-danger);
+   }
+   .library-sheet .song-card.is-index-row .song-card-media svg {
+      width: 18px;
+      height: 18px;
+   }
+   .library-sheet .song-card.is-index-row .song-card-media.is-empty {
+      color: var(--library-muted);
+      opacity: 0.55;
+   }
+   .library-sheet .song-card.is-index-row .song-card-actions {
+      grid-area: actions;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      min-height: 0;
+   }
+   .library-sheet .song-card.is-index-row .song-card-open {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 32px;
+      padding: 0 12px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      background: var(--library-secondary);
+      color: var(--library-secondary-ink);
+      font: 600 11.5px/1 Sora, Inter, sans-serif;
+   }
+   .library-sheet .song-card.is-index-row .song-card-open:hover,
+   .library-sheet .song-card.is-index-row .song-card-open:focus-visible {
+      border-color: transparent;
+      background: var(--library-secondary);
+      color: var(--library-secondary-ink);
+      filter: brightness(1.12);
+      outline: none;
+   }
+   html[data-theme="dark"] .library-sheet .song-card.is-index-row .song-card-open:hover {
+      filter: brightness(0.92);
+   }
+   .library-sheet .song-card.is-index-row .song-row-menu-trigger {
+      min-width: 36px;
+      min-height: 32px;
+      padding: 0 8px;
+      border-color: var(--library-line);
+      font-size: 11px;
+   }
+   .library-sheet .song-card.is-index-row .song-row-menu-trigger:hover {
+      border-color: var(--library-accent);
+   }
+   .library-sheet .cloud-gallery-state {
+      margin: 12px;
+   }
+}
+
+@media screen and (max-width: 680px) {
+   .topbar-theme-toggle {
+      width: 44px;
+      height: 44px;
+   }
+   .cloud-gallery.library-redesign .song-card.is-index-row .song-card-cover {
+      align-self: start;
+      margin-top: 2px;
+   }
+}
+
+/* ======================================================================
+   PRIMARY ACTION FILL — one brand green (#237a50) for every component.
+   Light and dark share the same fill; only the ink on top changes.
+   ====================================================================== */
+:root {
+   --primary-fill: #237a50;
+   --primary-fill-ink: #ffffff;
+   --primary-fill-hover: #1e6e47;
+}
+.button-primary,
+.button-save {
+   background: var(--primary-fill);
+   border-color: transparent;
+   color: var(--primary-fill-ink);
+   box-shadow: none;
+}
+.button-primary:hover,
+.button-save:hover {
+   background: var(--primary-fill-hover);
+   color: var(--primary-fill-ink);
+   box-shadow: none;
+}
+html[data-theme="dark"] .button-primary,
+html[data-theme="dark"] .button-save {
+   background: var(--primary-fill);
+   color: var(--primary-fill-ink);
+}
+html[data-theme="dark"] .button-primary:hover,
+html[data-theme="dark"] .button-save:hover {
+   background: var(--primary-fill-hover);
+   color: var(--primary-fill-ink);
+}
+
+/* Library header: secondary actions are borderless, like the Stitch header. */
+.cloud-gallery.library-redesign .library-view-actions .button-ghost,
+.cloud-album.library-redesign .cloud-album-actions .button-ghost {
+   border-color: transparent;
+   background: transparent;
+}
+.cloud-gallery.library-redesign .library-view-actions .button-ghost:hover,
+.cloud-album.library-redesign .cloud-album-actions .button-ghost:hover {
+   background: var(--library-raised);
+}
+
+/* ======================================================================
+   MODE TILE — one shared component for the writing-mode marker.
+   The song rows and the filter list render the SAME tile (same icon, same
+   tint, same size), so a mode can never look different in the two places.
+   ====================================================================== */
+.mode-tile {
+   display: grid;
+   place-items: center;
+   width: 28px;
+   height: 28px;
+   min-width: 28px;
+   border: 1px solid var(--library-line);
+   border-radius: 6px;
+   background: var(--library-key-bg);
+   color: var(--library-muted);
+   overflow: hidden;
+}
+.cloud-gallery.library-redesign .mode-tile.is-chords,
+.cloud-album.library-redesign .mode-tile.is-chords {
+   border-color: var(--mode-chords-line);
+   background: var(--mode-chords-fill);
+   color: var(--mode-chords-ink);
+}
+.cloud-gallery.library-redesign .mode-tile.is-numbers,
+.cloud-album.library-redesign .mode-tile.is-numbers {
+   border-color: var(--mode-numbers-line);
+   background: var(--mode-numbers-fill);
+   color: var(--mode-numbers-ink);
+}
+.cloud-gallery.library-redesign .mode-tile.is-chordpro,
+.cloud-album.library-redesign .mode-tile.is-chordpro {
+   border-color: var(--mode-chordpro-line);
+   background: var(--mode-chordpro-fill);
+   color: var(--mode-chordpro-ink);
+}
+.cloud-gallery.library-redesign .mode-tile.is-all,
+.cloud-album.library-redesign .mode-tile.is-all {
+   border-color: var(--library-line);
+   background: var(--library-key-bg);
+   color: var(--library-muted);
+}
+html[data-theme="dark"] .cloud-gallery.library-redesign .mode-tile.is-chords,
+html[data-theme="dark"] .cloud-album.library-redesign .mode-tile.is-chords {
+   border-color: var(--mode-chords-line);
+   background: var(--mode-chords-fill);
+   color: var(--mode-chords-ink);
+}
+html[data-theme="dark"] .cloud-gallery.library-redesign .mode-tile.is-numbers,
+html[data-theme="dark"] .cloud-album.library-redesign .mode-tile.is-numbers {
+   border-color: var(--mode-numbers-line);
+   background: var(--mode-numbers-fill);
+   color: var(--mode-numbers-ink);
+}
+html[data-theme="dark"] .cloud-gallery.library-redesign .mode-tile.is-chordpro,
+html[data-theme="dark"] .cloud-album.library-redesign .mode-tile.is-chordpro {
+   border-color: var(--mode-chordpro-line);
+   background: var(--mode-chordpro-fill);
+   color: var(--mode-chordpro-ink);
+}
+html[data-theme="dark"] .cloud-gallery.library-redesign .mode-tile.is-all,
+html[data-theme="dark"] .cloud-album.library-redesign .mode-tile.is-all {
+   border-color: var(--library-line);
+   background: var(--library-key-bg);
+   color: var(--library-muted);
+}
+/* The row tile keeps the table's leading column but uses the shared tile. */
+.cloud-gallery.library-redesign .song-card-cover.mode-tile,
+.cloud-album.library-redesign .song-card-cover.mode-tile {
+   width: 28px;
+   height: 28px;
+   min-height: 28px;
+   aspect-ratio: auto;
+   justify-self: start;
+}
+
+/* ======================================================================
+   LIBRARY DIALOGS — Add from My Songs + Members
+   The dialogs live outside .cloud-album, so carry the library token remap
+   themselves. This keeps their chrome identical to the library index without
+   leaking album tokens into the rest of the app.
+   ====================================================================== */
+@media screen {
+   .library-dialog {
+      --library-surface: #ffffff;
+      --library-raised: #eaf5ed;
+      --library-line: #d9e5dc;
+      --library-rule: #e9efea;
+      --library-control: #7c8a80;
+      --library-head: #f1f4f1;
+      --library-hover: #f2f5f2;
+      --library-key-bg: #ecefec;
+      --library-ink: #163a2a;
+      --library-muted: #526259;
+      --library-accent: #237a50;
+      --library-primary: #237a50;
+      --library-primary-ink: #ffffff;
+      --library-danger: #a32922;
+   }
+   html[data-theme="dark"] .library-dialog {
+      --library-surface: #171a18;
+      --library-raised: #202521;
+      --library-line: #343a35;
+      --library-rule: #292e2a;
+      --library-control: #7c8a80;
+      --library-head: #202521;
+      --library-hover: #1d211e;
+      --library-key-bg: #202521;
+      --library-ink: #f1f4f2;
+      --library-muted: #b6c0b8;
+      --library-accent: #83c99d;
+      --library-primary: #237a50;
+      --library-primary-ink: #ffffff;
+      --library-danger: #ff9b8f;
+   }
+   .library-dialog .confirm-dialog-card {
+      border: 1px solid var(--library-line);
+      border-radius: 16px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+      box-shadow: 0 18px 50px rgba(15, 35, 22, 0.2);
+   }
+   html[data-theme="dark"] .library-dialog .confirm-dialog-card {
+      box-shadow: 0 20px 54px rgba(0, 0, 0, 0.58);
+   }
+   .library-dialog .confirm-dialog-title {
+      color: var(--library-ink);
+      font: 650 20px/1.25 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.02em;
+   }
+   .library-dialog .confirm-dialog-desc {
+      color: var(--library-muted);
+      font: 400 13px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .library-dialog .library-dialog-head.has-media {
+      flex-direction: row;
+      align-items: flex-start;
+      gap: 12px;
+      padding-right: 54px;
+   }
+   .library-dialog .library-dialog-head-text {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+   }
+   .library-dialog .library-dialog-icon {
+      flex: none;
+      display: grid;
+      width: 40px;
+      height: 40px;
+      color: var(--library-accent);
+      place-items: center;
+   }
+   .library-dialog .library-dialog-icon svg {
+      width: 24px;
+      height: 24px;
+   }
+   .library-dialog .library-dialog-close {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: 1px solid var(--library-line);
+      border-radius: 8px;
+      background: var(--library-surface);
+      color: var(--library-muted);
+      cursor: pointer;
+      place-items: center;
+   }
+   .library-dialog .library-dialog-close:hover,
+   .library-dialog .library-dialog-close:focus-visible {
+      border-color: var(--library-accent);
+      background: var(--library-raised);
+      color: var(--library-ink);
+      outline: none;
+   }
+   .library-dialog .library-dialog-close:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 30%, transparent);
+      outline-offset: 2px;
+   }
+   .library-dialog .library-dialog-close svg {
+      width: 16px;
+      height: 16px;
+   }
+   .library-dialog .cloud-search input,
+   .library-dialog .new-song-name-input,
+   .library-dialog .attach-link-input {
+      border: 1px solid var(--library-line);
+      border-radius: 8px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+   }
+   .library-dialog .cloud-search input:focus-visible,
+   .library-dialog .new-song-name-input:focus-visible,
+   .library-dialog .attach-link-input:focus-visible {
+      border-color: var(--library-accent);
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 28%, transparent);
+      outline-offset: 1px;
+      box-shadow: none;
+   }
+   .library-dialog .confirm-dialog-actions .button {
+      min-height: 44px;
+      border-radius: 8px;
+   }
+   .library-dialog .confirm-dialog-actions .button-primary {
+      background: var(--library-primary);
+      color: var(--library-primary-ink);
+   }
+   .library-dialog .confirm-dialog-actions .button-ghost {
+      border: 1px solid var(--library-line);
+      background: var(--library-surface);
+      color: var(--library-ink);
+   }
+   .library-dialog .confirm-dialog-actions .button-ghost:hover {
+      background: var(--library-raised);
+   }
+   .library-dialog .mode-tile.is-chords {
+      border-color: var(--mode-chords-line);
+      background: var(--mode-chords-fill);
+      color: var(--mode-chords-ink);
+   }
+   .library-dialog .mode-tile.is-numbers {
+      border-color: var(--mode-numbers-line);
+      background: var(--mode-numbers-fill);
+      color: var(--mode-numbers-ink);
+   }
+   .library-dialog .mode-tile.is-chordpro {
+      border-color: var(--mode-chordpro-line);
+      background: var(--mode-chordpro-fill);
+      color: var(--mode-chordpro-ink);
+   }
+
+   /* Add from My Songs */
+   .library-dialog#addSongDialog .confirm-dialog-card {
+      width: min(640px, calc(100vw - 32px));
+   }
+   #addSongDialog .add-song-search {
+      margin: 2px 0 0;
+   }
+   #addSongDialog .add-song-search .cloud-search-icon {
+      left: 14px;
+      display: grid;
+      color: var(--library-muted);
+      place-items: center;
+   }
+   #addSongDialog .add-song-search .cloud-search-icon svg {
+      width: 16px;
+      height: 16px;
+   }
+   #addSongDialog .add-song-search input {
+      min-height: 42px;
+      padding: 8px 14px 8px 40px;
+      border: 1px solid var(--library-control);
+      border-radius: 8px;
+      background: var(--library-head);
+      color: var(--library-ink);
+      font: 400 13px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   #addSongDialog .add-song-search input::placeholder {
+      color: var(--library-muted);
+      opacity: 1;
+   }
+   #addSongDialog .add-song-list {
+      gap: 0;
+      max-height: min(46vh, 380px);
+      margin: 2px 0 0;
+      border-top: 1px solid var(--library-rule);
+      border-bottom: 1px solid var(--library-rule);
+   }
+   #addSongDialog .add-song-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 64px;
+      padding: 9px 10px;
+      border: 0;
+      border-bottom: 1px solid var(--library-rule);
+      border-radius: 0;
+      background: transparent;
+      cursor: pointer;
+      transition: background-color 0.14s ease;
+   }
+   #addSongDialog .add-song-option:last-child {
+      border-bottom: 0;
+   }
+   #addSongDialog .add-song-option:hover {
+      background: var(--library-hover);
+   }
+   #addSongDialog .add-song-option:has(input:checked) {
+      background: color-mix(in srgb, var(--library-accent) 10%, var(--library-surface));
+   }
+   #addSongDialog .add-song-option:focus-within {
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 30%, transparent);
+      outline-offset: -3px;
+   }
+   #addSongDialog .add-song-option-mode {
+      width: 34px;
+      height: 34px;
+      flex: none;
+   }
+   #addSongDialog .add-song-option-mode .mode-mark svg {
+      width: 18px;
+      height: 18px;
+   }
+   #addSongDialog .add-song-option-text {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+   }
+   #addSongDialog .add-song-option-text strong {
+      overflow: hidden;
+      color: var(--library-ink);
+      font: 600 14px/1.3 Inter, ui-sans-serif, system-ui, sans-serif;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+   }
+   #addSongDialog .add-song-option-text small {
+      overflow: hidden;
+      color: var(--library-muted);
+      font: 400 12px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+   }
+   #addSongDialog .add-song-option input[type="radio"] {
+      flex: none;
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      accent-color: var(--library-accent);
+   }
+   #addSongDialog .add-song-state {
+      margin: 0;
+      padding: 18px 4px;
+      color: var(--library-muted);
+      font: 400 13px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   #addSongDialog .add-song-state.is-error {
+      color: var(--library-danger);
+   }
+   #addSongDialog .add-song-state .button {
+      margin-top: 10px;
+   }
+
+   /* Members */
+   .library-dialog#albumMembersDialog .confirm-dialog-card {
+      width: min(560px, calc(100vw - 32px));
+   }
+   #albumMembersDialog .member-list {
+      gap: 0;
+      max-height: min(46vh, 380px);
+      margin: 2px 0 0;
+      border-top: 1px solid var(--library-rule);
+      border-bottom: 1px solid var(--library-rule);
+   }
+   #albumMembersDialog .member-row {
+      min-height: 62px;
+      padding: 10px 6px;
+      border: 0;
+      border-bottom: 1px solid var(--library-rule);
+      border-radius: 0;
+      background: transparent;
+   }
+   #albumMembersDialog .member-row:last-child {
+      border-bottom: 0;
+   }
+   #albumMembersDialog .member-row:hover {
+      background: var(--library-hover);
+   }
+   #albumMembersDialog .member-avatar {
+      width: 36px;
+      height: 36px;
+      background: var(--library-raised);
+      color: var(--library-accent);
+      font: 700 14px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   #albumMembersDialog .member-who strong {
+      color: var(--library-ink);
+      font: 600 14px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   #albumMembersDialog .member-who small {
+      color: var(--library-muted);
+      font: 400 12px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   #albumMembersDialog .member-md-mark {
+      color: var(--library-accent);
+      font-style: italic;
+      font-weight: 800;
+   }
+   #albumMembersDialog .member-you {
+      color: var(--library-muted);
+      font-size: 11px;
+   }
+   #albumMembersDialog .member-row-menu-btn {
+      width: 36px;
+      min-width: 36px;
+      height: 36px;
+      min-height: 36px;
+      border: 1px solid var(--library-line);
+      border-radius: 8px;
+      background: var(--library-surface);
+      color: var(--library-muted);
+   }
+   #albumMembersDialog .member-row-menu-btn:hover,
+   #albumMembersDialog .member-row-menu-btn[aria-expanded="true"] {
+      border-color: var(--library-accent);
+      background: var(--library-raised);
+      color: var(--library-ink);
+   }
+   #albumMembersDialog .member-row-chevron {
+      color: var(--library-muted);
+   }
+   #albumMembersDialog .confirm-dialog-actions .button {
+      min-width: 120px;
+   }
+
+   #memberActionsDialog .confirm-dialog-card {
+      width: min(420px, calc(100vw - 32px));
+   }
+   #memberActionsDialog .member-actions-avatar {
+      border-radius: 50%;
+      background: var(--library-raised);
+      color: var(--library-accent);
+      font: 700 15px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   #memberActionsDialog .member-actions-body {
+      margin-top: 0;
+   }
+   #memberActionsDialog .member-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+   }
+   #memberActionsDialog .member-controls .button {
+      min-height: 44px;
+      border: 1px solid var(--library-line);
+      border-radius: 8px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+   }
+   #memberActionsDialog .member-controls .button:hover {
+      background: var(--library-raised);
+   }
+}
+
+/* ======================================================================
+   LIBRARY SURFACE POLISH
+   Shared dialog and index refinements. Scoped to screen only so print and
+   PDF geometry never see this chrome.
+   ====================================================================== */
+@media screen {
+   /* With video uses the same red video mark as the song rows. */
+   .library-filter-option-mark.is-video {
+      border-color: color-mix(in srgb, var(--library-danger) 26%, var(--library-line));
+      background: color-mix(in srgb, var(--library-danger) 8%, var(--library-surface));
+      color: var(--library-danger);
+   }
+   .library-filter-option-mark.is-video svg {
+      width: 14px;
+      height: 14px;
+   }
+
+   /* ---- Attach Link ------------------------------------------------ */
+   .attach-link-dialog .confirm-dialog-card {
+      width: min(580px, 100%);
+      gap: 16px;
+   }
+   .attach-link-head {
+      align-items: center;
+   }
+   .attach-link-icon {
+      display: grid;
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--library-line);
+      border-radius: 11px;
+      background: var(--library-head);
+      color: var(--library-accent);
+      place-items: center;
+   }
+   .attach-link-icon svg {
+      width: 22px;
+      height: 22px;
+   }
+   .attach-link-steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+   }
+   .attach-link-steps li {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      padding: 8px 9px;
+      border: 1px solid var(--library-rule);
+      border-radius: 8px;
+      background: var(--library-head);
+      color: var(--library-muted);
+      font: 600 10.5px/1.25 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .attach-link-step-number {
+      display: grid;
+      flex: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--library-surface);
+      color: var(--library-accent);
+      font: 700 10px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      place-items: center;
+   }
+   .attach-link-paste {
+      position: relative;
+   }
+   .attach-link-paste-icon {
+      position: absolute;
+      z-index: 1;
+      top: 14px;
+      left: 14px;
+      display: grid;
+      width: 18px;
+      height: 18px;
+      color: var(--library-muted);
+      pointer-events: none;
+      place-items: center;
+   }
+   .attach-link-paste-icon svg {
+      width: 17px;
+      height: 17px;
+   }
+   .attach-link-dialog .attach-link-input {
+      width: 100%;
+      min-height: 122px;
+      padding: 13px 14px 13px 42px;
+      border: 1px solid var(--library-line);
+      border-radius: 10px;
+      background: var(--library-head);
+      color: var(--library-ink);
+      font: 400 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+   }
+   .attach-link-dialog .attach-link-input::placeholder {
+      color: var(--library-muted);
+   }
+   .attach-link-dialog .attach-link-input:focus-visible {
+      border-color: var(--library-accent);
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 26%, transparent);
+      outline-offset: 1px;
+      background: var(--library-surface);
+      box-shadow: none;
+   }
+   .attach-link-privacy {
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+      margin: 0;
+      color: var(--library-muted);
+      font: 400 12px/1.45 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .attach-link-privacy-icon {
+      display: grid;
+      flex: none;
+      width: 15px;
+      height: 15px;
+      margin-top: 1px;
+      color: var(--library-accent);
+      place-items: center;
+   }
+   .attach-link-privacy-icon svg {
+      width: 14px;
+      height: 14px;
+   }
+   .attach-link-dialog.is-open .attach-link-icon svg {
+      animation: libraryDialogIconIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+   }
+   .attach-link-dialog.is-open .attach-link-steps li {
+      animation: libraryStepIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+   }
+   .attach-link-dialog.is-open .attach-link-steps li:nth-child(2) {
+      animation-delay: 70ms;
+   }
+   .attach-link-dialog.is-open .attach-link-steps li:nth-child(3) {
+      animation-delay: 140ms;
+   }
+
+   /* ---- New Song mode cards --------------------------------------- */
+   .mode-picker-close {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: 1px solid var(--library-line);
+      border-radius: 8px;
+      background: var(--library-surface);
+      color: var(--library-muted);
+      cursor: pointer;
+      place-items: center;
+   }
+   .mode-picker-close:hover,
+   .mode-picker-close:focus-visible {
+      border-color: var(--library-accent);
+      background: var(--library-raised);
+      color: var(--library-ink);
+      outline: none;
+   }
+   .mode-picker-close:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 30%, transparent);
+      outline-offset: 2px;
+   }
+   .mode-picker-close svg {
+      width: 16px;
+      height: 16px;
+   }
+   .mode-picker-dialog .library-dialog-head {
+      padding-right: 54px;
+   }
+   .new-song-dialog-head {
+      align-items: center;
+   }
+   .mode-picker-dialog .mode-card-chords {
+      --mode-line: var(--mode-chords-line);
+      --mode-fill: var(--mode-chords-fill);
+      --mode-ink: var(--mode-chords-ink);
+   }
+   .mode-picker-dialog .mode-card-numbers {
+      --mode-line: var(--mode-numbers-line);
+      --mode-fill: var(--mode-numbers-fill);
+      --mode-ink: var(--mode-numbers-ink);
+   }
+   .mode-picker-dialog .mode-card-chordpro {
+      --mode-line: var(--mode-chordpro-line);
+      --mode-fill: var(--mode-chordpro-fill);
+      --mode-ink: var(--mode-chordpro-ink);
+   }
+   .mode-picker-dialog .mode-card {
+      position: relative;
+      gap: 13px;
+      padding: 15px;
+      border: 1px solid var(--library-line);
+      border-radius: 12px;
+      background: var(--library-surface);
+      transition: border-color 0.18s ease, background-color 0.18s ease;
+   }
+   .mode-picker-dialog .mode-card:hover {
+      border-color: var(--mode-ink);
+      background: var(--library-surface);
+      box-shadow: none;
+      transform: none;
+   }
+   .mode-picker-dialog .mode-card.is-selected {
+      padding: 15px;
+      border: 1px solid var(--mode-ink);
+      background: color-mix(in srgb, var(--mode-fill) 64%, var(--library-surface));
+      box-shadow: none;
+   }
+   html[data-theme="dark"] .mode-picker-dialog .mode-card:hover {
+      border-color: var(--mode-ink);
+      background: var(--library-surface);
+   }
+   html[data-theme="dark"] .mode-picker-dialog .mode-card.is-selected {
+      border-color: var(--mode-ink);
+      background: color-mix(in srgb, var(--mode-fill) 64%, var(--library-surface));
+   }
+   .mode-picker-dialog .mode-card:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--mode-ink) 36%, transparent);
+      outline-offset: 2px;
+   }
+   .mode-picker-dialog .mode-card-heading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+   }
+   .mode-picker-dialog .mode-card-check {
+      display: grid;
+      flex: none;
+      width: 22px;
+      height: 22px;
+      margin-left: auto;
+      border-radius: 50%;
+      background: var(--mode-ink, var(--library-accent));
+      color: var(--library-surface);
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.72);
+      transition: opacity 0.16s ease, transform 0.16s ease;
+      place-items: center;
+   }
+   .mode-card-check svg {
+      width: 13px;
+      height: 13px;
+   }
+   .mode-card.is-selected .mode-card-check {
+      opacity: 1;
+      transform: scale(1);
+   }
+   .mode-picker-dialog .mode-card-visual {
+      min-height: 86px;
+      padding: 13px 14px;
+      border: 1px solid var(--mode-line, var(--library-line));
+      border-radius: 9px;
+      background: var(--mode-fill, var(--library-head));
+      overflow: hidden;
+   }
+   .mode-picker-dialog .mode-card-score {
+      color: var(--mode-ink, var(--library-ink));
+   }
+   .mode-preview-chords,
+   .mode-preview-numbers {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      width: 100%;
+   }
+   .mode-preview-token {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 31px;
+      padding: 5px 7px;
+      border: 1px solid var(--mode-line);
+      border-radius: 6px;
+      background: color-mix(in srgb, var(--library-surface) 76%, transparent);
+      color: var(--mode-ink);
+      font: 800 14px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      white-space: nowrap;
+   }
+   .mode-preview-caption {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 17px;
+   }
+   .mode-preview-caption span {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--mode-ink);
+      opacity: 0.38;
+   }
+   .mode-preview-chordpro {
+      position: relative;
+      display: block;
+      width: 100%;
+      padding-bottom: 7px;
+      white-space: normal;
+   }
+   .mode-preview-chordpro-line {
+      display: block;
+      color: var(--mode-ink);
+      font: 700 14px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.01em;
+   }
+   .mode-preview-sweep {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      height: 2px;
+      border-radius: 999px;
+      background: var(--mode-ink);
+      opacity: 0.28;
+      transform: scaleX(0);
+      transform-origin: left;
+   }
+   .mode-picker-dialog.is-open .mode-preview-token {
+      animation: modeTokenIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+   }
+   .mode-picker-dialog.is-open .mode-preview-token:nth-child(2) {
+      animation-delay: 80ms;
+   }
+   .mode-picker-dialog.is-open .mode-preview-token:nth-child(3) {
+      animation-delay: 160ms;
+   }
+   .mode-picker-dialog.is-open .mode-preview-token:nth-child(4) {
+      animation-delay: 240ms;
+   }
+   .mode-picker-dialog.is-open .mode-preview-caption span {
+      animation: modeBeatDot 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+   }
+   .mode-picker-dialog.is-open .mode-preview-caption span:nth-child(2) {
+      animation-delay: 100ms;
+   }
+   .mode-picker-dialog.is-open .mode-preview-caption span:nth-child(3) {
+      animation-delay: 200ms;
+   }
+   .mode-picker-dialog.is-open .mode-preview-caption span:nth-child(4) {
+      animation-delay: 300ms;
+   }
+   .mode-picker-dialog.is-open .mode-preview-chordpro-line {
+      animation: modeChordProLineIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+   }
+   .mode-picker-dialog.is-open .mode-preview-sweep {
+      animation: modeChordProSweep 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.22s both;
+   }
+   .mode-picker-dialog.is-open .mode-card-check {
+      animation: none;
+   }
+
+   /* ---- Join Album and New Album ----------------------------------- */
+   .library-dialog#joinAlbumDialog .confirm-dialog-card,
+   .library-dialog#newAlbumDialog .confirm-dialog-card {
+      width: min(520px, 100%);
+   }
+   .join-album-dialog .library-dialog-icon,
+   .new-album-dialog .library-dialog-icon {
+      align-self: center;
+   }
+   .join-album-dialog.is-open .library-dialog-icon svg,
+   .new-album-dialog.is-open .library-dialog-icon svg,
+   .new-song-dialog-head .library-dialog-icon svg {
+      animation: libraryDialogIconIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+   }
+   .join-album-dialog .album-code-input {
+      min-height: 58px;
+      border-color: var(--library-line);
+      background: var(--library-head);
+      color: var(--library-ink);
+      font: 800 20px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: 0.16em;
+      text-align: center;
+   }
+   .join-album-dialog .album-code-input:focus-visible {
+      border-color: var(--library-accent);
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 26%, transparent);
+      outline-offset: 1px;
+      background: var(--library-surface);
+      box-shadow: none;
+   }
+   .join-album-dialog .album-code-input.is-invalid {
+      border-color: var(--library-danger);
+   }
+   .new-album-dialog .album-fields {
+      margin-top: 0;
+   }
+   .new-album-dialog .album-desc-input {
+      min-height: 76px;
+      font: 400 14px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+
+   /* ---- Shared confirmation dialog --------------------------------- */
+   #confirmDialog .confirm-dialog-card {
+      width: min(460px, 100%);
+      gap: 18px;
+      padding: 24px;
+   }
+   #confirmDialog .library-dialog-close {
+      z-index: 4;
+   }
+   #confirmDialog .confirm-dialog-head {
+      display: flex;
+      align-items: flex-start;
+      gap: 13px;
+      width: 100%;
+      padding-right: 34px;
+   }
+   #confirmDialog .confirm-dialog-head-text {
+      display: flex;
+      flex: 1 1 auto;
+      min-width: 0;
+      flex-direction: column;
+      gap: 4px;
+   }
+   #confirmDialog .confirm-dialog-icon {
+      display: grid;
+      flex: none;
+      width: 28px;
+      height: 28px;
+      margin-top: 1px;
+      color: var(--library-accent);
+      place-items: center;
+   }
+   #confirmDialog .confirm-dialog-icon svg {
+      width: 24px;
+      height: 24px;
+   }
+   #confirmDialog.is-danger .confirm-dialog-icon {
+      color: var(--library-danger);
+   }
+   #confirmDialog.is-danger .confirm-dialog-card {
+      border-color: color-mix(in srgb, var(--library-danger) 24%, var(--library-line));
+   }
+   #confirmDialog .confirm-dialog-title {
+      margin: 0;
+      color: var(--library-ink);
+      font: 650 18px/1.3 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   #confirmDialog .confirm-dialog-desc {
+      margin: 0;
+      color: var(--library-muted);
+      font: 400 13.5px/1.55 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   #confirmDialog .confirm-dialog-actions {
+      padding-top: 2px;
+      border-top: 0;
+   }
+   #confirmDialog .confirm-dialog-actions .button {
+      min-height: 44px;
+   }
+   /* The generic library primary fill is green. A destructive confirm must
+      win that cascade in both themes. */
+   #confirmDialog .confirm-dialog-actions .button.is-danger {
+      border-color: #b42318;
+      background: #b42318;
+      color: #fff;
+   }
+   #confirmDialog .confirm-dialog-actions .button.is-danger:hover {
+      border-color: #9f1820;
+      background: #9f1820;
+      filter: none;
+   }
+   #confirmDialog.is-open .confirm-dialog-icon svg {
+      animation: libraryDialogIconIn 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+   }
+
+   /* ---- How to use this score app ---------------------------------- */
+   #howToDialog .howto-dialog-card {
+      width: min(760px, 100%);
+      max-height: min(90dvh, 860px);
+      gap: 0;
+      padding: 0;
+      overflow: hidden;
+   }
+   #howToDialog .library-dialog-close {
+      z-index: 4;
+   }
+   #howToDialog .howto-dialog-head {
+      flex: none;
+      align-items: center;
+      padding: 22px 64px 19px 26px;
+      border-bottom: 1px solid var(--library-line);
+      background: var(--library-head);
+   }
+   #howToDialog .howto-dialog-icon {
+      align-self: center;
+      color: var(--library-accent);
+   }
+   #howToDialog .howto-dialog-head .confirm-dialog-title,
+   #howToDialog .howto-dialog-head .confirm-dialog-desc {
+      text-align: left;
+   }
+   #howToDialog .howto-dialog-icon svg {
+      width: 24px;
+      height: 24px;
+   }
+   #howToDialog .howto-list {
+      display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
+      flex-direction: column;
+      gap: 3px;
+      width: auto;
+      margin: 0;
+      padding: 14px 20px 18px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+   }
+   #howToDialog .howto-group {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin: 14px 0 3px;
+      padding: 0 8px;
+      color: var(--library-accent);
+      font: 700 12.5px/1.2 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0;
+      text-transform: none;
+   }
+   #howToDialog .howto-group:first-child {
+      margin-top: 0;
+   }
+   #howToDialog .howto-group::after {
+      flex: 1 1 auto;
+      height: 1px;
+      background: var(--library-rule);
+      content: "";
+   }
+   #howToDialog .howto-item {
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr);
+      align-items: start;
+      gap: 11px;
+      padding: 10px;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      color: var(--library-ink);
+      transition: background-color 0.16s ease, border-color 0.16s ease;
+   }
+   #howToDialog .howto-item:hover {
+      border-color: var(--library-rule);
+      background: var(--library-head);
+   }
+   #howToDialog .howto-item-icon {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      border: 1px solid var(--library-line);
+      border-radius: 8px;
+      background: var(--library-surface);
+      color: var(--library-accent);
+      place-items: center;
+   }
+   #howToDialog .howto-item-icon svg {
+      width: 17px;
+      height: 17px;
+   }
+   #howToDialog .howto-item-glyph {
+      font: 700 17px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   #howToDialog .howto-item-text {
+      display: block;
+      min-width: 0;
+      padding-top: 0;
+   }
+   #howToDialog .howto-item-title {
+      display: block;
+      color: var(--library-ink);
+      font: 650 13.5px/1.35 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.01em;
+   }
+   #howToDialog .howto-item-desc {
+      display: block;
+      margin-top: 2px;
+      color: var(--library-muted);
+      font: 400 13px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   #howToDialog .howto-item-desc em {
+      color: var(--library-ink);
+      font-style: normal;
+      font-weight: 600;
+   }
+   #howToDialog .howto-item-desc code {
+      padding: 1px 4px;
+      border-radius: 4px;
+      background: var(--library-head);
+      color: var(--library-ink);
+      font: 500 11.5px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+   }
+   #howToDialog .howto-dialog-actions {
+      flex: none;
+      margin: 0;
+      padding: 14px 26px calc(14px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--library-line);
+      background: var(--library-surface);
+      justify-content: flex-end;
+   }
+   #howToDialog .howto-dialog-actions .button {
+      min-width: 120px;
+   }
+   #howToDialog.is-open .library-dialog-close,
+   #howToDialog.is-open .howto-dialog-head {
+      animation: libraryDialogHeadIn 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+   }
+   #howToDialog.is-open .howto-item {
+      animation: howtoItemIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+      animation-delay: calc(70ms + var(--howto-i, 0) * 24ms);
+   }
+   #howToDialog.is-open .howto-item-icon {
+      animation: howtoIconIn 0.44s cubic-bezier(0.22, 1, 0.36, 1) both;
+      animation-delay: calc(90ms + var(--howto-i, 0) * 24ms);
+   }
+
+   /* ---- Members ----------------------------------------------------- */
+   .library-dialog#albumMembersDialog .confirm-dialog-card {
+      width: min(600px, 100%);
+   }
+   .member-dialog-summary {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin: -2px 0 0;
+   }
+   .member-dialog-summary[hidden] {
+      display: none;
+   }
+   .member-dialog-stat {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 5px;
+      min-height: 28px;
+      padding: 0 9px;
+      border: 1px solid var(--library-line);
+      border-radius: 7px;
+      background: var(--library-head);
+      color: var(--library-muted);
+      font: 600 11px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .member-dialog-stat strong {
+      color: var(--library-ink);
+      font: 750 13px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      font-variant-numeric: tabular-nums;
+   }
+   .member-dialog-summary-note {
+      margin-left: auto;
+      color: var(--library-muted);
+      font: 400 11px/1.3 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   #albumMembersDialog .member-list {
+      max-height: min(45vh, 380px);
+   }
+   #albumMembersDialog .member-row {
+      transition: background-color 0.16s ease;
+   }
+   #albumMembersDialog .member-avatar {
+      border: 1px solid var(--library-line);
+   }
+   #albumMembersDialog.is-open .member-row {
+      animation: memberRowIn 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+   }
+   #albumMembersDialog.is-open .member-row:nth-child(2) {
+      animation-delay: 35ms;
+   }
+   #albumMembersDialog.is-open .member-row:nth-child(3) {
+      animation-delay: 70ms;
+   }
+   #albumMembersDialog.is-open .member-row:nth-child(4) {
+      animation-delay: 105ms;
+   }
+   #albumMembersDialog.is-open .member-row:nth-child(5) {
+      animation-delay: 140ms;
+   }
+   #albumMembersDialog.is-open .member-row:nth-child(n + 6) {
+      animation-delay: 170ms;
+   }
+   .member-list-state {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 80px;
+      padding: 14px 8px;
+      color: var(--library-muted);
+      font: 400 13px/1.45 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .member-list-state.is-error {
+      justify-content: space-between;
+      color: var(--library-danger);
+   }
+   .member-list-spinner {
+      display: block;
+      width: 17px;
+      height: 17px;
+      border: 2px solid var(--library-line);
+      border-top-color: var(--library-accent);
+      border-radius: 50%;
+      animation: memberSpin 0.7s linear infinite;
+   }
+
+   /* ---- Album invite code is one copy target ----------------------- */
+   #albumsPanel .album-index-code {
+      position: relative;
+      cursor: pointer;
+      transition: border-color 0.16s ease, background-color 0.16s ease, color 0.16s ease;
+   }
+   #albumsPanel .album-index-code:hover {
+      border-color: color-mix(in srgb, var(--library-accent) 38%, var(--library-line));
+      background: var(--library-raised);
+      color: var(--library-ink);
+   }
+   #albumsPanel .album-index-code:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 30%, transparent);
+      outline-offset: 2px;
+   }
+   #albumsPanel .album-index-code.is-copied {
+      border-color: var(--library-accent);
+      background: var(--library-raised);
+      color: var(--library-ink);
+   }
+   #albumsPanel .album-index-code.is-copied .album-index-code-copy {
+      color: var(--library-accent);
+      animation: codeCopiedPop 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+   }
+   #albumsPanel .album-index-code-copy {
+      pointer-events: none;
+   }
+}
+
+@media screen and (max-width: 680px) {
+   .attach-link-dialog .confirm-dialog-card {
+      gap: 14px;
+   }
+   .attach-link-steps {
+      gap: 4px;
+   }
+   .attach-link-steps li {
+      gap: 4px;
+      padding: 7px 5px;
+      font-size: 9.5px;
+   }
+   .attach-link-step-number {
+      width: 18px;
+      height: 18px;
+      font-size: 9px;
+   }
+   .mode-picker-dialog .mode-card {
+      padding: 10px;
+      gap: 8px;
+   }
+   .mode-picker-dialog .mode-card.is-selected {
+      padding: 10px;
+   }
+   .mode-picker-dialog .mode-card-check {
+      width: 19px;
+      height: 19px;
+   }
+   .mode-card-check svg {
+      width: 11px;
+      height: 11px;
+   }
+   .mode-picker-dialog .mode-card-visual {
+      min-height: 58px;
+      padding: 8px;
+   }
+   .mode-preview-token {
+      min-width: 25px;
+      padding: 4px 5px;
+      font-size: 12px;
+   }
+   .mode-preview-chordpro-line {
+      font-size: 12px;
+   }
+   .mode-preview-caption {
+      gap: 10px;
+   }
+   #howToDialog .howto-dialog-card {
+      width: 100%;
+      max-height: 92dvh;
+   }
+   #howToDialog .howto-dialog-head {
+      padding: 18px 55px 15px 16px;
+   }
+   #howToDialog .howto-list {
+      padding: 10px 10px 14px;
+   }
+   #howToDialog .howto-item {
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: 9px;
+      padding: 9px 8px;
+   }
+   #howToDialog .howto-item-icon {
+      width: 28px;
+      height: 28px;
+   }
+   #howToDialog .howto-item-icon svg {
+      width: 15px;
+      height: 15px;
+   }
+   #howToDialog .howto-item-title {
+      font-size: 13px;
+   }
+   #howToDialog .howto-item-desc {
+      font-size: 12.5px;
+   }
+   #howToDialog .howto-dialog-actions {
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+   }
+   .member-dialog-summary-note {
+      width: 100%;
+      margin-left: 0;
+   }
+}
+
+@media screen and (max-width: 560px) {
+   .confirm-dialog .confirm-dialog-actions .button-ghost {
+      display: inline-flex;
+   }
+}
+
+@media (pointer: coarse) {
+   #albumsPanel .album-index-code {
+      min-height: 32px;
+   }
+   #albumsPanel .album-index-code::after {
+      position: absolute;
+      inset: -5px;
+      content: "";
+   }
+   #albumsPanel .album-index-code-copy {
+      width: 20px;
+      height: 20px;
+   }
+   #albumsPanel .album-index-code-copy::after {
+      content: none;
+   }
+}
+
+@keyframes libraryDialogIconIn {
+   from {
+      opacity: 0;
+      transform: translateY(3px) scale(0.84);
+   }
+   to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+   }
+}
+@keyframes libraryDialogHeadIn {
+   from {
+      opacity: 0;
+      transform: translateY(-5px);
+   }
+   to {
+      opacity: 1;
+      transform: translateY(0);
+   }
+}
+@keyframes libraryStepIn {
+   from {
+      opacity: 0;
+      transform: translateY(4px);
+   }
+   to {
+      opacity: 1;
+      transform: translateY(0);
+   }
+}
+@keyframes modeTokenIn {
+   from {
+      opacity: 0;
+      transform: translateY(5px);
+   }
+   to {
+      opacity: 1;
+      transform: translateY(0);
+   }
+}
+@keyframes modeBeatDot {
+   from {
+      opacity: 0;
+      transform: scale(0.5);
+   }
+   to {
+      opacity: 0.38;
+      transform: scale(1);
+   }
+}
+@keyframes modeChordProLineIn {
+   from {
+      opacity: 0;
+      transform: translateX(-5px);
+   }
+   to {
+      opacity: 1;
+      transform: translateX(0);
+   }
+}
+@keyframes modeChordProSweep {
+   from {
+      transform: scaleX(0);
+   }
+   to {
+      transform: scaleX(1);
+   }
+}
+@keyframes howtoItemIn {
+   from {
+      opacity: 0;
+      transform: translateY(6px);
+   }
+   to {
+      opacity: 1;
+      transform: translateY(0);
+   }
+}
+@keyframes howtoIconIn {
+   from {
+      opacity: 0;
+      transform: scale(0.82) rotate(-4deg);
+   }
+   60% {
+      transform: scale(1.06) rotate(1deg);
+   }
+   to {
+      opacity: 1;
+      transform: scale(1) rotate(0);
+   }
+}
+@keyframes memberRowIn {
+   from {
+      opacity: 0;
+      transform: translateY(4px);
+   }
+   to {
+      opacity: 1;
+      transform: translateY(0);
+   }
+}
+@keyframes memberSpin {
+   to {
+      transform: rotate(360deg);
+   }
+}
+@keyframes codeCopiedPop {
+   0% {
+      transform: scale(0.78);
+   }
+   65% {
+      transform: scale(1.14);
+   }
+   100% {
+      transform: scale(1);
+   }
+}
+
+

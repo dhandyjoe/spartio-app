@@ -126,9 +126,9 @@ cached copy of the previous build. Three mechanisms work together:
    repo is the single placeholder `__BUILD__`:
    - `sw.js` → `CACHE_VERSION` (cache name: a new name makes `activate` delete the
      previous cache) **and** `ASSET_VERSION` (the `?v=` cache-buster used by
-     `index.html` and every `src/*.js` import);
+      `index.html` and every local module import under `src/`);
    - `index.html` → `window.__WNS_BUILD__` (the page-side build stamp);
-   - `styles/chordpro.css` → `--chordpro-css-version` and `src/render.js` →
+   - `styles/score/chordpro.css` → `--chordpro-css-version` and `src/render/render.js` →
      `CHORDPRO_CSS_VERSION` (stale-stylesheet detector).
    The deploy workflow replaces that token with `r<run_number>-<short_sha>` in the
    deployed copy only, so every push is a new version and the values can never
@@ -142,7 +142,7 @@ cached copy of the previous build. Three mechanisms work together:
    reloads **exactly once** — so a returning visitor lands on the new build
    instead of the previous one, with no manual cache clearing.
 3. **Network-first shell.** `sw.js` serves navigations and the un-versioned entry
-   points (`index.html`, `styles/styles.css`, `manifest.webmanifest`)
+   points (`index.html`, `styles/base/tokens.css`, `manifest.webmanifest`)
    network-first, revalidated with `cache: "no-cache"`, so GitHub Pages'
    `Cache-Control: max-age=600` can never hand back a pre-deploy copy. Versioned
    assets stay cache-first (instant + offline-capable); `ignoreSearch` is used
@@ -160,7 +160,7 @@ the clean URL. Last resort: DevTools → Application → Service Workers →
 
 ## Architecture
 
-The project uses a clean, flat layout that keeps concerns separated:
+Modules are grouped by domain under `src/`. The root cloud files remain facades so the app entry points stay stable.
 
 ```
 chord-sheet/
@@ -169,49 +169,77 @@ chord-sheet/
 ├── src/                # ES modules (application logic)
 │   ├── app.js          #   bootstrap entry — calls initEvents()
 │   ├── events.js       #   user interaction, listeners, import/export
-│   ├── render.js       #   view layer — builds score HTML
-│   ├── store.js        #   single source of truth for state
-│   ├── notation.js     #   pure music/notation logic (unit-tested)
-│   ├── chordPro.js     #   pure ChordPro parser/transposer/normalizer (unit-tested)
-│   ├── chordProEditor.js  # ChordPro workspace UI (editor panel + palette)
-│   ├── pdf.js          #   PDF export pipeline
-│   ├── pdfOptions.js   #   PDF layout options modal
-│   ├── dom.js          #   thin browser helpers
-│   ├── cloud.js        #   Firebase wrapper (lazy-loaded auth + Firestore)
-│   ├── cloudUI.js      #   login modal + "My Songs"/"Albums" home + album UI
-│   └── firebase-config.js  # public-safe Firebase web config
+│   ├── cloud.js        #   stable facade for cloud data APIs
+│   ├── cloudUI.js      #   stable facade for cloud UI
+│   ├── firebase-config.js  # public-safe Firebase web config
+│   ├── core/           #   dom, store, clipboard, history
+│   ├── notation/       #   notation, chordPro, chordBank (pure logic)
+│   ├── render/         #   score view + ChordPro workspace
+│   ├── editor/         #   chord editor, beat menu, fermata, bindings/
+│   ├── pdf/            #   PDF pipeline + options
+│   ├── playback/       #   piano playback, synth, sample cache
+│   ├── util/           #   share, youtube, identity
+│   └── cloud/
+│       ├── data/       #   Firebase runtime, auth, song and album APIs
+│       └── ui/         #   cloud UI controller, screens, dialogs and markup
 ├── styles/             # Stylesheets
-│   ├── styles.css      #   design tokens (:root variables)
-│   ├── ui.css          #   app shell, ribbon, responsive, dark theme
-│   ├── preview.css     #   score canvas + print/PDF layout
-│   ├── chordpro.css    #   ChordPro workspace + its print layout (self-contained)
-│   └── fonts.css       #   self-hosted Inter @font-face (variable, latin subset)
+│   ├── base/           #   load-order anchors
+│   │   ├── tokens.css  #   legacy base tokens (network-first, no ?v=)
+│   │   ├── fonts.css   #   self-hosted Inter/Sora and accidental subset
+│   │   └── print.css   #   print-only rules, loaded after the screen sheets
+│   ├── layout/
+│   │   ├── shell.css   #   app shell, canvas, dialogs
+│   │   └── responsive.css # width-based responsive rules
+│   ├── components/
+│   │   ├── editor.css  #   editor popovers, menus, mode picker, PDF options
+│   │   ├── editor-chrome.css # EDITOR CHROME REFRESH framed sheet
+│   │   ├── gallery.css #   auth gate, My Songs gallery, lobby cards, FAB
+│   │   ├── album.css   #   albums index, album detail, members
+│   │   ├── library.css #   library skeletons, rows, album cards
+│   │   └── library-desktop.css # desktop My Songs index + its dialogs
+│   ├── score/
+│   │   ├── preview.css #   score canvas (screen)
+│   │   ├── preview-print.css # @media print + is-print-layout parity
+│   │   └── chordpro.css#   ChordPro workspace + its print layout (self-contained)
+│   ├── themes/
+│   │   └── dark.css    #   global dark theme overrides
+│   └── pages/
+│       └── auth.css    #   login and register page
 ├── assets/             # Static assets (favicon, self-hosted fonts)
 ├── docs/               # Project docs (Firebase / Firestore setup)
-└── tests/              # Unit + regression tests
+└── tests/              # Unit, playback, and browser tests
     ├── unit.test.mjs
-    └── regression.mjs
+    ├── playback.test.mjs
+    └── e2e/             # Playwright specs and local test server
 ```
 
 The JavaScript is split into small, focused ES modules with an acyclic dependency graph:
 
 | Module            | Responsibility                                            | Depends on                   |
 | ----------------- | --------------------------------------------------------- | ---------------------------- |
-| `src/notation.js` | Pure music/notation + section-data logic (no DOM)         | —                            |
-| `src/chordPro.js` | Pure ChordPro parse/transpose/normalize (no DOM)           | notation                     |
-| `src/dom.js`      | Thin browser helpers (`$`, `toast`, `prefersTap`)         | —                            |
-| `src/store.js`    | Single source of truth for state + palette selection      | notation                     |
-| `src/render.js`   | View layer: builds score HTML and writes it to the DOM    | notation, dom, store, chordPro |
-| `src/chordProEditor.js` | ChordPro workspace UI (editor panel, palette, sections) | chordPro, notation, dom, store |
+| `src/notation/notation.js` | Pure music/notation + section-data logic (no DOM)         | —                            |
+| `src/notation/chordPro.js` | Pure ChordPro parse/transpose/normalize (no DOM)           | notation                     |
+| `src/core/dom.js`      | Thin browser helpers (`$`, `toast`, `prefersTap`)         | —                            |
+| `src/core/store.js`    | Single source of truth for state + palette selection      | notation                     |
+| `src/render/render.js`   | View layer: builds score HTML and writes it to the DOM    | notation, dom, store, chordPro |
+| `src/render/chordProEditor.js` | ChordPro workspace UI (editor panel, palette, sections) | chordPro, notation, dom, store |
 | `src/events.js`   | All user interaction, listeners, import/export, bootstrap | notation, chordPro, dom, store, render, chordProEditor |
 | `src/app.js`      | Entry point (`initEvents()`)                              | events                       |
-| `src/cloud.js`    | Firebase wrapper — lazy-loads auth + Firestore from CDN   | firebase-config, notation    |
-| `src/cloudUI.js`  | Login modal + "My Songs"/"Albums" home + album UI      | cloud, dom, notation         |
+| `src/cloud.js`    | Stable facade for cloud data APIs                          | cloud/data                   |
+| `src/cloud/data/runtime.js` | Shared lazy Firebase SDK and auth state           | firebase-config              |
+| `src/cloud/data/auth.js` | Authentication actions and status                     | cloud/data/runtime            |
+| `src/cloud/data/songs.js` | Personal song and version persistence                | cloud/data/runtime, notation  |
+| `src/cloud/data/albums.js` | Album, invite and membership persistence            | cloud/data/runtime, songs     |
+| `src/cloudUI.js`  | Stable facade for cloud UI                                   | cloud/ui/controller           |
+| `src/cloud/ui/controller.js` | Cloud UI composition root; uses the editor bridge | cloud, dom, notation          |
+| `src/cloud/ui/`   | Auth, dialogs, gallery and album presentation modules        | dom, notation, cloud facade   |
+| `src/editor/bindings/` | Preview and control listeners with injected callbacks   | dom, store, notation, render, PDF |
 
 `render.js` never imports `events.js`; instead `events.js` injects its DOM-binding
 hooks via `initRender(...)`, which keeps the module graph free of cycles. The cloud
-feature is self-contained: `cloudUI` talks to Firebase only through `cloud.js`, and
-to the editor only through injected callbacks — so it never imports `events.js`.
+feature is self-contained: `cloud/ui/controller.js` talks to Firebase only through
+the `cloud.js` facade, and to the editor only through injected callbacks, so it
+never imports `events.js`.
 `chordProEditor.js` follows the same rule (`initChordProEditor(...)`), so the
 ChordPro workspace never imports `events.js` either.
 
@@ -302,11 +330,11 @@ actually types as aliases:
 | `ma7`, `Δ7` | `maj7` | major 7th |
 | `omit3` | `no3` | no third |
 
-`normalizeQuality()` (`src/chordBank.js`) is the **single source of truth** for that mapping: the audio
+`normalizeQuality()` (`src/notation/chordBank.js`) is the **single source of truth** for that mapping: the audio
 engine asks it before it looks up a voicing, so a chord can never mean one thing to the suggestion list
 and another to the speakers — the reported `Bm7♭5` bug, where the popover offered `Bø7` but the speaker
 played a plain B major triad, is impossible now. The quality table (`QUALITY_INTERVALS` in
-`src/playback.js`) covers the whole palette plus the common custom spellings: `maj9`, `m11`, `11`, `13`,
+`src/playback/playback.js`) covers the whole palette plus the common custom spellings: `maj9`, `m11`, `11`, `13`,
 `6/9`, `m6/9`, `add11`, `madd9`, `7sus4`, `9sus4`, `dim7`, `aug7`, `7♯5`, `7♯9`, `7♭5`, `mmaj7` and the
 `5` power chord. A suffix it doesn't recognise still sounds (a major triad) — never silence.
 
@@ -318,7 +346,7 @@ through unchanged.
 ### Sharp vs flat: the transposition spelling standard
 
 Transposing moves **intervals**, and a player reads the result — so the spelling is never "always
-sharps" or "always flats"; it follows the **target key**. `src/notation.js` implements three rules:
+sharps" or "always flats"; it follows the **target key**. `src/notation/notation.js` implements three rules:
 
 1. **The target key decides the side.** Keys are named with the smallest signature (`C` +1 → **D♭**,
    because D♭ has 5 flats against C♯'s 7 sharps), and that side then drives every chord: from C +2 the
@@ -339,14 +367,14 @@ unaffected: the audio engine resolves notes by pitch class, so `F♯`/`G♭` sou
 ### Numbers: one shared Nashville token grammar
 
 A number on a beat is `[accidental]degree[octave][quality]` — `1`, `#1`, `♭1`, `1̇`, `♭7̣`, `1m`, `0`.
-That shape lives in **one** regex, `NASHVILLE_TOKEN_RE` (`src/notation.js`), and the three layers that
+That shape lives in **one** regex, `NASHVILLE_TOKEN_RE` (`src/notation/notation.js`), and the three layers that
 must agree all read it:
 
 | Layer | What it does with the token |
 |---|---|
-| `src/chordBank.js` | **offers** it — and, because a bare degree is a *number* query, offers the curated family instead of the quality colours |
-| `src/render.js` | **draws** it — the accidental as the "coret" slash, the octave as the dot |
-| `src/playback.js` | **sounds** it — key + degree + octave + accidental |
+| `src/notation/chordBank.js` | **offers** it — and, because a bare degree is a *number* query, offers the curated family instead of the quality colours |
+| `src/render/render.js` | **draws** it — the accidental as the "coret" slash, the octave as the dot |
+| `src/playback/playback.js` | **sounds** it — key + degree + octave + accidental |
 
 Because the gate (`isNashvilleChord`) and the parser are one grammar, a token can never be *recognised
 but silent*. Two deliberate asymmetries are worth knowing:
@@ -374,7 +402,7 @@ The alternatives are ***Every bar*** (the dense variant: a small 2.6 mm number a
 Why line starts as the default: within a section the printed rows are stacked with **no vertical
 gap** (`row-gap: 0`), so a number above *every* bar sits squeezed between two rows of music and reads
 as clutter/part of the row above. One big number per line has room to breathe and is legible at a
-glance; `src/pdf.js` already tags every bar that does not start a row with `.pdf-mid-bar`
+glance; `src/pdf/pdf.js` already tags every bar that does not start a row with `.pdf-mid-bar`
 (`markMidRowBars()`), and the rules simply skip those, so the density costs no extra JS.
 
 The number sits above the barline because the geometry reserves a band at the top of every bar in a
@@ -484,11 +512,21 @@ Firestore rules, data model, and setup checklist.
 
 | File                 | Responsibility                                                       |
 | -------------------- | -------------------------------------------------------------------- |
-| `styles/styles.css`  | Design tokens (`:root` variables)                                    |
-| `styles/ui.css`      | Application shell, ribbon, dark theme, responsive rules              |
-| `styles/preview.css` | Score canvas + print/PDF layout (`@media print` / `is-print-layout`) |
-| `styles/chordpro.css`| ChordPro workspace + its print layout — fully self-contained (`cp-`-prefixed selectors or `body[data-editor-mode="chordpro"]` gated, so the two original modes are untouched) |
-| `styles/fonts.css`   | Self-hosted **Inter** `@font-face` (variable `wght 100 900`, latin subset) **+ a Noto Serif JP subset for the ♭/♯ accidentals** |
+| `styles/base/tokens.css`  | Legacy base tokens, loaded first                                     |
+| `styles/layout/shell.css` | Application shell, ribbon, canvas, dialogs                           |
+| `styles/layout/responsive.css` | Width-based responsive rules, loaded after shell.css            |
+| `styles/components/editor.css` | Editor popovers, menus, mode picker, PDF options                    |
+| `styles/components/editor-chrome.css` | `EDITOR CHROME REFRESH` framed sheet, loaded after editor.css |
+| `styles/components/gallery.css` | Auth, My Songs gallery, lobby cards, home FAB                     |
+| `styles/components/album.css` | Albums index, album detail, members                                 |
+| `styles/components/library.css` | Library skeleton, rows, album cards, loading paper                 |
+| `styles/components/library-desktop.css` | Desktop My Songs index + its dialogs, loaded after library.css |
+| `styles/themes/dark.css` | Global dark theme overrides                                          |
+| `styles/base/print.css` | Print-only rules, loaded after the screen sheets                    |
+| `styles/score/preview.css` | Score canvas, chords/numbers, beams, bar numbers (screen)           |
+| `styles/score/preview-print.css` | `@media print` + `html.is-print-layout` parity, loaded after preview.css |
+| `styles/score/chordpro.css`| ChordPro workspace + its print layout — fully self-contained (`cp-`-prefixed selectors or `body[data-editor-mode="chordpro"]` gated, so the two original modes are untouched) |
+| `styles/base/fonts.css`   | Self-hosted **Inter** `@font-face` (variable `wght 100 900`, latin subset) **+ a Noto Serif JP subset for the ♭/♯ accidentals** |
 
 > **Why the fonts are self-hosted.** Every style file asks for
 > `font-family: Inter, ui-sans-serif, system-ui, …`, but the name `Inter` was never
@@ -496,7 +534,7 @@ Firestore rules, data model, and setup checklist.
 > Francisco — a **variable** font, so the heavy chord weights (`font-weight: 850/900`
 > on `.placed-chord`) rendered exactly. On Windows it was Segoe UI — **static**
 > weights — so the browser **synthesised** a bold and chords such as `B♭m/F` looked
-> heavier and more cramped on Windows than on macOS. `styles/fonts.css` now ships
+> heavier and more cramped on Windows than on macOS. `styles/base/fonts.css` now ships
 > Inter as a genuine variable font, so the heavy weights are rendered — never
 > faked — identically across OSes and browsers. The `@font-face` deliberately keeps
 > the family name `"Inter"`, so no selector in the app had to change and the
@@ -516,14 +554,14 @@ Firestore rules, data model, and setup checklist.
 
 > Print parity note: interactive-only chrome (the multi-bar selection ring/tint
 > and its ✓ badge) is neutralised in **both** `@media print` and
-> `html.is-print-layout` in `styles/ui.css`, and the export flow clears the
+> `html.is-print-layout` in `styles/base/print.css` and `styles/score/preview.css`, and the export flow clears the
 > selection before printing — so a green selection box can never appear in the
 > exported PDF even if the user exports mid-selection.
 
 ### Responsive contract
 
-The UI targets three width bands. Keep `src/dom.js` (`prefersTap` / `isPhone`)
-and the media queries in `styles/ui.css` in sync with this table:
+The UI targets three width bands. Keep `src/core/dom.js` (`prefersTap` / `isPhone`)
+and the media queries in `styles/layout/*.css` and `styles/components/*.css` in sync with this table:
 
 | Band    | Width      | Score canvas                                                                 |
 | ------- | ---------- | ---------------------------------------------------------------------------- |
@@ -537,19 +575,31 @@ geometry is untouched — `tests/unit.test.mjs` pins that print contract.
 
 ## Testing
 
-**Unit tests** (pure logic — transpose, normalization, slots; no browser needed):
+Install the test dependencies once:
 
 ```sh
-node --test tests/unit.test.mjs
+npm install
+npx playwright install chromium
 ```
 
-**Regression tests** (layout/print geometry — requires Chrome with remote debugging):
+**Unit and playback tests** (pure logic, no browser needed):
 
 ```sh
-# Terminal 1 — app server
-python3 -m http.server 4173
-# Terminal 2 — Chrome with a debugging port
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9223
-# Terminal 3 — run the suite
-node tests/regression.mjs
+npm run test:unit
+npm run test:playback
 ```
+
+**End-to-end tests** (Playwright, Chromium):
+
+```sh
+npm run test:e2e
+```
+
+The Playwright config starts its own static server on `127.0.0.1:4175`, so no
+manual server or Chrome debugging port is needed. Use `npm run test:e2e:headed`
+to watch the browser, or `npm run test:e2e:ui` for the interactive runner. The
+suite covers the editor smoke path, chord entry and suggestions, rhythm, bars
+and sections, transpose and metadata, project export and import including
+lyrics, the unsaved-changes guard and browser Back, the My Songs index plus home
+and login controls, mobile view-only behavior at 320/390/393px, and PDF options
+and print geometry.

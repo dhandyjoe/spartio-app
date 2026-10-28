@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
    transposeNote,
@@ -47,8 +47,8 @@ import {
    modeIconMarkup,
    isSingleBeatMeter,
    barUnitWord,
-} from "../src/notation.js";
-import { encodeShare, decodeShare, buildShareLink, extractPayloadFromLink, canCompress } from "../src/share.js";
+} from "../src/notation/notation.js";
+import { encodeShare, decodeShare, buildShareLink, extractPayloadFromLink, canCompress } from "../src/util/share.js";
 import {
    composeSong,
    isLegacySongDoc,
@@ -56,12 +56,13 @@ import {
    normalizeInviteCode,
    versionCopyPayload,
    sortVersionsByRecency,
+   sortAlbumSongsByRecency,
    applyVersionSummary,
 } from "../src/cloud.js";
-import { friendlyName } from "../src/identity.js";
-import { parseYoutubeUrl, canonicalUrl, thumbnailUrl, youtubeFields, parseStartTime, formatStartTime, youtubeChipMeta } from "../src/youtube.js";
-import { beatHTML, chordProSectionHTML, chordLabel } from "../src/render.js";
-import { isValidChordSpelling, withTypedSpelling } from "../src/chordEditor.js";
+import { friendlyName } from "../src/util/identity.js";
+import { parseYoutubeUrl, canonicalUrl, thumbnailUrl, youtubeFields, parseStartTime, formatStartTime, youtubeChipMeta } from "../src/util/youtube.js";
+import { beatHTML, chordProSectionHTML, chordLabel } from "../src/render/render.js";
+import { isValidChordSpelling, withTypedSpelling } from "../src/editor/chordEditor.js";
 import {
    PDF_BAR_NUMBERS,
    PDF_PAPER,
@@ -69,8 +70,8 @@ import {
    sanitize,
    applyPdfOptions,
    computePreviewScale,
-} from "../src/pdfOptions.js";
-import { getState, setState } from "../src/store.js";
+} from "../src/pdf/pdfOptions.js";
+import { getState, setState } from "../src/core/store.js";
 import {
    MAX_CHORDPRO_CHARS,
    normalizeChordPro,
@@ -84,8 +85,64 @@ import {
    chordProPlainText,
    chordProMeta,
    chordProFromFile,
-} from "../src/chordPro.js";
-import { buildPlaybackQueue, entryDuration, fermataPulseTimes, chordToMidiNotes } from "../src/playback.js";
+} from "../src/notation/chordPro.js";
+import { buildPlaybackQueue, entryDuration, fermataPulseTimes, chordToMidiNotes } from "../src/playback/playback.js";
+import { clearHistory, saveState, undo, redo } from "../src/core/history.js";
+import { clearClipboard, getClipboard, hasClipboard, setClipboard } from "../src/core/clipboard.js";
+import { cloudUIState, setActiveAlbumCtx } from "../src/cloud/ui/state.js";
+
+test("history undo and redo share a boolean return contract", () => {
+   clearHistory();
+   saveState({ value: 1 });
+   saveState({ value: 2 });
+
+   assert.equal(undo(), true);
+   assert.equal(undo(), false);
+   assert.equal(redo(), true);
+   assert.equal(redo(), false);
+});
+
+test("the clipboard deep-clones its payload and scopes by kind", () => {
+   clearClipboard();
+   assert.equal(hasClipboard(), false);
+
+   const payload = { name: "Intro", beats: [{ chord: "C" }] };
+   setClipboard("section", payload, { label: "Intro" });
+   // The caller keeps editing its own object; the snapshot must not change.
+   payload.name = "mutated";
+   payload.beats[0].chord = "G";
+
+   assert.equal(hasClipboard(), true);
+   assert.equal(hasClipboard("section"), true);
+   assert.equal(hasClipboard("bar"), false);
+
+   const entry = getClipboard();
+   assert.equal(entry.kind, "section");
+   assert.equal(entry.payload.name, "Intro");
+   assert.equal(entry.payload.beats[0].chord, "C");
+   assert.deepEqual(entry.meta, { label: "Intro" });
+
+   clearClipboard();
+   assert.equal(getClipboard(), null);
+   assert.equal(hasClipboard(), false);
+});
+
+test("setActiveAlbumCtx keeps only a usable album context", () => {
+   setActiveAlbumCtx({ albumId: "album-1", albumName: "Setlist", role: "member", ignored: true });
+   assert.deepEqual(cloudUIState.activeAlbumCtx, {
+      albumId: "album-1",
+      albumName: "Setlist",
+      role: "member",
+   });
+
+   setActiveAlbumCtx({ albumId: "album-2" });
+   assert.deepEqual(cloudUIState.activeAlbumCtx, { albumId: "album-2", albumName: "", role: null });
+
+   setActiveAlbumCtx({ albumName: "No album id" });
+   assert.equal(cloudUIState.activeAlbumCtx, null);
+   setActiveAlbumCtx(null);
+   assert.equal(cloudUIState.activeAlbumCtx, null);
+});
 
 test("transposeNote wraps around 12 notes and spells for the target key", () => {
    assert.equal(transposeNote("B", 1), "C");
@@ -383,7 +440,7 @@ test("the chord row is restored exactly as saved and never turns itself on", () 
    assert.equal(normalizeSection({ name: "Intro", bars: 1 }, "4/4").chordAboveEnabled, false);
    // 3) Wiring: no load path resets the row, and the auto-enable migration is gone for good.
    const events = readProjectFile("src/events.js");
-   const notation = readProjectFile("src/notation.js");
+   const notation = readProjectFile("src/notation/notation.js");
    assert.ok(!/resetChordRow/.test(events), "loading must never reset the chord row");
    assert.ok(!/migrateSongChordAbove/.test(notation), "the auto-enable migration is gone");
    assert.ok(!/migrateSongChordAbove|chordAboveEnabled === true\)\)/.test(events));
@@ -579,7 +636,7 @@ test("the app is branded Spartio.app everywhere it shows", () => {
    assert.match(manifest, /"name": "Spartio\.app — Chord & Number Score Builder"/);
    assert.match(manifest, /"short_name": "Spartio\.app"/);
    // The old name must be gone from every file a user can read or download
-   // (src/pdf.js is the "Save as PDF" filename fallback).
+   // (src/pdf/pdf.js is the "Save as PDF" filename fallback).
    for (const file of [
       "index.html",
       "manifest.webmanifest",
@@ -587,7 +644,7 @@ test("the app is branded Spartio.app everywhere it shows", () => {
       "docs/FIREBASE-SETUP.md",
       "assets/logo-mark.png",
       "assets/icon-maskable-1024.png",
-      "src/pdf.js",
+      "src/pdf/pdf.js",
       "src/events.js",
    ]) {
       assert.ok(!readProjectFile(file).includes("WorshipNotationScore"), `${file} still ships the old name`);
@@ -633,7 +690,7 @@ import {
    foldNashvilleKey,
    normalizeQuality,
    BANK_QUALITIES,
-} from "../src/chordBank.js";
+} from "../src/notation/chordBank.js";
 
 test("normalizeQuality folds every alias onto the spelling the audio engine voices", () => {
    // The reported case: Bm7♭5 must resolve to the canonical half-diminished symbol, so
@@ -850,7 +907,7 @@ test("beatHTML marks an accidentalled beat for the coret", () => {
 });
 
 test("the coret slash cannot change the printed layout (score geometry is measured)", () => {
-   const css = readProjectFile("styles/preview.css");
+   const css = readProjectFile("styles/score/preview.css");
    const block = (selector) => {
       const start = css.indexOf(`${selector} {`);
       return start === -1 ? "" : css.slice(start, css.indexOf("\n}", start) + 2);
@@ -871,7 +928,7 @@ test("the coret slash cannot change the printed layout (score geometry is measur
 });
 
 test("the popover offers the half-step chips to number queries only", () => {
-   const editor = readProjectFile("src/chordEditor.js");
+   const editor = readProjectFile("src/editor/chordEditor.js");
    assert.ok(editor.includes("chord-popover-accidentals"), "the chip row is missing");
    assert.ok(editor.includes('data-accidental="${value}"'), "the chips carry no value");
    assert.ok(editor.includes('{ value: "", label: "♮"'), "the natural chip is missing");
@@ -971,7 +1028,7 @@ import {
    extractBarsByIndices,
    insertBars,
    overwriteBars,
-} from "../src/notation.js?v=20260808-hide-dot-active";
+} from "../src/notation/notation.js?v=20260808-hide-dot-active";
 
 test("extractBar pulls out a single bar's beats and lyrics normalized to bar 0", () => {
    const section = {
@@ -1652,7 +1709,7 @@ test("the editor shows the arrangement's YouTube link as a topbar chip", () => {
    assert.match(css, /\.youtube-chip-none \{\s*display: inline-flex;[\s\S]{0,220}?border: 1px dashed/);
    assert.ok(!/youtube-chip-add/.test(css), "no leftover styles for the removed button");
    // 3) Wiring: render paints BOTH states (and clears the stale still), events owns the clicks.
-   const render = readProjectFile("src/render.js");
+   const render = readProjectFile("src/render/render.js");
    assert.match(render, /const chipMeta = youtubeChipMeta\(state\);/);
    assert.match(render, /chipWrap\.dataset\.state = chipMeta\.hasLink \? "link" : "none";/);
    assert.match(render, /openBtn\.dataset\.href = chipMeta\.href;/);
@@ -1821,8 +1878,8 @@ test("editorModeMeta keeps the mode labels and glyphs in one place", () => {
    const html = readProjectFile("index.html");
     assert.match(html, /<span class="mode-card-title">Numeric Notation \+ Lyrics<\/span>/);
     assert.match(html, /id="modeCardNumbers" type="button" data-mode="numbers" aria-pressed="false"/);
-   assert.match(html, /Lyrics row — optional \(Lyrics toggle\)/);
-   assert.match(html, /Numeric Notation \+ Lyrics<\/strong>/);
+   assert.match(html, /Lyrics row, optional \(Lyrics toggle\)/);
+   assert.match(html, /Numeric Notation uses degrees 1 to 7 with optional lyrics/);
    assert.ok(!/Nashville Numbers/.test(html), "the old mode label must be gone");
    assert.match(readProjectFile("README.md"), /\*\*Numeric Notation \+ Lyrics\*\*/);
 });
@@ -1841,7 +1898,7 @@ test("editor header keeps the title on the sheet and utility controls in the sti
    const html = readProjectFile("index.html");
    const css = readProjectFile("styles/ui.css");
    const events = readProjectFile("src/events.js");
-   const render = readProjectFile("src/render.js");
+   const render = readProjectFile("src/render/render.js");
 
    assert.doesNotMatch(html, /editor-breadcrumb|editorSongName/, "the duplicate topbar title is gone");
    assert.match(html, /<h1 id="previewTitle"/, "the sheet title is the page heading");
@@ -1869,7 +1926,7 @@ test("editor header keeps the title on the sheet and utility controls in the sti
 });
 
 test("the sheet h1 keeps the PDF title geometry", () => {
-   const preview = readProjectFile("styles/preview.css");
+   const preview = readProjectFile("styles/score/preview.css");
    const css = readProjectFile("styles/ui.css");
    // The old h2 carried a 5px/4px margin and a 30px print size. Moving the
    // heading to h1 must not change either the screen or the paper metrics.
@@ -2188,11 +2245,59 @@ test("chordProFromFile returns no sections for metadata-only or empty input", ()
 // ============================================================================
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const readProjectFile = (relative) => readFileSync(join(projectRoot, relative), "utf8");
+// `styles/ui.css` is a virtual aggregate of the split stylesheets, kept so the
+// static CSS contracts read as one file in the order index.html loads them.
+const sourceGroups = {
+   "src/cloudUI.js": [
+      "src/cloud/ui/markup.js",
+      "src/cloud/ui/gallery.js",
+      "src/cloud/ui/auth.js",
+      "src/cloud/ui/dialogs.js",
+      "src/cloud/ui/state.js",
+      "src/cloud/ui/album.js",
+      "src/cloud/ui/controller.js",
+      "src/cloudUI.js",
+   ],
+   "src/cloud.js": [
+      "src/cloud.js",
+      "src/cloud/data/runtime.js",
+      "src/cloud/data/constants.js",
+      "src/cloud/data/auth.js",
+      "src/cloud/data/songs.js",
+      "src/cloud/data/albums.js",
+   ],
+   "src/events.js": ["src/editor/bindings/preview.js", "src/editor/bindings/controls.js", "src/events.js"],
+   "styles/ui.css": [
+      "styles/layout/shell.css",
+      "styles/layout/responsive.css",
+      "styles/components/editor.css",
+      "styles/components/editor-chrome.css",
+      "styles/components/gallery.css",
+      "styles/components/album.css",
+      "styles/components/library.css",
+      "styles/components/library-desktop.css",
+      "styles/themes/dark.css",
+      "styles/base/print.css",
+   ],
+   // Split files are read as one file again, in load order, so the existing CSS
+   // contracts keep matching what index.html actually ships.
+   "styles/score/preview.css": ["styles/score/preview.css", "styles/score/preview-print.css"],
+   "styles/layout/shell.css": ["styles/layout/shell.css", "styles/layout/responsive.css"],
+   "styles/components/editor.css": ["styles/components/editor.css", "styles/components/editor-chrome.css"],
+   "styles/components/library.css": ["styles/components/library.css", "styles/components/library-desktop.css"],
+};
+const readProjectFile = (relative) =>
+   (sourceGroups[relative] || [relative]).map((file) => readFileSync(join(projectRoot, file), "utf8")).join("\n");
+const sourceFiles = (directory = "src") =>
+   readdirSync(join(projectRoot, directory), { withFileTypes: true }).flatMap((entry) => {
+      const path = `${directory}/${entry.name}`;
+      if (entry.isDirectory()) return sourceFiles(path);
+      return entry.isFile() && entry.name.endsWith(".js") ? [path] : [];
+   });
 
 test("ChordPro workspace: every id used by chordProEditor.js exists in index.html", () => {
    const ids = new Set([...readProjectFile("index.html").matchAll(/id="([^"]+)"/g)].map((match) => match[1]));
-   const used = [...readProjectFile("src/chordProEditor.js").matchAll(/\$\("#([A-Za-z0-9_-]+)"/g)].map((match) => match[1]);
+   const used = [...readProjectFile("src/render/chordProEditor.js").matchAll(/\$\("#([A-Za-z0-9_-]+)"/g)].map((match) => match[1]);
    assert.ok(used.length >= 8, `expected several lookups, found ${used.length}`);
    for (const id of used) assert.ok(ids.has(id), `#${id} is used by chordProEditor.js but missing from index.html`);
 });
@@ -2204,7 +2309,7 @@ test("ChordPro workspace: render.js and events.js look up ids that exist too", (
    //   placingLabel     optional, written only when present
    //   projectFileInput / saveBtn  created dynamically by the cloud UI
    const legacyOptional = new Set(["previewHint", "placingLabel", "projectFileInput", "saveBtn"]);
-   for (const file of ["src/render.js", "src/events.js", "src/pdfOptions.js"]) {
+   for (const file of ["src/render/render.js", "src/events.js", "src/pdf/pdfOptions.js"]) {
       const used = [...readProjectFile(file).matchAll(/\$\("#([A-Za-z0-9_-]+)"/g)].map((match) => match[1]);
       for (const id of used) {
          if (legacyOptional.has(id)) continue;
@@ -2215,7 +2320,7 @@ test("ChordPro workspace: render.js and events.js look up ids that exist too", (
 
 test("index.html ships the ChordPro workspace, its stylesheet and the third mode card", () => {
    const html = readProjectFile("index.html");
-   assert.match(html, /styles\/chordpro\.css\?v=/);
+   assert.match(html, /styles\/score\/chordpro\.css\?v=/);
    assert.match(html, /id="cpWorkspace"/);
    assert.match(html, /id="cpSectionsPreview"/);
    assert.match(html, /id="cpPreviewCard"/);
@@ -2264,7 +2369,7 @@ test("1/4 is the only single-beat meter: the bar IS a beat", () => {
 });
 
 test("1/4 keeps the bar line only at the edges of the line (live preview + both print scopes)", () => {
-   const css = readProjectFile("styles/preview.css");
+   const css = readProjectFile("styles/score/preview.css");
    const flat = (value) => value.replace(/\s+/g, " ");
    // The three scopes that must stay identical (AGENTS.md §3.7): @media print (the
    // real PDF), html.is-print-layout (the PDF layout preview + the dialog pane).
@@ -2330,7 +2435,7 @@ test("1/4 keeps the bar line only at the edges of the line (live preview + both 
 });
 
 test("1/4 prints its beats at the normal beat pitch (the bar's padding moves to the row)", () => {
-   const css = readProjectFile("styles/preview.css");
+   const css = readProjectFile("styles/score/preview.css");
    const flat = (value) => value.replace(/\s+/g, " ");
    // The default geometry is untouched: every bar keeps its own side padding.
    assert.match(css, /--print-bar-pad-x: 2\.6mm;/);
@@ -2347,7 +2452,7 @@ test("1/4 prints its beats at the normal beat pitch (the bar's padding moves to 
 });
 
 test("the export tags the edges of every printed row (the 1/4 bar line lives there)", () => {
-   const pdf = readProjectFile("src/pdf.js");
+   const pdf = readProjectFile("src/pdf/pdf.js");
    assert.match(pdf, /const ROW_START_CLASS = "pdf-row-start";/);
    assert.match(pdf, /const ROW_END_CLASS = "pdf-row-end";/);
    // The row starts at the bar glued to the grid's content edge...
@@ -2362,17 +2467,17 @@ test("the export tags the edges of every printed row (the 1/4 bar line lives the
 });
 
 test("the 1/4 rules never touch the other time signatures", () => {
-   const css = readProjectFile("styles/preview.css");
+   const css = readProjectFile("styles/score/preview.css");
    for (const meter of ["2/4", "3/4", "4/4", "6/8"]) {
       assert.ok(!css.includes(`data-meter="${meter}"`), `no rule may be scoped to ${meter}`);
    }
    // The meter reaches the stylesheet through the body attribute the renderer sets.
-   const render = readProjectFile("src/render.js");
+   const render = readProjectFile("src/render/render.js");
    assert.match(render, /document\.body\.dataset\.meter = state\.meter;/);
 });
 
 test("1/4 speaks in beats: add / delete / copy labels and the caption", () => {
-   const render = readProjectFile("src/render.js");
+   const render = readProjectFile("src/render/render.js");
    const events = readProjectFile("src/events.js");
    // The editor offers "+ Add 1 beat" and counts the section as one growing bar.
    assert.match(render, /\+ Add 1 beat/);
@@ -2386,7 +2491,7 @@ test("1/4 speaks in beats: add / delete / copy labels and the caption", () => {
 
 test("service worker precaches every new ChordPro asset", () => {
    const sw = readProjectFile("sw.js");
-   for (const asset of ["./styles/chordpro.css", "./src/chordPro.js", "./src/chordProEditor.js"]) {
+   for (const asset of ["./styles/score/chordpro.css", "./src/notation/chordPro.js", "./src/render/chordProEditor.js"]) {
       assert.ok(sw.includes(asset), `${asset} is missing from CORE_ASSETS`);
    }
 });
@@ -2396,7 +2501,7 @@ test("the self-hosted Inter webfont is wired link → SW precache → file on di
    // back to a variable system font (fine) while Windows fell back to Segoe UI, which
    // SYNTHESISES a faux-bold — the "too bold / too cramped" chord bug. A variable font
    // (wght 100 900) is what makes a real 850 possible, so the range is asserted too.
-   const css = readProjectFile("styles/fonts.css");
+   const css = readProjectFile("styles/base/fonts.css");
    assert.match(css, /@font-face/);
    // The family name must stay "Inter" (NOT "Inter Variable") so the untouched app
    // stacks pick it up — no selector anywhere has to change.
@@ -2411,12 +2516,12 @@ test("the self-hosted Inter webfont is wired link → SW precache → file on di
    assert.match(css, /unicode-range: U\+266D-266F;/);
    // ...and the score's accidental must ASK for Inter first, or the glyph would
    // keep coming from the OS serif fallback.
-   assert.match(readProjectFile("styles/preview.css"), /\.chord-accidental \{[\s\S]{0,600}?font-family: Inter, Georgia/);
+   assert.match(readProjectFile("styles/score/preview.css"), /\.chord-accidental \{[\s\S]{0,600}?font-family: Inter, Georgia/);
    // The stylesheet is linked from the page…
-   assert.match(readProjectFile("index.html"), /styles\/fonts\.css\?v=/);
+   assert.match(readProjectFile("index.html"), /styles\/base\/fonts\.css\?v=/);
    // …and precached by the service worker, so the font also works offline.
    const sw = readProjectFile("sw.js");
-   assert.ok(sw.includes("./styles/fonts.css"), "fonts.css is missing from CORE_ASSETS");
+   assert.ok(sw.includes("./styles/base/fonts.css"), "fonts.css is missing from CORE_ASSETS");
    assert.ok(
       sw.includes("./assets/fonts/inter-latin-wght-normal.woff2"),
       "the Inter woff2 is missing from CORE_ASSETS",
@@ -2440,19 +2545,76 @@ test("the self-hosted Inter webfont is wired link → SW precache → file on di
 
 
 test("every relative ES module import resolves to a file on disk", () => {
-   const files = readdirSync(join(projectRoot, "src")).filter((name) => name.endsWith(".js"));
+   const files = sourceFiles();
    for (const file of files) {
-      for (const match of readProjectFile(`src/${file}`).matchAll(/from "(\.\/[^"?]+\.js)/g)) {
-         const target = match[1].replace("./", "");
-         assert.ok(files.includes(target), `src/${file} imports ${match[1]}, which does not exist`);
+      const source = readFileSync(join(projectRoot, file), "utf8");
+      for (const match of source.matchAll(/from "(\.[^"?]+\.js)/g)) {
+         const target = normalize(join(dirname(file), match[1]));
+         assert.ok(files.includes(target), `${file} imports ${match[1]}, which does not exist`);
       }
+   }
+});
+
+test("the ES module graph is acyclic (facades never import their consumers)", () => {
+   const files = sourceFiles();
+   const graph = new Map();
+   for (const file of files) {
+      const source = readFileSync(join(projectRoot, file), "utf8");
+      const deps = [...source.matchAll(/(?:from|import)\s*\(?\s*"(\.[^"]+)"/g)]
+         .map((match) => normalize(join(dirname(file), match[1].split("?")[0])))
+         .filter((dep) => files.includes(dep));
+      graph.set(file, deps);
+   }
+
+   const state = new Map();
+   const stack = [];
+   const cycles = [];
+   const visit = (file) => {
+      state.set(file, 1);
+      stack.push(file);
+      for (const dep of graph.get(file) || []) {
+         const status = state.get(dep) || 0;
+         if (status === 1) cycles.push([...stack.slice(stack.indexOf(dep)), dep].join(" -> "));
+         else if (status === 0) visit(dep);
+      }
+      stack.pop();
+      state.set(file, 2);
+   };
+   for (const file of files) if (!state.get(file)) visit(file);
+   assert.deepEqual(cycles, [], `import cycle(s) found:\n${cycles.join("\n")}`);
+});
+
+test("every stylesheet on disk is linked from index.html and precached", () => {
+   const cssFiles = [];
+   const visit = (directory) => {
+      for (const entry of readdirSync(join(projectRoot, directory), { withFileTypes: true })) {
+         const path = `${directory}/${entry.name}`;
+         if (entry.isDirectory()) visit(path);
+         else if (entry.isFile() && entry.name.endsWith(".css")) cssFiles.push(path);
+      }
+   };
+   visit("styles");
+
+   const html = readProjectFile("index.html");
+   const sw = readProjectFile("sw.js");
+   assert.ok(cssFiles.length >= 15, `expected the split stylesheets, found ${cssFiles.length}`);
+   for (const file of cssFiles) {
+      assert.ok(html.includes(file), `${file} is not linked from index.html`);
+      assert.ok(sw.includes(`./${file}`), `${file} is missing from CORE_ASSETS`);
+   }
+});
+
+test("every source module is precached for the offline shell", () => {
+   const sw = readProjectFile("sw.js");
+   for (const file of sourceFiles()) {
+      assert.ok(sw.includes(`./${file}?v=\${ASSET_VERSION}`), `${file} is missing from CORE_ASSETS`);
    }
 });
 
 test("every asset version query matches the service worker's ASSET_VERSION", () => {
    const version = readProjectFile("sw.js").match(/const ASSET_VERSION = "([^"]+)"/)?.[1];
    assert.ok(version, "ASSET_VERSION not found in sw.js");
-   const files = ["index.html", ...readdirSync(join(projectRoot, "src")).map((name) => `src/${name}`)];
+   const files = ["index.html", ...sourceFiles()];
    const mismatches = [];
    for (const file of files) {
       for (const match of readProjectFile(file).matchAll(/\?v=([A-Za-z0-9._-]+)/g)) {
@@ -2462,10 +2624,59 @@ test("every asset version query matches the service worker's ASSET_VERSION", () 
    assert.deepEqual(mismatches, [], `cache-buster drift vs ASSET_VERSION ${version}`);
 });
 
+test("cloud and editor binding modules are included in the offline shell", () => {
+   const sw = readProjectFile("sw.js");
+   const styles = [
+      "styles/layout/shell.css",
+      "styles/layout/responsive.css",
+      "styles/components/editor.css",
+      "styles/components/editor-chrome.css",
+      "styles/components/gallery.css",
+      "styles/components/album.css",
+      "styles/components/library.css",
+      "styles/components/library-desktop.css",
+      "styles/themes/dark.css",
+      "styles/base/print.css",
+   ];
+   for (const style of styles) {
+      assert.ok(sw.includes(`./${style}?v=\${ASSET_VERSION}`), `${style} must be precached`);
+   }
+   const modules = [
+      "cloud/data/runtime.js",
+      "cloud/data/constants.js",
+      "cloud/data/auth.js",
+      "cloud/data/songs.js",
+      "cloud/data/albums.js",
+      "cloud/ui/controller.js",
+      "cloud/ui/auth.js",
+      "cloud/ui/dialogs.js",
+      "cloud/ui/gallery.js",
+      "cloud/ui/album.js",
+      "cloud/ui/markup.js",
+      "cloud/ui/state.js",
+      "editor/bindings/preview.js",
+      "editor/bindings/controls.js",
+   ];
+   for (const module of modules) {
+      assert.ok(sw.includes(`./src/${module}?v=\${ASSET_VERSION}`), `${module} must be precached`);
+   }
+});
+
+test("confirm dialog icons use named SVGs without a text-glyph fallback", () => {
+   const dialogs = readProjectFile("src/cloud/ui/dialogs.js");
+   const cloudUI = readProjectFile("src/cloudUI.js");
+   for (const key of ["question", "playback-stop", "delete", "warning", "link", "copy", "leave", "refresh", "music", "person"]) {
+      assert.match(dialogs, new RegExp(`"${key}":`), `${key} needs an SVG`);
+   }
+   assert.match(dialogs, /CONFIRM_ICON_SVG\[icon\] \|\| CONFIRM_ICON_SVG\.question/);
+   assert.doesNotMatch(dialogs, /escapeHtml\(icon\)/);
+   assert.doesNotMatch(cloudUI, /icon:\s*"[🗑⚠🔗🎼👤⇥↻⏹⧉]/);
+});
+
 test("chordpro.css keeps the two original modes untouched (no grid selectors, all cp- or gated)", () => {
    // Comments are stripped first: the file *documents* the names it must avoid.
-   const css = readProjectFile("styles/chordpro.css").replace(/\/\*[\s\S]*?\*\//g, "");
-   // Nothing may restyle the grid score: those class names belong to ui.css/preview.css.
+   const css = readProjectFile("styles/score/chordpro.css").replace(/\/\*[\s\S]*?\*\//g, "");
+   // Nothing may restyle the grid score: those class names belong to the component sheets and score/preview.css.
    for (const forbidden of [".preview-card", ".preview-section", ".bar-grid", ".placed-chord", ".lyric-input", ".section-tools"]) {
       assert.ok(!css.includes(forbidden), `chordpro.css must not style ${forbidden}`);
    }
@@ -2473,7 +2684,7 @@ test("chordpro.css keeps the two original modes untouched (no grid selectors, al
    // documented shared selectors below:
    //   • .mode-picker-card / .mode-picker-grid — the New Song dialog now shows three
    //     cards, which needs a wider dialog + a 3-column grid (layout only; the two
-   //     original cards keep their own styling in ui.css);
+   //     original cards keep their own styling in the component sheets);
    //   • .song-card.is-chordpro — the gold library card;
    //   • :root — declares ONLY the --chordpro-css-version marker variable.
    const allowedShared = [".mode-picker-card", ".mode-picker-grid", ".song-card.is-chordpro", ":root"];
@@ -2515,13 +2726,13 @@ test("ChordPro song rows use the shared neutral row treatment", () => {
 
 test("the ChordPro editor has no chord palette / drag-and-drop UI", () => {
    const html = readProjectFile("index.html");
-   const source = readProjectFile("src/chordProEditor.js");
+   const source = readProjectFile("src/render/chordProEditor.js");
    for (const gone of ["cp-palette", "cpRootPicker", "cpChordBank", "cp-snippet"]) {
       assert.ok(!html.includes(gone), `index.html still contains ${gone}`);
       assert.ok(!source.includes(gone), `chordProEditor.js still references ${gone}`);
    }
    // The palette CSS must be gone too.
-   const css = readProjectFile("styles/chordpro.css");
+   const css = readProjectFile("styles/score/chordpro.css");
    for (const gone of [".cp-palette", ".cp-root", ".cp-chord-btn", ".cp-snippet"]) {
       assert.ok(!css.includes(gone), `chordpro.css still styles ${gone}`);
    }
@@ -2529,7 +2740,7 @@ test("the ChordPro editor has no chord palette / drag-and-drop UI", () => {
 
 test("ChordPro mode takes the beat-grid workspace out of the page", () => {
    // The structural swap lives INLINE in index.html (not in chordpro.css alone):
-   // preview.css sets `.ribbon-workspace { display: block }` and styles.css
+   // score/preview.css sets `.ribbon-workspace { display: block }` and base/tokens.css
    // re-declares `.workspace { display: block }` for print, so a stylesheet that
    // 404s or is served stale would otherwise leave BOTH workspaces on screen.
    const html = readProjectFile("index.html");
@@ -2546,7 +2757,7 @@ test("ChordPro mode takes the beat-grid workspace out of the page", () => {
    // JS half: the swap is ALSO applied with inline styles, so it can never depend on
    // the stylesheet being present/fresh, plus hidden/aria-hidden (restored for the
    // other two modes).
-   const render = readProjectFile("src/render.js");
+   const render = readProjectFile("src/render/render.js");
    assert.match(render, /const chordproMode = mode === "chordpro"/);
    assert.match(render, /gridParts = \[document\.querySelector\("main > \.ribbon-workspace"\), document\.querySelector\("main > \.preview-stage"\)\]/);
    assert.match(render, /part\.style\.display = chordproMode \? "none" : ""/);
@@ -2562,8 +2773,8 @@ test("the stylesheet version marker matches render.js and sw.js ASSET_VERSION", 
    // The marker is how a STALE stylesheet (service worker / HTTP cache) becomes
    // visible instead of silently rendering the page with old rules — so all three
    // copies must be bumped together.
-   const cssVersion = readProjectFile("styles/chordpro.css").match(/--chordpro-css-version:\s*([^\s;]+)/)?.[1];
-   const jsVersion = readProjectFile("src/render.js").match(/CHORDPRO_CSS_VERSION = "([^"]+)"/)?.[1];
+   const cssVersion = readProjectFile("styles/score/chordpro.css").match(/--chordpro-css-version:\s*([^\s;]+)/)?.[1];
+   const jsVersion = readProjectFile("src/render/render.js").match(/CHORDPRO_CSS_VERSION = "([^"]+)"/)?.[1];
    const swVersion = readProjectFile("sw.js").match(/const ASSET_VERSION = "([^"]+)"/)?.[1];
    assert.ok(cssVersion, "--chordpro-css-version is missing from chordpro.css");
    assert.ok(jsVersion, "CHORDPRO_CSS_VERSION is missing from render.js");
@@ -2620,9 +2831,9 @@ test("a new deploy purges every cache and reloads the page once", () => {
    // The stamp comparison is what triggers the purge on a returning visit.
    assert.match(html, /const lastBuild = read\(localStorage, STAMP_KEY\);/);
    assert.match(html, /if \(lastBuild !== BUILD\) \{/);
-   // Manual escape hatch + the harness opt-out that keeps ?test= cache-free.
+   // Manual escape hatch + the local-only harness opt-out that keeps ?test= cache-free.
    assert.match(html, /params\.has\("reset"\) \|\| params\.has\("fresh"\)/);
-   assert.match(html, /if \(params\.has\("test"\)\) return;/);
+   assert.match(html, /if \(document\.documentElement\.dataset\.testMode === "1"\) return;/);
    // Cache Storage is origin-wide (all GitHub Pages projects share one origin),
    // so the page purge AND the worker's activate purge must be prefix-scoped.
    assert.match(html, /const CACHE_PREFIX = "wns-shell-";/);
@@ -2636,7 +2847,7 @@ test("the service worker revalidates the shell instead of serving a stale copy",
    // GitHub Pages subpath and a local server behave the same.
    assert.match(
       sw,
-      /const NETWORK_FIRST_PATHS = \["\/", "\/index\.html", "\/styles\/styles\.css", "\/manifest\.webmanifest"\];/,
+      /const NETWORK_FIRST_PATHS = \["\/", "\/index\.html", "\/styles\/base\/tokens\.css", "\/manifest\.webmanifest"\];/,
    );
    assert.match(
       sw,
@@ -2705,11 +2916,11 @@ test("a chord-only run keeps the typed gap instead of collapsing", () => {
    ]);
    const html = chordProSectionHTML({ id: "s1", name: "Intro", chordPro: "[C] [Am7] [Dm7]" });
    assert.equal((html.match(/is-chord-only/g) || []).length, 3, "every chord-only word must be flagged");
-   assert.match(readProjectFile("styles/chordpro.css"), /\.cp-word\.is-chord-only \{[^}]*padding-right: 0\.5em/);
+   assert.match(readProjectFile("styles/score/chordpro.css"), /\.cp-word\.is-chord-only \{[^}]*padding-right: 0\.5em/);
 });
 
 test("ChordPro PDF fonts scale up from the shared print tokens", () => {
-   const css = readProjectFile("styles/chordpro.css");
+   const css = readProjectFile("styles/score/chordpro.css");
    // Bigger defaults, still driven by the PDF-options tokens so the sliders work.
    assert.match(css, /--cp-chord-size: calc\(var\(--print-chord-size, 4\.3mm\) \* 1\.25\)/);
    assert.match(css, /--cp-lyric-size: calc\(var\(--print-lyric-size, 3\.2mm\) \* 1\.35\)/);
@@ -2718,7 +2929,7 @@ test("ChordPro PDF fonts scale up from the shared print tokens", () => {
 });
 
 test("ChordPro print geometry matches the Chord Chart export", () => {
-   const css = readProjectFile("styles/chordpro.css");
+   const css = readProjectFile("styles/score/chordpro.css");
    // Same content box as the grid card (see the measurement comment in the file).
    assert.match(css, /html\.is-print-layout \.cp-card \{[^}]*padding: 18px 16px 28px/);
    assert.match(css, /html\.is-print-layout \.cp-card-title \{[^}]*margin: 5px 0 4px/);
@@ -2734,7 +2945,7 @@ test("ChordPro print geometry matches the Chord Chart export", () => {
 });
 
 test("the ChordPro editor footer stays a compact single row", () => {
-   const css = readProjectFile("styles/chordpro.css");
+   const css = readProjectFile("styles/score/chordpro.css");
    assert.match(css, /\.cp-editor-foot \{[^}]*flex-direction: row/);
    assert.match(css, /\.cp-editor-foot \.cp-text-btn\.is-strong \{[^}]*flex: none/);
 });
@@ -2778,13 +2989,13 @@ test("the in-app help dialog documents the ChordPro mode", () => {
 });
 
 // ---- Chord row above the numbers: print + editor-chrome contract -----------
-// Real print geometry needs a browser (see tests/regression.mjs), so the print
+// Real print geometry needs a browser (see tests/e2e/pdf/print-geometry.spec.mjs), so the print
 // contract is pinned here at the CSS level: the live input is swapped for the
 // rendered chord token in BOTH print scopes, the reserved track is decided by the
 // SECTION class (never by bar data, so every bar keeps the same height and the
 // barlines stay aligned), and the editor-only chrome for the row can't reach paper.
 test("the chord row above the numbers prints as a chord and never prints chrome", () => {
-   const preview = readProjectFile("styles/preview.css");
+   const preview = readProjectFile("styles/score/preview.css");
    const ui = readProjectFile("styles/ui.css");
    // Screen: the live input is shown and the print-only span is hidden.
    assert.match(preview, /\.chord-above-print \{\s*display: none;/);
@@ -2914,7 +3125,7 @@ test("the chord row above the numbers prints as a chord and never prints chrome"
 });
 
 test("the chord row clears the rhythm beams drawn under it", () => {
-   const css = readProjectFile("styles/preview.css");
+   const css = readProjectFile("styles/score/preview.css");
    // 1) Breathing room: the gap between the chord row and the notation lane must
    //    clear the beams (6px tucked them into the chord input's box).
    const gap = Number(css.match(/--chord-above-gap: (\d+)px/)?.[1]);
@@ -2940,7 +3151,7 @@ test("the chord row clears the rhythm beams drawn under it", () => {
 });
 
 test("a nested ½ beam lines up with the parent beam on the edge they share", () => {
-   const css = readProjectFile("styles/preview.css").replace(/\/\*[\s\S]*?\*\//g, "");
+   const css = readProjectFile("styles/score/preview.css").replace(/\/\*[\s\S]*?\*\//g, "");
    // The parent half beam sits 7px inside the padding-free .beat-group...
    assert.match(css, /\.duration-line \{\s*position: absolute;\s*top: 1px;\s*left: 7px;\s*right: 7px;/);
    // ...while .sub-beats carries a 2px horizontal affordance padding, so a nested host
@@ -3019,10 +3230,10 @@ test("a chord-row line keeps the distributed beat pitch and only ADDS a little",
    );
    assert.match(events, /batch\.style\.setProperty\("--leaf", `\$\{base \+ extra\}px`\);/);
    // render.js marks the batch (per section) that reserves the chord row.
-   assert.match(readProjectFile("src/render.js"), /bar-batch[^`]*has-chord-above/);
+   assert.match(readProjectFile("src/render/render.js"), /bar-batch[^`]*has-chord-above/);
    // ...and the stylesheet must NOT pin --leaf for those bars (the shrink bug).
    assert.ok(
-      !/\.bar\.has-chord-above \{\s*--leaf:/.test(readProjectFile("styles/preview.css")),
+      !/\.bar\.has-chord-above \{\s*--leaf:/.test(readProjectFile("styles/score/preview.css")),
       "the chord row must not override the distributed --leaf",
    );
 });
@@ -3035,7 +3246,7 @@ test("a chord-row line keeps the distributed beat pitch and only ADDS a little",
 test("bar numbers number the line starts by default and can be made dense or invisible", () => {
    // NOTE: the stylesheets are hand-formatted and get re-wrapped by editors, so every assertion
    // below runs against whitespace-normalised text instead of relying on indentation/newlines.
-   const preview = readProjectFile("styles/preview.css").replace(/\s+/g, " ");
+   const preview = readProjectFile("styles/score/preview.css").replace(/\s+/g, " ");
    // The hide rule stays the BASELINE: a number only appears where the per-song attribute
    // and the Chord Chart mode agree (both are set by default — see pdfOptions.js).
    assert.ok(
@@ -3049,7 +3260,7 @@ test("bar numbers number the line starts by default and can be made dense or inv
       !/html\.is-print-layout \.bar-num \{[^}]*display: block/.test(preview),
       "the default hide rule must not be rewritten into a show rule",
    );
-   // The LINE density numbers only the bar that starts a printed row; src/pdf.js tags every
+   // The LINE density numbers only the bar that starts a printed row; src/pdf/pdf.js tags every
    // other bar `.pdf-mid-bar`, so the show rule skips them (and the hide rule is explicit too).
    assert.equal(
       (preview.match(/\.bar:not\(\.pdf-mid-bar\) \.bar-num,/g) || []).length,
@@ -3143,14 +3354,14 @@ test("bar numbers number the line starts by default and can be made dense or inv
 });
 
 test("every surface that draws bar numbers tags the line starts first", () => {
-   // The line-starts density needs `.pdf-mid-bar`, which only markMidRowBars() (src/pdf.js) sets.
+   // The line-starts density needs `.pdf-mid-bar`, which only markMidRowBars() (src/pdf/pdf.js) sets.
    // All three surfaces call it: the real print job (beforeprint), the PDF-options pane, and the
    // manual "PDF layout" preview — otherwise a preview would number every bar while the PDF
    // numbers only the line starts.
-   const pdf = readProjectFile("src/pdf.js");
+   const pdf = readProjectFile("src/pdf/pdf.js");
    assert.match(pdf, /const MID_BAR_CLASS = "pdf-mid-bar";/);
    assert.match(pdf, /markMidRowBars\(\{ forExport: true \}\);/);
-   const options = readProjectFile("src/pdfOptions.js");
+   const options = readProjectFile("src/pdf/pdfOptions.js");
    assert.match(options, /markMidRowBars\(\);/);
    assert.match(
       options,
@@ -3158,7 +3369,7 @@ test("every surface that draws bar numbers tags the line starts first", () => {
       "closing the dialog must re-tag when the user's own layout preview stays on",
    );
    const events = readProjectFile("src/events.js");
-   assert.match(events, /import \{[^}]*markMidRowBars[^}]*\} from "\.\/pdf\.js/);
+   assert.match(events, /import \{[^}]*markMidRowBars[^}]*\} from "\.\/pdf\/pdf\.js/);
    assert.match(events, /if \(printLayoutPreview\) requestAnimationFrame\(\(\) => markMidRowBars\(\)\);/);
    assert.match(events, /else clearMidRowBars\(\);/);
 });
@@ -3166,7 +3377,7 @@ test("every surface that draws bar numbers tags the line starts first", () => {
 test("the live PDF preview shows exactly the bar numbers the PDF will print", () => {
    // The dialog moves the LIVE #previewCard into .pdf-preview-page, so its own rule only HIDES the
    // editor's faint 10px/0.34 numbers. The stamp itself comes from the shared
-   // html.is-print-layout rules in preview.css (active in the pane too, opening the dialog turns
+   // html.is-print-layout rules in score/preview-print.css (active in the pane too, opening the dialog turns
    // that class on), i.e. there is exactly ONE definition for paper and pane.
    const ui = readProjectFile("styles/ui.css").replace(/\s+/g, " ");
    assert.match(
@@ -3182,7 +3393,7 @@ test("the live PDF preview shows exactly the bar numbers the PDF will print", ()
    // Same stamp geometry + SAME INK as the print scopes, so preview and paper cannot drift apart.
    // The ink is pinned by a token because var(--ink) turns near-white in dark mode while every
    // preview/print surface is a white sheet.
-   const preview = readProjectFile("styles/preview.css");
+   const preview = readProjectFile("styles/score/preview.css");
    assert.equal((preview.match(/--print-bar-num-ink: #173a28;/g) || []).length, 1);
    assert.equal((preview.match(/color: var\(--print-bar-num-ink\);/g) || []).length, 2, "both print scopes");
    assert.ok(!/\[data-pdf-bar-numbers[\s\S]{0,400}color: var\(--ink\);/.test(preview));
@@ -3220,7 +3431,7 @@ test("the PDF options dialog exposes the bar-number choice", () => {
       !/Above left|Above right|Bottom left|Bottom right|Top left|Top right/.test(group[0]),
       "stale corner labels must be gone",
    );
-   const options = readProjectFile("src/pdfOptions.js");
+   const options = readProjectFile("src/pdf/pdfOptions.js");
    // ON by default (line starts), and clicking a button records the choice so an explicit
    // Off survives the legacy migration in sanitize().
    assert.match(options, /barNumbers: "line",/);
@@ -3242,7 +3453,7 @@ test("bar numbers are a Chord Chart-only option (Numbers/ChordPro/1-4 never get 
    const html = readProjectFile("index.html");
    assert.match(html, /<div class="pdf-field-divider" id="pdfBarsDivider">/);
    assert.match(html, /<section class="pdf-field" id="pdfBarNumField">/);
-   const options = readProjectFile("src/pdfOptions.js");
+   const options = readProjectFile("src/pdf/pdfOptions.js");
    assert.match(options, /onExport, getCard, barNumbersAvailable \} = \{\}\) \{/);
    assert.match(options, /const barNumField = \$\("#pdfBarNumField"\);/);
    assert.match(options, /const barsDivider = \$\("#pdfBarsDivider"\);/);
@@ -3257,7 +3468,7 @@ test("bar numbers are a Chord Chart-only option (Numbers/ChordPro/1-4 never get 
       /barNumbersAvailable: \(\) => normalizeEditorMode\(getState\(\)\.editorMode\) === "chords" && !isSingleBeatMeter\(getState\(\)\.meter\),/,
    );
    // `hidden` must beat the flex layouts of .pdf-field / .pdf-field-divider, and the dialog pane
-   // must NOT redeclare the stamp: one definition (preview.css) covers paper AND pane.
+   // must NOT redeclare the stamp: one definition (score/preview-print.css) covers paper AND pane.
    const ui = readProjectFile("styles/ui.css").replace(/\s+/g, " ");
    assert.match(ui, /\.pdf-options-panel \[hidden\] \{ display: none !important;/);
    assert.equal((ui.match(/body\[data-editor-mode="chords"\]/g) || []).length, 0);
@@ -3310,7 +3521,7 @@ test("bar numbers default to the line-starts density, and only a deliberate Off 
 
 // ---- Paper size is locked to A4 ---------------------------------------------
 // The PDF options dialog no longer offers a paper choice: the exported PDF is
-// always A4 (the geometry preview.css already declares). A stored value — e.g. a
+// always A4 (the geometry score/preview-print.css already declares). A stored value — e.g. a
 // legacy page — is ignored so an old song keeps printing on A4.
 test("paper size is locked to A4 (no A4/Letter choice anymore)", () => {
    assert.deepEqual(Object.keys(PDF_PAPER), ["a4"], "only A4 remains in the paper table");
@@ -3324,7 +3535,7 @@ test("paper size is locked to A4 (no A4/Letter choice anymore)", () => {
    assert.ok(!html.includes('id="pdfPaperGroup"'), "the Paper size group is gone");
    assert.ok(!html.includes("data-paper="), "no paper-choice buttons remain");
    // ...and the module keeps no paper geometry / lookup / click handler.
-   const options = readProjectFile("src/pdfOptions.js");
+   const options = readProjectFile("src/pdf/pdfOptions.js");
    assert.ok(!/letter\s*:/.test(options), "no Letter geometry left in PDF_PAPER");
    assert.ok(!options.includes('$("#pdfPaperGroup")'), "no paperWrap lookup");
    assert.ok(!options.includes("data-paper"), "no paper click handler");
@@ -3364,7 +3575,7 @@ test("the README documents the ChordPro mode and its starters", () => {
 });
 
 test("the LIVE PREVIEW bar is bold, larger and aligned with the preview card", () => {
-   const css = readProjectFile("styles/chordpro.css");
+   const css = readProjectFile("styles/score/chordpro.css");
    assert.match(css, /\.cp-stage-title \{[^}]*font-size: 13px[^}]*font-weight: 800/);
    assert.match(css, /\.cp-stage-hint \{[^}]*font-size: 12\.5px[^}]*font-weight: 700/);
    // The bar lives in the card's column and lines up with the card's content edge.
@@ -3387,7 +3598,7 @@ test("an album owner is labelled MD (Music Director), never co-owner", () => {
    // …used by the Members dialog, the album header, the album card and the picker.
    assert.match(cloudUI, /const roleLabel = roleShortLabel\(currentAlbum\.role\);/);
    assert.match(cloudUI, /const isOwner = album\.role === "owner";/);
-   assert.match(cloudUI, /\$\{isOwner \? MD_LABEL : "Member"\}/);
+   assert.match(cloudUI, /\$\{isOwner \? mdLabel : "Member"\}/);
    assert.match(cloudUI, /song\$\{a\.songCount === 1 \? "" : "s"\} · \$\{MD_LABEL\}<\/small>/);
    // No screen may print the old naming (the only mentions left are the comment
    // that explains the rename and the DB-side word "owner").
@@ -3514,7 +3725,10 @@ test("the sheet opens from the row's ⋮ (desktop) or a row tap (phone)", () => 
    assert.match(html, /<div class="member-actions-body" id="memberActionsBody"><\/div>/);
    // A row's ⋮ opens the sheet on EVERY width; isPhone() only WIDENS the hit area
    // (a phone may also tap the row), never changes what opens.
-   assert.match(cloudUI, /\$\("#memberList"\)\?\.addEventListener\("click", \(event\) => \{\n\s+const row = event\.target\.closest\("\.member-row\.is-manageable"\);\n\s+if \(!row\) return;\n\s+const menuBtn = event\.target\.closest\("\[data-member-menu\]"\);\n\s+if \(!menuBtn && !isPhone\(\)\) return;/);
+   assert.match(
+      cloudUI,
+      /\$\("#memberList"\)\?\.addEventListener\("click", \(event\) => \{\n\s+if \(event\.target\.closest\("\[data-members-retry\]"\)\) \{\n\s+openMembersDialog\(\);\n\s+return;\n\s+\}\n\s+const row = event\.target\.closest\("\.member-row\.is-manageable"\);\n\s+if \(!row\) return;\n\s+const menuBtn = event\.target\.closest\("\[data-member-menu\]"\);\n\s+if \(!menuBtn && !isPhone\(\)\) return;/,
+   );
    assert.match(cloudUI, /openMemberActionsDialog\(\{\n\s+uid: member\.uid,\n\s+name: friendlyName\(member\) \|\| "Musician",/);
    assert.match(cloudUI, /\}, row\.querySelector\("\[data-member-menu\]"\)\);/);
    // The sheet names WHOM it manages, moves the focus in — and puts it back on the
@@ -3538,10 +3752,13 @@ test("the sheet opens from the row's ⋮ (desktop) or a row tap (phone)", () => 
    // Closing the list also closes the sheet — and does NOT hand the focus back to
    // a ⋮ that sits inside a dialog which is going away.
    assert.match(cloudUI, /function closeMembersDialog\(\) \{[\s\S]{0,300}?closeMemberActionsDialog\(\{ restoreFocus: false \}\);/);
-   // The list teaches the affordance of THIS width: tap the row on a phone, ⋮ on a
-   // desktop — owners only, since a plain member has no controls at all.
-   assert.match(cloudUI, /const hint = isPhone\(\)\n\s+\? " Tap a member to manage them\."\n\s+: " Use ⋮ on a member to manage them\.";/);
-   assert.match(cloudUI, /const tapHint = isOwner \? hint : "";/);
+   // The summary teaches the affordance of THIS width: tap the row on a phone,
+   // the row menu on a desktop. Plain members only see who manages the album.
+   assert.match(cloudUI, /const note = \$\("#memberDialogSummaryNote"\);/);
+   assert.match(
+      cloudUI,
+      /isPhone\(\)\n\s+\? "Tap a person to manage them\."\n\s+: "Use the menu on a person to manage them\.";/,
+   );
    // The phone block: the ⋮ steps aside for the chevron, and the row becomes tap.
    assert.match(css, /@media \(max-width: 680px\) \{\n\s+#albumMembersDialog \.member-row \{\n\s+flex-wrap: nowrap;\n\s+\}\n\s+#albumMembersDialog \.member-row-menu-btn \{\n\s+display: none;\n\s+\}\n\s+#albumMembersDialog \.member-row\.is-manageable \{\n\s+cursor: pointer;\n\s+\}/);
    // The Remove label is never hidden any more: the sheet is the only surface and
@@ -3556,9 +3773,9 @@ test("the sheet opens from the row's ⋮ (desktop) or a row tap (phone)", () => 
 
 test("the member-actions buttons survive the phone breakpoint", () => {
    const css = readProjectFile("styles/ui.css");
-   // styles.css really does hide EVERY ghost button at ≤560px (the trap)…
+   // base/tokens.css really does hide EVERY ghost button at ≤560px (the trap)…
    assert.match(
-      readProjectFile("styles/styles.css"),
+      readProjectFile("styles/base/tokens.css"),
       /@media\(max-width:560px\)\{[\s\S]{0,200}?\.button-ghost\{display:none\}/,
    );
    // …and the sheet's buttons are ghost buttons, so they must be re-shown
@@ -3577,7 +3794,7 @@ test("a hidden home-toolbar button stays hidden on a phone", () => {
    assert.match(ui, /if \(newSongBtn\) newSongBtn\.hidden = isAlbums;/);
    assert.match(ui, /if \(attachLinkBtn\) attachLinkBtn\.hidden = isAlbums;/);
    assert.match(ui, /if \(newAlbumBtn\) newAlbumBtn\.hidden = !isAlbums;/);
-   // The phone re-shows (styles.css drops every .button-ghost at ≤560px) carry an
+   // The phone re-shows (base/tokens.css drops every .button-ghost at ≤560px) carry an
    // ID selector AND !important — so the generic `.cloud-gallery-actions > [hidden]`
    // LOSES to them and the 🔗 Attach Link stayed visible on the Albums tab on a
    // phone. An ID-level [hidden] guard is what makes `hidden` win again, and it
@@ -3602,14 +3819,14 @@ test("the role dialogs ask about MD, not co-owner", () => {
    assert.match(cloudUI, /confirmLabel: `Make \$\{MD_LABEL\}`/);
    assert.match(cloudUI, /title: "Change back to a member\?"/);
    // Each confirm dialog leads with the SAME icon as its row button: 🎼 / 👤.
-   assert.match(cloudUI, /confirmLabel: `Make \$\{MD_LABEL\}`, cancelLabel: "Cancel", icon: "🎼"/);
-   assert.match(cloudUI, /confirmLabel: "Make member", cancelLabel: "Cancel", icon: "👤"/);
+   assert.match(cloudUI, /confirmLabel: `Make \$\{MD_LABEL\}`, cancelLabel: "Cancel", icon: "music"/);
+   assert.match(cloudUI, /confirmLabel: "Make member", cancelLabel: "Cancel", icon: "person"/);
    // The dialog's own subtitle explains the counts and goes STRAIGHT to the
    // permission sentence — no "MD = Music Director." preamble any more.
    assert.match(cloudUI, /`\$\{mdCount\} \$\{MD_LABEL\}\$\{mdCount === 1 \? "" : "s"\}/);
    assert.match(
       cloudUI,
-      /const verbs = isOwner\n\s+\? `As an \$\{MD_LABEL\} you can promote a member to \$\{MD_LABEL\} or remove them\.`\n\s+: `\$\{MD_LABEL\}s can promote members to \$\{MD_LABEL\} and remove them\.`;/,
+      /desc\.textContent = `\$\{mdCount\} \$\{MD_LABEL\}\$\{mdCount === 1 \? "" : "s"\} and \$\{memberCount\} member\$\{memberCount === 1 \? "" : "s"\} in this album\.`;/,
    );
    assert.ok(
       !cloudUI.includes("MD = Music Director."),
@@ -3648,6 +3865,55 @@ test("sortVersionsByRecency orders by updatedAt desc, then number desc as a tieb
 
 test("sortVersionsByRecency is safe with an empty list", () => {
    assert.deepEqual(sortVersionsByRecency([]), []);
+});
+
+test("sortAlbumSongsByRecency keeps songs without a timestamp and sorts newest first", () => {
+   const songs = [
+      { songId: "old", updatedAt: 100 },
+      { songId: "undated" },
+      { songId: "new", updatedAt: 300 },
+   ];
+   const sorted = sortAlbumSongsByRecency(songs);
+   assert.deepEqual(
+      sorted.map((song) => song.songId),
+      ["new", "old", "undated"],
+   );
+   assert.deepEqual(
+      songs.map((song) => song.songId),
+      ["old", "undated", "new"],
+   );
+});
+
+test("listAlbumSongs reads the whole collection and sorts in the client", () => {
+   const albums = readProjectFile("src/cloud/data/albums.js");
+   assert.match(albums, /export function sortAlbumSongsByRecency\(songs\)/);
+   assert.match(albums, /const snapshot = await dbFns\.getDocs\(albumSongsCollection\(albumId\)\);/);
+   assert.match(albums, /const songs = sortAlbumSongsByRecency\(/);
+   assert.doesNotMatch(
+      albums,
+      /dbFns\.query\(albumSongsCollection\(albumId\), dbFns\.orderBy\("updatedAt"/,
+      "orderBy would silently omit album songs that lack updatedAt",
+   );
+});
+
+test("album song listing shares the latest-summary backfill helper", () => {
+   const albums = readProjectFile("src/cloud/data/albums.js");
+   const songs = readProjectFile("src/cloud/data/songs.js");
+   assert.match(songs, /export async function backfillLatestSummary\(/);
+   assert.match(albums, /\n\s+backfillLatestSummary,/);
+   assert.match(albums, /await backfillLatestSummary\(/);
+});
+
+test("a slow album-song response cannot replace the album now on screen", () => {
+   const controller = readProjectFile("src/cloud/ui/controller.js");
+   assert.match(controller, /let albumSongsRequest = 0;/);
+   assert.match(controller, /const request = \+\+albumSongsRequest;/);
+   assert.match(controller, /albumSongsRequest \+= 1;/);
+   assert.equal(
+      (controller.match(/request !== albumSongsRequest \|\| currentAlbum\?\.albumId !== albumId/g) || []).length,
+      2,
+      "both the success and error paths must ignore stale requests",
+   );
 });
 
 test("listVersions and listAlbumVersions share the recency ordering", () => {
@@ -3879,7 +4145,7 @@ test("the Albums index is a card grid with a role filter, sort and lazy extras",
 
    // The invite code is the MD's lever: members never see it on the card.
    assert.match(ui, /const code = isOwner \? String\(album\.activeInviteCode/);
-   assert.match(ui, /album-index-code-copy" type="button" data-act="copy-code"/);
+   assert.match(ui, /class="album-index-code" type="button" data-act="copy-code"/);
 
    // Cloud contract: the summary carries the code, and the two card reads are
    // deliberately small (limit(3) + count), not full album reads.
@@ -3926,6 +4192,22 @@ test("album detail uses the My Songs index under a Stitch-style summary", () => 
    assert.doesNotMatch(html, /class="button button-ghost" id="albumInviteBtn"/);
    assert.match(html, /←<\/span> Back to Albums/);
 
+   const albumDetail = html.slice(
+      html.indexOf('id="albumModal"'),
+      html.indexOf('id="addSongDialog"'),
+   );
+   const albumHeader = albumDetail.slice(
+      albumDetail.indexOf('<header class="cloud-album-head'),
+      albumDetail.indexOf("</header>") + 9,
+   );
+   const backAt = albumHeader.indexOf('id="albumBackBtn"');
+   const tabsAt = albumHeader.indexOf('id="albumTabMySongs"');
+   const profileAt = albumHeader.indexOf('id="albumAccountBtn"');
+   assert.ok(backAt !== -1 && tabsAt !== -1 && profileAt !== -1, "the header owns all three controls");
+   assert.ok(backAt < tabsAt && tabsAt < profileAt, "Back, tabs, then profile");
+   assert.doesNotMatch(albumHeader, /theme/i);
+   assert.doesNotMatch(html, /id="albumThemeToggle"/);
+
    // The list is the My Songs sheet, not a new row language.
    assert.match(html, /class="library-sheet album-detail-sheet"/);
    assert.match(html, /class="library-table-head album-detail-tablehead"/);
@@ -3935,6 +4217,7 @@ test("album detail uses the My Songs index under a Stitch-style summary", () => 
    assert.match(html, /data-album-song-mode="numbers"/);
    assert.match(html, /data-album-song-mode="chordpro"/);
    assert.match(html, /id="albumSongSearchClear"/);
+   assert.match(html, /id="albumSongSearch"[\s\S]{0,900}?class="library-search-kbd"/);
    assert.match(html, /id="albumReadonlyNote"/);
    assert.match(html, /data-album-song-icon="chords"/);
    assert.match(html, /data-album-song-icon="numbers"/);
@@ -3983,6 +4266,14 @@ test("album detail uses the My Songs index under a Stitch-style summary", () => 
    assert.match(css, /\.album-song-filter\.is-active/);
    assert.match(css, /\.album-detail-tablehead \{[\s\S]*?position: sticky/);
    assert.match(css, /\.album-detail-actions \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+   assert.match(
+      css,
+      /\.cloud-album\.library-redesign \.album-detail-actions \.button \{[\s\S]*?display: inline-flex;[\s\S]*?justify-content: center;/,
+   );
+   assert.match(
+      css,
+      /\.album-song-toolbar \.album-song-search input \{[\s\S]*?padding: 8px 78px 8px 38px;/,
+   );
    assert.match(css, /#albumAddFromBtn \{[\s\S]*?color: var\(--library-accent\)/);
    assert.match(css, /#albumLeaveBtn \{\n\s+grid-column: 1 \/ -1;/);
    assert.match(css, /\.album-song-search \.cloud-search-icon svg \{[\s\S]*?width: 16px/);
@@ -4007,7 +4298,7 @@ test("the My Songs index follows the Stitch component contract", () => {
    // Secondary header action is borderless.
    assert.match(css, /\.library-view-actions \.button-ghost[\s\S]{0,160}?border-color: transparent/);
    // Row mode mark and filter option share one helper and one icon set.
-   const notation = readProjectFile("src/notation.js");
+   const notation = readProjectFile("src/notation/notation.js");
    assert.match(ui, /function libraryModeIcon\(mode/);
    assert.match(ui, /modeIconMarkup\(mode, className\)/);
    assert.match(notation, /mode-mark is-\$\{mode\}/);
@@ -4045,7 +4336,7 @@ test("the My Songs index follows the Stitch component contract", () => {
    assert.match(cloud, /data\.bpm \?\? data\.BPM/, "only legacy documents may use the old BPM key");
    // A song saved before the summary carried the tempo is repaired from its
    // latest version, so the library can show BPM right away.
-   assert.match(cloud, /async function backfillLatestSummary\(/);
+   assert.match(cloud, /export async function backfillLatestSummary\(/);
    assert.match(cloud, /await backfillLatestSummary\(/);
    // Each writing mode owns a tinted tile (green / purple / amber), and the
    // row tile, the filter tile and the editor badge read the SAME tokens.
@@ -4164,7 +4455,7 @@ test("skeleton stays through cold-load filtering and covers every editor mode", 
    assert.match(cloudUI, /cachedAlbums = await listAlbums\(\);[\s\S]{0,180}?clearSkeletonTrack\(grid\);[\s\S]{0,120}?applyAlbumFilter\(\);/);
    assert.match(
       cloudUI,
-      /cachedAlbumSongs = await listAlbumSongs\(currentAlbum\.albumId\);[\s\S]{0,180}?clearSkeletonTrack\(track\);[\s\S]{0,120}?applyAlbumSongFilter\(\);/,
+      /const songs = await listAlbumSongs\(albumId\);[\s\S]{0,180}?cachedAlbumSongs = songs;[\s\S]{0,180}?clearSkeletonTrack\(track\);[\s\S]{0,120}?applyAlbumSongFilter\(\);/,
    );
 
    // Albums must show their own skeleton immediately, not after songs finish.
@@ -4210,7 +4501,7 @@ test("a failed editor load restores the library surface", () => {
 
 test("library rows do not animate in and keep restrained interaction feedback", () => {
    const css = readProjectFile("styles/ui.css");
-   const start = css.indexOf("LIBRARY REDESIGN");
+   const start = css.indexOf("LIBRARY REDESIGN — songbook index");
    const end = css.indexOf("@media screen and (max-width: 900px)", start);
    const block = css.slice(start, end);
    assert.match(block, /transition:\s*background-color/);
@@ -4349,7 +4640,7 @@ test("beatHTML draws the fermata glyph on a NESTED ½ leaf", () => {
 });
 
 test("the nested ½ fermata is anchored to match the rhythm-½ height (screen + print)", () => {
-   const css = readProjectFile("styles/preview.css").replace(/\/\*[\s\S]*?\*\//g, "");
+   const css = readProjectFile("styles/score/preview.css").replace(/\/\*[\s\S]*?\*\//g, "");
    // The base glyph is anchored just above the OWNER's top, so a ½/⅓/¼ sub-beat and
    // a subdivided group (which FILL the lane) lift their fermata to the lane top.
    const base = css.match(/\.beat-fermata \{[\s\S]*?\n\}/)[0];
@@ -4371,10 +4662,10 @@ test("sectionHasFermata detects a fermata anywhere in the section", () => {
 
 test("a fermata section that shows its chord row gets extra top room (screen + print)", () => {
    // render.js tags the section so the CSS can add the clearance.
-   const render = readProjectFile("src/render.js");
+   const render = readProjectFile("src/render/render.js");
    assert.match(render, /sectionFermata = sectionHasFermata\(section\)/);
    assert.match(render, /sectionFermata \? " has-fermata" : ""/);
-   const css = readProjectFile("styles/preview.css").replace(/\/\*[\s\S]*?\*\//g, "");
+   const css = readProjectFile("styles/score/preview.css").replace(/\/\*[\s\S]*?\*\//g, "");
    // Screen: a bigger chord-row gap for fermata sections.
    assert.match(
       css,
@@ -4526,8 +4817,8 @@ test("library dialogs label inputs and preserve creation and import actions", ()
    assert.match(html, /for="attachLinkInput"/);
    assert.match(html, /id="attachLinkPrivacy"/);
    assert.match(html, /for="joinAlbumCode">Invite code/);
-   assert.match(html, /class="confirm-dialog library-dialog" id="newAlbumDialog"/);
-   assert.match(html, /class="confirm-dialog library-dialog" id="joinAlbumDialog"/);
+   assert.match(html, /class="confirm-dialog library-dialog new-album-dialog" id="newAlbumDialog"/);
+   assert.match(html, /class="confirm-dialog library-dialog join-album-dialog" id="joinAlbumDialog"/);
    assert.match(html, /id="addSongList" role="radiogroup"/);
    assert.match(html, /id="addSongLoading"/);
    assert.match(html, /id="addSongError"/);
@@ -4538,6 +4829,43 @@ test("library dialogs label inputs and preserve creation and import actions", ()
    assert.match(cloudUI, /signOutButton\.textContent = "Signing out…"/);
    const css = readProjectFile("styles/ui.css");
    assert.match(css, /\.library-dialog \.library-dialog-actions\s*\{[\s\S]*?position:\s*sticky/);
+});
+
+test("library dialogs share one framed surface with restrained motion", () => {
+   const html = readProjectFile("index.html");
+   const css = readProjectFile("styles/ui.css");
+   // The video filter adopts the red library media mark, not a bare glyph.
+   assert.match(html, /class="library-filter-option-mark is-video"[\s\S]{0,220}?<rect x="3" y="5" width="18" height="14"/);
+   assert.match(css, /\.library-filter-option-mark\.is-video \{[\s\S]*?color: var\(--library-danger\)/);
+   // Attach Link explains the flow and keeps the privacy note inside a themed field.
+   assert.match(html, /class="attach-link-steps"/);
+   assert.match(html, /class="attach-link-paste"/);
+   assert.match(html, /attach-link-privacy-icon/);
+   // The mode previews use the shared mode palette and animate only on open.
+   assert.match(html, /class="mode-card mode-card-chords"/);
+   assert.match(html, /class="mode-card mode-card-numbers"/);
+   assert.match(html, /class="mode-card mode-card-chordpro"/);
+   assert.match(css, /@keyframes modeTokenIn/);
+   assert.match(css, /@keyframes modeChordProSweep/);
+   assert.match(css, /\.mode-picker-dialog\.is-open \.mode-preview-token/);
+   // The help dialog has its own scroll region and per-topic entrance.
+   assert.match(html, /id="howtoTopicList"/);
+   assert.match(css, /@keyframes howtoItemIn/);
+   assert.match(css, /#howToDialog\.is-open \.howto-item/);
+   // Confirmation dialogs share the library tokens and mark destructive actions.
+   assert.match(html, /class="confirm-dialog library-dialog" id="confirmDialog"/);
+   assert.match(html, /class="confirm-dialog-head"/);
+   assert.match(css, /#confirmDialog\.is-danger \.confirm-dialog-icon/);
+   assert.match(css, /#confirmDialog\.is-open \.confirm-dialog-icon svg/);
+   assert.match(css, /#confirmDialog \.confirm-dialog-actions \.button\.is-danger \{[\s\S]*?background: #b42318/);
+   // Members expose loading and summary states.
+   const cloudUI = readProjectFile("src/cloudUI.js");
+   assert.match(html, /id="memberDialogSummary"/);
+   assert.match(css, /\.member-list-state/);
+   assert.match(css, /@keyframes memberSpin/);
+   assert.match(cloudUI, /list\.setAttribute\("aria-busy", "true"\)/);
+   assert.match(cloudUI, /member-list-state/);
+   assert.match(cloudUI, /else if \(!\$\("#albumMembersDialog"\)\?\.hidden\) closeMembersDialog\(\);/);
 });
 
 test("profile identity and album member identity retain readable initials", () => {
@@ -4574,7 +4902,7 @@ test("nextSectionName skips names already used by a mid-song insertion", () => {
 });
 
 test("the editor can insert a section after any section, with read-only guards", () => {
-   const render = readProjectFile("src/render.js");
+   const render = readProjectFile("src/render/render.js");
    const events = readProjectFile("src/events.js");
    const css = readProjectFile("styles/ui.css");
    assert.match(render, /class="text-button add-section"[\s\S]{0,180}data-section="\$\{section\.id\}"/);
@@ -4585,7 +4913,7 @@ test("the editor can insert a section after any section, with read-only guards",
    assert.match(events, /\.add-section/);
    assert.match(css, /body\[data-member-readonly="1"\] \.add-section/);
    assert.match(css, /body\[data-view-only="1"\] \.add-section/);
-   const playback = readProjectFile("src/playback.js");
+   const playback = readProjectFile("src/playback/playback.js");
    assert.match(playback, /buildPlaybackQueue\(state\.sections, beatsPerBar \|\| 4, \{ fromSectionId \}\)/);
    assert.match(playback, /export async function startPlayback\(\{ fromSectionId = null/);
 });
@@ -4608,6 +4936,17 @@ test("the topbar owns the play + BPM transport and the sheet does not", () => {
    assert.doesNotMatch(html, /data-play-section/);
 });
 
+test("the test-mode auth bypass is local-only", () => {
+   const html = readProjectFile("index.html");
+   assert.match(html, /const localHost = \["localhost", "127\.0\.0\.1", "::1"\]\.includes\(location\.hostname\);/);
+   assert.match(html, /const testMode = localHost && params\.has\("test"\);/);
+   assert.match(html, /document\.documentElement\.dataset\.testMode = testMode \? "1" : "0";/);
+
+   const controller = readProjectFile("src/cloud/ui/controller.js");
+   assert.match(controller, /const TEST_MODE = document\.documentElement\.dataset\.testMode === "1";/);
+   assert.doesNotMatch(controller, /new URLSearchParams\(location\.search\)\.has\("test"\)/);
+});
+
 test("PDF preview zoom is anchored to one page and ignores pageCount", () => {
    // 54% is the one-page height fit at this pane size. The same call must stay
    // 54% after the content grows to a second page — the old code dropped the
@@ -4620,7 +4959,7 @@ test("PDF preview zoom is anchored to one page and ignores pageCount", () => {
    assert.equal(computePreviewScale({ availableW: 300, availableH: 600, naturalWidth: 794, onePageHeight: 1123 }), 300 / 794);
    assert.equal(computePreviewScale({ availableW: 10, availableH: 10, naturalWidth: 794, onePageHeight: 1123 }), 0.2);
    assert.equal(computePreviewScale({ availableW: 5000, availableH: 5000, naturalWidth: 794, onePageHeight: 1123 }), 1);
-   const options = readProjectFile("src/pdfOptions.js");
+   const options = readProjectFile("src/pdf/pdfOptions.js");
    assert.match(options, /const scale = computePreviewScale\(\{/);
    assert.doesNotMatch(options, /pageCount === 1 && availableH > 0/, "page count must not gate the height fit");
 });

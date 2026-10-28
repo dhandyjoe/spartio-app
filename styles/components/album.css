@@ -1,0 +1,2311 @@
+/* Albums index, album detail, members and invite dialogs. */
+/* ======================================================================
+   ALBUM (Fase 3/4) — Albums tab, album cards, album detail, invite UI.
+   Reuses the existing cloud tokens so light/dark stay in sync.
+   ====================================================================== */
+
+/* Home tabs (My Songs | Albums) — a COMPACT segmented toggle whose TRACK matches
+   the toolbar/page surface (so it blends in); the ACTIVE segment is a GREEN pill
+   with white text, the inactive one is muted text. */
+.home-tabs {
+   flex: 0 0 auto;
+   align-self: center;
+   display: inline-flex;
+   align-items: stretch;
+   width: min(320px, 100%);
+   margin: 10px 0;
+   padding: 3px;
+   border: 1px solid var(--line);
+   border-radius: 999px;
+   background: var(--surface);
+}
+.home-tab {
+   flex: 1 1 0;
+   appearance: none;
+   border: 0;
+   border-radius: 999px;
+   padding: 9px 16px;
+   font: 700 13px inherit;
+   color: var(--muted);
+   background: transparent;
+   cursor: pointer;
+   transition:
+      background 0.2s ease,
+      color 0.2s ease;
+}
+.home-tab:hover {
+   color: var(--ink);
+}
+.home-tab.is-active,
+.home-tab[aria-selected="true"] {
+   color: #ffffff;
+   background: var(--green);
+}
+.home-tab-panel {
+   flex: 1 1 auto;
+   min-height: 0;
+   display: flex;
+   flex-direction: column;
+}
+.home-tab-panel[hidden] {
+   display: none;
+}
+
+/* Albums toolbar above the album card list. */
+.albums-toolbar {
+   flex: 0 0 auto;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   gap: 12px;
+   padding: 14px clamp(20px, 4vw, 56px) 6px;
+   flex-wrap: wrap;
+}
+.albums-toolbar-note {
+   font-size: 12.5px;
+   color: var(--muted);
+}
+.albums-list {
+   flex: 1 1 auto;
+   min-width: 0;
+   width: 100%;
+   max-width: 100%;
+   height: 100%;
+   overflow-y: auto;
+   padding: 26px clamp(20px, 5vw, 64px);
+   align-content: start;
+   display: flex;
+   flex-direction: column;
+   gap: 14px;
+   scrollbar-width: thin;
+}
+.albums-list[hidden] {
+   display: none;
+}
+.album-card {
+   display: flex;
+   align-items: center;
+   gap: 16px;
+   width: 100%;
+   padding: 18px 20px;
+   border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+   border-radius: var(--radius-md);
+   background: var(--surface);
+   color: var(--ink);
+   font: inherit;
+   text-align: left;
+   cursor: pointer;
+   box-shadow: 0 1px 3px rgba(16, 40, 28, 0.05), 0 9px 26px -14px rgba(16, 40, 28, 0.14);
+   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.25s ease;
+}
+.album-card:hover,
+.album-card:focus-visible {
+   transform: translateY(-2px);
+   border-color: color-mix(in srgb, var(--green) 32%, transparent);
+   box-shadow: 0 2px 6px rgba(16, 40, 28, 0.06), 0 18px 34px -16px rgba(16, 40, 28, 0.28);
+   outline: none;
+}
+.album-card-icon {
+   flex: 0 0 auto;
+   display: grid;
+   place-items: center;
+   width: 44px;
+   height: 44px;
+   border-radius: 13px;
+   background: linear-gradient(135deg, var(--soft), var(--surface));
+   font-size: 21px;
+   color: var(--dark-green);
+}
+.album-card-body {
+   display: flex;
+   flex-direction: column;
+   min-width: 0;
+   gap: 3px;
+   flex: 1 1 auto;
+}
+.album-card-name {
+   font-size: 16.5px;
+   font-weight: 750;
+   letter-spacing: -0.01em;
+   color: var(--ink);
+}
+.album-card-meta {
+   font-size: 12.5px;
+   color: var(--muted);
+}
+.album-card-desc {
+   font-size: 13px;
+   color: var(--muted);
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+.album-card-open {
+   flex: 0 0 auto;
+   font-size: 19px;
+   color: var(--muted);
+}
+/* Album detail page-overlay (mirrors .cloud-gallery). */
+.cloud-album {
+   place-items: stretch;
+   padding: 0;
+   grid-template-columns: minmax(0, 1fr);
+   grid-template-rows: minmax(0, 1fr);
+}
+.cloud-album-shell {
+   position: relative;
+   width: 100%;
+   min-width: 0;
+   height: 100%;
+   overflow: hidden;
+   display: flex;
+   flex-direction: column;
+   background: var(--app-bg);
+   transform: translateY(14px);
+   opacity: 0;
+   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.28s ease;
+}
+.cloud-album.is-open .cloud-album-shell {
+   transform: translateY(0);
+   opacity: 1;
+}
+.cloud-album-head {
+   flex: 0 0 auto;
+   /* Equal 1fr side columns keep the centered title OPTICALLY centered no
+      matter how wide the back button or the action buttons get. */
+   display: grid;
+   grid-template-columns: 1fr auto 1fr;
+   align-items: center;
+   gap: 18px;
+   padding: 18px clamp(20px, 4vw, 56px);
+   border-bottom: 1px solid var(--line);
+   background: var(--surface);
+}
+.album-back {
+   justify-self: start;
+}
+.cloud-album-heading {
+   min-width: 0;
+   justify-self: center;
+   display: flex;
+   align-items: center;
+   gap: 12px;
+   text-align: left;
+}
+/* Lobby hook #7: the album hero tile glows — dark gradient fill, lime-tinted
+   hairline, soft lime aura, glyph in spark. One-shot scale-in keyed on the
+   shell's .is-open entrance. */
+.cloud-album-hero {
+   flex: none;
+   display: grid;
+   place-items: center;
+   width: 52px;
+   height: 52px;
+   border: 1px solid color-mix(in srgb, var(--spark) 30%, transparent);
+   border-radius: 15px;
+   background: linear-gradient(150deg, #1b1c1a, #0e0f0d);
+   box-shadow: 0 0 24px -6px var(--lobby-glow);
+}
+.cloud-album-hero span {
+   font-family: "Sora", "Inter", system-ui, sans-serif;
+   font-size: 24px;
+   font-weight: 800;
+   letter-spacing: -0.02em;
+   color: var(--spark);
+   line-height: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+   .cloud-album .cloud-album-hero {
+      transform: scale(0.9);
+      transition: transform 0.32s var(--lobby-ease);
+   }
+   .cloud-album.is-open .cloud-album-hero {
+      transform: scale(1);
+   }
+}
+.cloud-album-heading-text {
+   min-width: 0;
+   text-align: left;
+}
+.cloud-album-heading .cloud-modal-title {
+   margin: 0;
+   font-size: clamp(16px, 1.7vw, 20px);
+   font-weight: 750;
+   letter-spacing: -0.01em;
+}
+.cloud-album-heading .cloud-modal-sub {
+   margin: 3px 0 0;
+   font-size: 12.5px;
+   color: var(--muted);
+}
+.cloud-album-actions {
+   display: flex;
+   align-items: center;
+   justify-content: flex-end;
+   justify-self: end;
+   gap: 9px;
+   flex-wrap: wrap;
+}
+.cloud-album-searchbar {
+   flex: 0 0 auto;
+   display: flex;
+   flex-wrap: wrap;
+   align-items: center;
+   justify-content: center;
+   gap: 12px;
+   padding: 14px clamp(20px, 4vw, 56px) 6px;
+}
+
+/* Album song list: the SAME carousel as My Songs (two-row zigzag, horizontal
+   scroll only, hidden scrollbars → no vertical scrollbars). */
+.cloud-album-body {
+   position: relative;
+   flex: 1 1 auto;
+   min-height: 0;
+   width: 100%;
+   max-width: 100%;
+   overflow: hidden; /* the scrolling grid lives INSIDE here */
+   display: flex;
+   align-items: flex-start;
+   justify-content: center;
+}
+.cloud-album-cards {
+   /* inherits the shared .cloud-cards carousel styles */
+}
+
+/* Topbar album context pill. */
+.album-pill {
+   display: inline-flex;
+   align-items: center;
+   gap: 5px;
+   padding: 5px 10px;
+   border-radius: 999px;
+   border: 1px solid color-mix(in srgb, var(--green) 38%, transparent);
+   background: var(--soft);
+   color: var(--dark-green);
+   font-size: 12px;
+   font-weight: 650;
+}
+.album-pill[hidden] {
+   display: none;
+}
+.album-pill.is-readonly {
+   border-color: color-mix(in srgb, var(--muted) 45%, transparent);
+   background: var(--soft);
+   color: var(--ink);
+}
+
+/* Read-only banner under the topbar (album members in the editor). */
+.album-banner {
+   display: flex;
+   align-items: center;
+   gap: 10px;
+   margin: 0;
+   padding: 8px 18px;
+   border: 1px solid color-mix(in srgb, var(--muted) 40%, transparent);
+   border-radius: 10px;
+   background: var(--soft);
+   color: var(--ink);
+   font-size: 12.5px;
+}
+.album-banner[hidden] {
+   display: none;
+}
+.album-banner-icon {
+   flex: 0 0 auto;
+   font-size: 14px;
+}
+.album-banner::before {
+   content: "";
+   flex: 0 0 auto;
+   width: 8px;
+   height: 8px;
+   border-radius: 50%;
+   background: var(--muted);
+}
+/* Join album dialog code input. */
+.album-code-field {
+   display: flex;
+   flex-direction: column;
+   gap: 8px;
+   margin-top: 14px;
+}
+.album-code-input {
+   font-size: 17px;
+   font-weight: 700;
+   letter-spacing: 0.14em;
+   text-transform: uppercase;
+   text-align: center;
+   font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+   font-variant-numeric: tabular-nums;
+}
+
+/* New album dialog fields. */
+.album-fields {
+   display: flex;
+   flex-direction: column;
+   gap: 12px;
+   margin-top: 4px;
+}
+.album-desc-input {
+   resize: vertical;
+   min-height: 58px;
+   /* Same font as the album name input (matches .new-song-name-input). */
+   font: 600 15px inherit;
+}
+.album-desc-input::placeholder {
+   color: var(--muted);
+}
+
+/* Invite dialog: the big shareable code. */
+.invite-code-box {
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   gap: 12px;
+   margin: 16px 0 6px;
+   padding: 16px 18px;
+   border: 1px dashed color-mix(in srgb, var(--green) 45%, transparent);
+   border-radius: var(--radius-md);
+   background: var(--soft);
+}
+.invite-code-value {
+   font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+   font-size: 24px;
+   font-weight: 800;
+   letter-spacing: 0.16em;
+   color: var(--dark-green);
+   font-variant-numeric: tabular-nums;
+}
+/* In-place copy confirmation: the button briefly reads "Copied". */
+#inviteCodeCopy.is-copied {
+   border-color: color-mix(in srgb, var(--green) 45%, transparent);
+   background: var(--soft);
+   color: var(--dark-green);
+}
+
+/* Add-song dialog: radio list of My Songs. */
+.add-song-list {
+   display: flex;
+   flex-direction: column;
+   gap: 9px;
+   max-height: 260px;
+   overflow-y: auto;
+   margin-top: 10px;
+}
+.add-song-option {
+   display: flex;
+   align-items: center;
+   gap: 11px;
+   padding: 11px 13px;
+   border: 1px solid var(--line);
+   border-radius: 11px;
+   background: var(--surface);
+   cursor: pointer;
+   transition: border-color 0.16s ease, background 0.16s ease;
+}
+.add-song-option:hover {
+   border-color: color-mix(in srgb, var(--green) 34%, transparent);
+   background: var(--soft);
+}
+.add-song-option input[type="radio"] {
+   accent-color: var(--green);
+   width: 17px;
+   height: 17px;
+   margin: 0;
+}
+.add-song-option-text {
+   display: flex;
+   flex-direction: column;
+   gap: 1px;
+   min-width: 0;
+   flex: 1 1 auto;
+}
+.add-song-option-text strong {
+   font-size: 14px;
+   color: var(--ink);
+}
+.add-song-option-text small {
+   font-size: 12px;
+   color: var(--muted);
+}
+
+/* Members dialog list. */
+.member-list {
+   display: flex;
+   flex-direction: column;
+   gap: 10px;
+   max-height: 300px;
+   overflow-y: auto;
+   margin-top: 10px;
+}
+.member-row {
+   display: flex;
+   align-items: center;
+   gap: 12px;
+   padding: 12px 14px;
+   border: 1px solid var(--line);
+   border-radius: 12px;
+   background: var(--surface);
+   transition: background 0.15s ease, border-color 0.15s ease;
+}
+#albumMembersDialog .member-row:hover {
+   background: var(--soft);
+   border-color: color-mix(in srgb, var(--green) 28%, var(--line));
+}
+.member-avatar {
+   flex: 0 0 auto;
+   display: grid;
+   place-items: center;
+   width: 34px;
+   height: 34px;
+   border-radius: 50%;
+   background: var(--soft);
+   color: var(--dark-green);
+   font-family: "Sora", "Inter", system-ui, sans-serif;
+   font-weight: 800;
+   font-size: 14px;
+}
+.member-who {
+   display: flex;
+   flex-direction: column;
+   gap: 1px;
+   min-width: 0;
+   flex: 1 1 auto;
+}
+.member-who strong {
+   font-size: 14px;
+   letter-spacing: -0.01em;
+   color: var(--ink);
+}
+.member-who small {
+   font-size: 12px;
+   color: var(--muted);
+}
+.member-badge {
+   flex: 0 0 auto;
+   padding: 3px 9px;
+   border-radius: 999px;
+   background: var(--soft);
+   color: var(--dark-green);
+   font-size: 11.5px;
+   font-weight: 700;
+}
+.member-controls {
+   display: flex;
+   align-items: center;
+   gap: 7px;
+   flex-wrap: nowrap;
+}
+
+/* Dark theme tweaks for the album UI. The lobby is ALWAYS dark, so the
+   former dark-theme duplicates for tabs / album cards / hero / pills were
+   replaced by the LOBBY token remap + always-on rules near the top. The
+   standalone member/invite dialogs keep their own dark rules (they are NOT
+   inside .cloud-gallery / .cloud-album, so the remap does not reach them). */
+html[data-theme="dark"] .invite-code-box {
+   background: #1d211e;
+}
+html[data-theme="dark"] .invite-code-value {
+   color: #7fd3a4;
+}
+html[data-theme="dark"] .add-song-option,
+html[data-theme="dark"] .member-row {
+   background: #101210;
+}
+html[data-theme="dark"] .add-song-option-text strong,
+html[data-theme="dark"] .member-who strong {
+   color: #f1f4f2;
+}
+html[data-theme="dark"] .member-avatar {
+   background: #1d211e;
+   color: #7fd3a4;
+}
+html[data-theme="dark"] .member-badge {
+   background: #1d211e;
+   color: #7fd3a4;
+}
+/* Danger button in the album header (Leave). Uses the SAME rose accent as the
+   Edit-page YouTube chip (#e11d48 / #be123c in light, #fb7185 / #fda4af in dark)
+   so "red" means one single thing across the app. It is the header's one
+   destructive action, available to a member AND an owner / co-owner. */
+.cloud-album-actions .button.is-danger {
+   color: #be123c;
+   border: 1px solid color-mix(in srgb, #e11d48 22%, transparent);
+   background: color-mix(in srgb, #e11d48 8%, #fff);
+}
+.cloud-album-actions .button.is-danger:hover {
+   color: #9f1239;
+   border-color: color-mix(in srgb, #e11d48 55%, transparent);
+   background: color-mix(in srgb, #e11d48 14%, #fff);
+}
+/* The Leave button lives in the always-dark lobby → the dark rose variant is
+   the default (its dark-theme duplicate was removed). */
+.cloud-album-actions .button.is-danger {
+   color: #fda4af;
+   border: 1px solid color-mix(in srgb, #fb7185 30%, transparent);
+   background: color-mix(in srgb, #fb7185 14%, #111);
+}
+.cloud-album-actions .button.is-danger:hover {
+   color: #fecdd3;
+   border-color: color-mix(in srgb, #fb7185 52%, transparent);
+   background: color-mix(in srgb, #fb7185 22%, #111);
+}
+/* Album list card delete affordance (owner cards only). */
+.album-card-delete {
+   flex: 0 0 auto;
+   width: 38px;
+   height: 38px;
+   padding: 0;
+   display: grid;
+   place-items: center;
+   border: 1px solid color-mix(in srgb, #d96a5f 55%, transparent);
+   border-radius: 999px;
+   background: rgba(255, 240, 238, 0.85);
+   color: #b3261e;
+   cursor: pointer;
+   box-shadow: none;
+   transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+.album-card-delete:hover {
+   background: #fdecec;
+   color: #a01f18;
+   border-color: #c9564b;
+}
+.album-card-delete:focus-visible {
+   outline: 2px solid #b3261e;
+   outline-offset: 1px;
+}
+html[data-theme="dark"] .album-card-delete {
+   background: #2a1c1a;
+   color: #f2b2a9;
+   border: 1px solid #7c3d37;
+}
+html[data-theme="dark"] .album-card-delete:hover {
+   background: #3a2622;
+   color: #ffd7d0;
+}
+/* The shared confirm dialog must ALWAYS stack above any other open dialog
+   (#albumMembersDialog, #inviteDialog, home, …) so its prompt is never hidden. */
+#confirmDialog {
+   z-index: 1900;
+}
+
+/* Members list polish.
+   Role naming: the app calls a full-access "owner" the MUSIC DIRECTOR and prints
+   MD everywhere — the word "co-owner" is never shown. The marker after a name is
+   the one role flag in this list: "Dhandy (MD)" — BOLD (inherited from the row's
+   <strong>) + ITALIC, in the album accent so it reads at a glance. A row with no
+   marker is a plain member. */
+.member-md-mark {
+   font-style: italic;
+   font-weight: 800;
+   color: var(--dark-green);
+   letter-spacing: 0.02em;
+   white-space: nowrap;
+}
+.member-you {
+   font-size: 11px;
+   font-weight: 600;
+   color: var(--muted);
+}
+/* The sheet's stack of two verb buttons. A member ROW no longer renders this at
+   all: it carries the ⋮ / chevron pair (see .member-row-menu-btn below). */
+.member-controls {
+   display: flex;
+   align-items: center;
+   gap: 6px;
+   flex-wrap: wrap;
+   justify-content: flex-end;
+}
+/* The per-row control on a desktop/tablet: a ⋮ that opens the member-actions sheet.
+   It replaced two inline buttons whose labels were the role NAMES, which made the
+   row read as a status badge ("Andi 🎼 MD" looked like a statement about Andi, not
+   an action). A ⋮ is unambiguous, and the verbs now live in the sheet.
+   On a phone this button is HIDDEN (≤680px, see the media query at the end of this
+   block) and the row shows a chevron instead, because there the whole row is the
+   tap target. Deliberately neither red nor gold: red belongs to the destructive
+   Remove and gold to the MD accent, so this stays the quiet, universal "actions
+   here" chip. Same 38px square + grid centring as the old trash square, so the
+   rows keep their rhythm. */
+.member-row-menu-btn {
+   flex: 0 0 auto;
+   display: grid;
+   place-items: center;
+   width: 38px;
+   min-width: 38px;
+   height: 38px;
+   min-height: 38px;
+   padding: 0;
+   border: 1px solid var(--line);
+   border-radius: 10px;
+   background: var(--surface);
+   color: var(--muted);
+   cursor: pointer;
+   transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+}
+.member-row-menu-btn:hover {
+   border-color: #a9c9b3;
+   background: var(--soft);
+   color: var(--dark-green);
+}
+.member-row-menu-btn:active {
+   background: var(--soft);
+}
+/* While its sheet is open (cloudUI.js keeps this attribute in sync). */
+.member-row-menu-btn[aria-expanded="true"] {
+   border-color: #a9c9b3;
+   background: var(--soft);
+   color: var(--dark-green);
+}
+.member-row-menu-btn svg {
+   display: block;
+}
+html[data-theme="dark"] .member-row-menu-btn {
+   border-color: #3d4642;
+   background: #1d211e;
+   color: #9fb69f;
+}
+html[data-theme="dark"] .member-row-menu-btn:hover,
+html[data-theme="dark"] .member-row-menu-btn[aria-expanded="true"] {
+   border-color: #7fd3a4;
+   background: #232a26;
+   color: #d7e6d9;
+}
+html[data-theme="dark"] .member-md-mark {
+   color: #7fd3a4;
+}
+html[data-theme="dark"] .member-you {
+   color: #9fb69f;
+}
+/* Members dialog: wider card so role controls have room to breathe. */
+.confirm-dialog-card.member-dialog-card {
+   width: min(560px, 94vw);
+   max-height: 84vh;
+   min-height: 240px;
+   align-items: stretch;
+   text-align: left;
+}
+#albumMembersDialog .member-row {
+   padding: 13px 15px;
+}
+#albumMembersDialog .member-who strong {
+   font-size: 14.5px;
+}
+html[data-theme="dark"] #albumMembersDialog .member-row {
+   background: #101210;
+}
+/* Members dialog header: icon on the LEFT + title/subtitle beside it, exactly
+   like the version dialogs. Keep the footer action left-aligned with it. */
+#albumMembersDialog .confirm-dialog-actions {
+   justify-content: flex-end;
+}
+#albumMembersDialog .confirm-dialog-actions .button {
+   min-width: 96px;
+}
+/* The two VERB buttons — rendered only by the member-actions sheet now, which is
+   the single surface at every width (a row carries just the ⋮).
+   memberControlsMarkup() in cloudUI.js is the single builder, and the :is() list
+   is kept as defensive coverage: it holds the ID-level specificity that beats
+   `base/tokens.css`'s `.button-ghost { display: none }` on phones (see the ≤560px
+   override at the end of this block) — the trap that once hid these buttons.
+
+   LABELS ARE VERBS: "Make MD" / "Make member" / "Remove from album" — never a bare
+   "MD" / "Member". A noun inside a pill reads as a STATUS badge ("Andi 🎼 MD"),
+   which is exactly the confusion this replaced; the sheet's subtitle already
+   states the member's CURRENT role, so the buttons only ever state actions.
+
+   The two icons are deliberately far apart so they never blur together:
+   🎼 Make MD = the score a music director works from (the promote action), and
+   👤 Make member = the quiet read-only musician (the demote action). Remove wears
+   the app's single red (rose) — byte-identical values to the album header's Leave
+   button and the Edit-page YouTube chip (#e11d48 / #be123c light, #fb7185 /
+   #fda4af dark), so "red" keeps exactly one meaning.
+
+   MD's surface is a SOFT GOLD TINT (12% of the accent over the surface) — the
+   same restrained recipe the app already uses for its red actions. A saturated
+   gradient read as "primary/selected" and competed with Save to Cloud; a tint
+   keeps a warm, calm surface next to 👤 and the red Remove, and keeps the label
+   legible (contrast ≈ 6.2:1 light, ≈ 9.4:1 dark). */
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn {
+   display: inline-flex;
+   align-items: center;
+   gap: 6px;
+   font-size: 12.5px;
+}
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn span {
+   font-size: 14px;
+   line-height: 1;
+}
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn.is-promote {
+   color: #854d0e;
+   border: 1px solid color-mix(in srgb, #f59e0b 32%, transparent);
+   background: color-mix(in srgb, #f59e0b 12%, #fff);
+}
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn.is-promote:hover {
+   color: #713f12;
+   border-color: color-mix(in srgb, #f59e0b 55%, transparent);
+   background: color-mix(in srgb, #f59e0b 20%, #fff);
+}
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn.is-demote {
+   color: var(--dark-green);
+   border: 1px solid color-mix(in srgb, var(--line) 95%, transparent);
+   background: #fff;
+}
+html[data-theme="dark"] :is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn.is-promote {
+   color: #fcd34d;
+   border-color: color-mix(in srgb, #fbbf24 34%, transparent);
+   background: color-mix(in srgb, #fbbf24 16%, #111);
+}
+html[data-theme="dark"] :is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn.is-promote:hover {
+   color: #fde68a;
+   border-color: color-mix(in srgb, #fbbf24 58%, transparent);
+   background: color-mix(in srgb, #fbbf24 24%, #111);
+}
+html[data-theme="dark"] :is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-role-btn.is-demote {
+   color: #d7e6d9;
+   border-color: #3d4642;
+   background: #1d211e;
+}
+/* "Remove from album" is always visible now: the sheet renders this button as a
+   full-width bar, where the icon alone would look like a stray red chip. */
+.member-remove-label {
+   display: inline;
+   font-weight: 700;
+}
+/* Remove's BASE shape is the 38px icon square — an inline SVG (not an emoji
+   glyph, see the markup comment) in a grid-centred box, so the trash sits
+   DEAD-CENTRE by construction at any zoom; no font metrics, no padding
+   asymmetry, no optical nudge needed. The sheet then stretches it into the
+   full-width bar that shows the label (see MEMBER ACTIONS SHEET below). */
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-remove-btn {
+   display: grid;
+   place-items: center;
+   width: 38px;
+   min-width: 38px;
+   height: 38px;
+   min-height: 38px;
+   padding: 0;
+   line-height: 0;
+   color: #be123c;
+   border: 1px solid color-mix(in srgb, #e11d48 22%, transparent);
+   background: color-mix(in srgb, #e11d48 8%, #fff);
+}
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-remove-btn svg {
+   display: block;
+   width: 17px;
+   height: 17px;
+}
+:is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-remove-btn:hover {
+   color: #9f1239;
+   border-color: color-mix(in srgb, #e11d48 55%, transparent);
+   background: color-mix(in srgb, #e11d48 14%, #fff);
+}
+html[data-theme="dark"] :is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-remove-btn {
+   color: #fda4af;
+   border: 1px solid color-mix(in srgb, #fb7185 30%, transparent);
+   background: color-mix(in srgb, #fb7185 14%, #111);
+}
+html[data-theme="dark"] :is(#albumMembersDialog, #memberActionsDialog) .member-controls .button.member-remove-btn:hover {
+   color: #fecdd3;
+   border-color: color-mix(in srgb, #fb7185 52%, transparent);
+   background: color-mix(in srgb, #fb7185 22%, #111);
+}
+/* ---------------------------------------------------------------------------
+   MEMBER ACTIONS SHEET — used at EVERY width, not just on phones.
+   It is the one place the verbs live: the row's ⋮ opens it on a desktop, and a
+   phone opens it from the ⋮ or by tapping the row itself. It states the
+   member's CURRENT role in the header, so the two buttons below only state
+   ACTIONS ("Make MD" / "Make member" / "Remove from album") and can never be
+   mistaken for status badges.
+   Both buttons stretch full width as comfortable targets — which is also why
+   Remove shows its label here instead of being the icon-only square of the base
+   rule above.
+--------------------------------------------------------------------------- */
+.member-actions-card {
+   width: min(420px, 94vw);
+   align-items: stretch;
+   text-align: left;
+}
+.member-actions-avatar {
+   font-size: 17px;
+   font-weight: 800;
+}
+.member-actions-body {
+   margin-top: 14px;
+}
+.member-actions-body .member-controls {
+   flex-direction: column;
+   align-items: stretch;
+   gap: 10px;
+   width: 100%;
+}
+#memberActionsDialog .member-actions-body .member-controls .button {
+   width: 100%;
+   min-height: 46px;
+   justify-content: center;
+   font-size: 13px;
+}
+#memberActionsDialog .member-actions-body .member-controls .button.member-remove-btn {
+   display: inline-flex;
+   width: 100%;
+   min-width: 0;
+   height: auto;
+   min-height: 46px;
+   gap: 8px;
+}
+/* Phones: the ⋮ is replaced by the row's chevron — there the WHOLE row is the tap
+   target (see the delegation in cloudUI.js), so a button inside the row would just
+   compete with that affordance. Desktop/tablet keeps the ⋮. */
+.member-row-chevron {
+   display: none;
+   flex: 0 0 auto;
+   align-self: center;
+   margin-left: 2px;
+   color: var(--muted);
+   font-size: 22px;
+   line-height: 1;
+}
+html[data-theme="dark"] .member-row-chevron {
+   color: #9fb69f;
+}
+@media (max-width: 680px) {
+   #albumMembersDialog .member-row {
+      flex-wrap: nowrap;
+   }
+   #albumMembersDialog .member-row-menu-btn {
+      display: none;
+   }
+   #albumMembersDialog .member-row.is-manageable {
+      cursor: pointer;
+   }
+   #albumMembersDialog .member-row.is-manageable .member-row-chevron {
+      display: block;
+   }
+   #albumMembersDialog .member-row.is-manageable:active {
+      background: var(--soft);
+   }
+}
+html[data-theme="dark"] #albumMembersDialog .member-row.is-manageable:active {
+   background: #1d211e;
+}
+/* PHONES: base/tokens.css hides EVERY .button-ghost at ≤560px, and the member-actions
+   buttons are ghost buttons — so without this a phone showed a sheet with NO
+   Make MD / Make member / Remove buttons at all. An ID selector beats the class
+   rule (media queries add no specificity), so re-show them here, at every width.
+   Same trap for the "Add from My Songs" Cancel button. */
+@media (max-width: 560px) {
+   :is(#albumMembersDialog, #memberActionsDialog) .member-controls .button,
+   #addSongCancel.button-ghost {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+   }
+}
+/* ---------------------------------------------------------------------------
+   ALBUM DETAIL on phones. (The Albums-index toolbar has its own block below.)
+   The header stacks: back button, the CENTERED album name + meta line, then the
+   action row.
+--------------------------------------------------------------------------- */
+@media (max-width: 680px) {
+   .cloud-album-head {
+      grid-template-columns: 1fr;
+      justify-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+   }
+   .album-back {
+      justify-self: start;
+   }
+   .cloud-album-heading {
+      justify-self: center;
+      text-align: center;
+   }
+   .cloud-album-heading-text {
+      text-align: center;
+   }
+   .cloud-album-hero {
+      width: 36px;
+      height: 36px;
+   }
+   .cloud-album-hero span {
+      font-size: 18px;
+   }
+   .cloud-album-actions {
+      width: 100%;
+      justify-self: stretch;
+      justify-content: center;
+   }
+}
+
+/* ======================================================================
+   ALBUMS INDEX (home → Albums)
+   Two-column album cards after the Stitch "Albums – Dark Theme" frame: role
+   tag + live invite code (MDs only), name, description, a preview of the
+   newest arrangements, then songs / members / updated and the way in.
+   Every colour comes from the LIBRARY REDESIGN token block, so light and dark
+   share one rule set and the index matches My Songs.
+
+   Layout arithmetic (desktop, 1360px cap − 64px gutters = 1296px):
+   2 × 639 + 1 × 18 gap = 1296. Two columns from 900px up; below that one
+   column, and a lone album keeps its column width instead of stretching.
+   ====================================================================== */
+#albumsPanel .albums-body {
+   display: block;
+   padding: 0;
+}
+#albumsPanel .album-index-grid {
+   display: grid;
+   grid-template-columns: minmax(0, 1fr);
+   gap: 14px;
+   align-content: start;
+   padding-bottom: 8px;
+}
+#albumsPanel .album-index-grid[hidden] {
+   display: none !important;
+}
+/* ---- Toolbar: search / role filter / sort ---- */
+#albumsPanel .album-index-toolbar {
+   display: flex;
+   align-items: center;
+   flex-wrap: wrap;
+   gap: 10px;
+   flex: 0 0 auto;
+   margin: 0 0 14px;
+   padding: 10px 12px;
+   border: 1px solid var(--library-line);
+   border-radius: 10px;
+   background: var(--library-surface);
+}
+#albumsPanel .album-index-toolbar .cloud-search {
+   flex: 1 1 100%;
+   width: auto;
+   max-width: none;
+   min-width: 0;
+}
+#albumsPanel .album-index-toolbar .cloud-search-icon {
+   left: 13px;
+   display: grid;
+   place-items: center;
+   color: var(--library-muted);
+}
+#albumsPanel .album-index-toolbar .cloud-search-icon svg {
+   width: 16px;
+   height: 16px;
+   fill: none;
+   stroke: currentColor;
+   stroke-width: 1.8;
+   stroke-linecap: round;
+   stroke-linejoin: round;
+}
+#albumsPanel .album-index-toolbar .cloud-search input {
+   min-height: 38px;
+   padding: 8px 14px 8px 38px;
+   border: 1px solid transparent;
+   border-radius: 6px;
+   background: var(--library-head);
+   color: var(--library-ink);
+   font-size: 13px;
+}
+#albumsPanel .album-index-toolbar .cloud-search input::placeholder {
+   color: var(--library-muted);
+}
+#albumsPanel .album-index-toolbar .cloud-search input:focus-visible {
+   border-color: transparent;
+   box-shadow: none;
+   outline: 3px solid color-mix(in srgb, var(--library-accent) 28%, transparent);
+   outline-offset: 0;
+}
+
+/* Role filter: a compact segmented track. The active segment is a raised
+   surface (NOT an accent fill) so the accent stays on the counts and data. */
+#albumsPanel .album-index-segments {
+   display: inline-flex;
+   align-items: center;
+   gap: 2px;
+   flex: none;
+   padding: 3px;
+   border: 1px solid var(--library-line);
+   border-radius: 8px;
+   background: var(--library-head);
+}
+#albumsPanel .album-index-segment {
+   display: inline-flex;
+   align-items: center;
+   gap: 4px;
+   min-height: 30px;
+   padding: 0 10px;
+   border: 1px solid transparent;
+   border-radius: 6px;
+   background: transparent;
+   color: var(--library-muted);
+   cursor: pointer;
+   font: 500 12px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   white-space: nowrap;
+}
+#albumsPanel .album-index-segment:hover {
+   color: var(--library-ink);
+}
+#albumsPanel .album-index-segment.is-active {
+   border-color: var(--library-line);
+   background: var(--library-surface);
+   color: var(--library-ink);
+   font-weight: 600;
+}
+#albumsPanel .album-index-segment:focus-visible {
+   outline: 3px solid color-mix(in srgb, var(--library-accent) 35%, transparent);
+   outline-offset: 1px;
+}
+#albumsPanel .album-index-count {
+   color: var(--library-muted);
+   font-size: 11px;
+   font-variant-numeric: tabular-nums;
+}
+#albumsPanel .album-index-segment.is-active .album-index-count {
+   color: var(--library-accent);
+}
+#albumsPanel .album-index-sort {
+   display: inline-flex;
+   align-items: center;
+   gap: 6px;
+   flex: none;
+   margin-left: auto;
+   color: var(--library-muted);
+   font: 500 11px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   white-space: nowrap;
+}
+#albumsPanel .album-index-sort select {
+   min-height: 32px;
+   padding: 0 8px;
+   border: 1px solid var(--library-line);
+   border-radius: 6px;
+   background: var(--library-surface);
+   color: var(--library-ink);
+   cursor: pointer;
+   font: 600 12px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+}
+#albumsPanel .album-index-sort select:focus-visible {
+   border-color: var(--library-accent);
+   outline: 3px solid color-mix(in srgb, var(--library-accent) 30%, transparent);
+   outline-offset: 1px;
+}
+
+/* ---- Card ---- */
+#albumsPanel .album-index-card {
+   display: flex;
+   flex-direction: column;
+   gap: 6px;
+   min-width: 0;
+   padding: 16px 18px 12px;
+   border: 1px solid var(--library-line);
+   border-radius: 10px;
+   background: var(--library-surface);
+   color: var(--library-ink);
+   cursor: pointer;
+   transition: border-color 0.16s ease;
+}
+#albumsPanel .album-index-card:hover {
+   border-color: color-mix(in srgb, var(--library-accent) 42%, var(--library-line));
+}
+#albumsPanel .album-index-card:active {
+   border-color: var(--library-accent);
+}
+#albumsPanel .album-index-card:focus-visible {
+   border-color: transparent;
+   outline: 3px solid var(--library-accent);
+   outline-offset: 2px;
+}
+
+#albumsPanel .album-index-head {
+   display: flex;
+   align-items: center;
+   gap: 8px;
+   min-height: 24px;
+}
+#albumsPanel .album-index-role {
+   display: inline-flex;
+   align-items: center;
+   gap: 6px;
+   flex: none;
+   min-height: 22px;
+   padding: 0 8px;
+   border: 1px solid var(--library-line);
+   border-radius: 999px;
+   background: var(--library-raised);
+   color: var(--library-muted);
+   font: 600 11px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   white-space: nowrap;
+}
+#albumsPanel .album-index-role.is-md {
+   border-color: color-mix(in srgb, var(--library-accent) 32%, transparent);
+   background: color-mix(in srgb, var(--library-accent) 14%, transparent);
+   color: var(--library-accent);
+}
+/* Light theme: on a pale tint the accent text lands at 4.4:1 and the lime spark
+   disappears, so the MD marker uses the deeper brand green and a green dot. */
+html:not([data-theme="dark"]) #albumsPanel .album-index-role.is-md {
+   color: #155c3c;
+}
+html:not([data-theme="dark"]) #albumsPanel .album-index-role-dot {
+   background: var(--library-accent);
+}
+#albumsPanel .album-index-role-dot {
+   flex: none;
+   width: 6px;
+   height: 6px;
+   border-radius: 50%;
+   background: var(--spark);
+}
+#albumsPanel .album-index-code {
+   display: inline-flex;
+   align-items: center;
+   gap: 5px;
+   margin-left: auto;
+   min-height: 22px;
+   padding: 0 3px 0 7px;
+   border: 1px solid var(--library-line);
+   border-radius: 6px;
+   background: var(--library-head);
+   color: var(--library-muted);
+   font: 500 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+   white-space: nowrap;
+}
+#albumsPanel .album-index-code-value {
+   color: var(--library-ink);
+   font-weight: 600;
+   letter-spacing: 0.01em;
+}
+#albumsPanel .album-index-code-copy {
+   display: grid;
+   place-items: center;
+   width: 20px;
+   height: 20px;
+   padding: 0;
+   border: 0;
+   border-radius: 4px;
+   background: transparent;
+   color: var(--library-muted);
+   cursor: pointer;
+}
+#albumsPanel .album-index-code-copy svg {
+   width: 13px;
+   height: 13px;
+}
+#albumsPanel .album-index-code-copy:hover {
+   background: var(--library-raised);
+   color: var(--library-accent);
+}
+#albumsPanel .album-index-code-copy:focus-visible {
+   outline: 2px solid var(--library-accent);
+   outline-offset: 1px;
+}
+@media (pointer: coarse) {
+   #albumsPanel .album-index-code-copy {
+      width: 30px;
+      height: 30px;
+   }
+   /* Compact chrome, thumb-sized hit areas: the copy button and the owner menu
+      keep their 20/28px look but claim 44px of touch. */
+   #albumsPanel .album-index-code-copy,
+   #albumsPanel .album-index-menu .song-row-menu-trigger {
+      position: relative;
+   }
+   #albumsPanel .album-index-code-copy::after {
+      content: "";
+      position: absolute;
+      inset: -7px;
+   }
+   #albumsPanel .album-index-menu .song-row-menu-trigger::after {
+      content: "";
+      position: absolute;
+      inset: -8px;
+   }
+}
+
+/* Owner actions: a quiet kebab, the same menu the song rows use. */
+#albumsPanel .album-index-menu {
+   flex: none;
+}
+#albumsPanel .album-index-menu .song-row-menu-trigger {
+   min-width: 28px;
+   min-height: 28px;
+   padding: 0;
+   border-color: transparent;
+   background: transparent;
+   color: var(--library-muted);
+}
+#albumsPanel .album-index-menu .song-row-menu-trigger:hover,
+#albumsPanel .album-index-menu[open] .song-row-menu-trigger {
+   border-color: transparent;
+   background: var(--library-raised);
+   color: var(--library-ink);
+}
+#albumsPanel .album-index-menu .song-row-menu-icon {
+   width: 15px;
+   height: 15px;
+}
+
+#albumsPanel .album-index-title {
+   display: -webkit-box;
+   margin: 2px 0 0;
+   overflow: hidden;
+   color: var(--library-ink);
+   font: 650 17px/1.3 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   letter-spacing: -0.02em;
+   -webkit-box-orient: vertical;
+   -webkit-line-clamp: 2;
+}
+#albumsPanel .album-index-desc {
+   display: -webkit-box;
+   margin: 0;
+   overflow: hidden;
+   color: var(--library-muted);
+   font: 400 13px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+   -webkit-box-orient: vertical;
+   -webkit-line-clamp: 2;
+}
+#albumsPanel .album-index-desc-empty {
+   color: color-mix(in srgb, var(--library-muted) 78%, transparent);
+   font-style: italic;
+}
+
+/* ---- Recent arrangements ---- */
+#albumsPanel .album-index-tracks {
+   display: flex;
+   flex-direction: column;
+   gap: 6px;
+   margin-top: 4px;
+}
+#albumsPanel .album-index-tracks-label {
+   color: var(--library-muted);
+   font: 500 11px/1.2 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+}
+#albumsPanel .album-index-track-row {
+   display: flex;
+   flex-wrap: wrap;
+   gap: 6px;
+}
+#albumsPanel .album-index-track {
+   display: inline-flex;
+   align-items: center;
+   max-width: 100%;
+   min-height: 22px;
+   padding: 2px 8px;
+   overflow: hidden;
+   border: 1px solid var(--library-line);
+   border-radius: 5px;
+   background: var(--library-head);
+   color: var(--library-ink);
+   font: 500 11.5px/1.3 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   white-space: nowrap;
+   text-overflow: ellipsis;
+}
+#albumsPanel .album-index-track-key {
+   margin-left: 4px;
+   color: var(--library-accent);
+   font-weight: 700;
+}
+#albumsPanel .album-index-track.is-more {
+   border-color: var(--library-line);
+   background: transparent;
+   color: var(--library-muted);
+}
+#albumsPanel .album-index-track.is-pending {
+   width: 104px;
+   border-color: transparent;
+   background: var(--library-head);
+}
+#albumsPanel .album-index-track.is-pending.is-short {
+   width: 74px;
+}
+
+/* ---- Foot: counts + the way in ---- */
+#albumsPanel .album-index-foot {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 12px;
+   margin-top: auto;
+   padding-top: 10px;
+   border-top: 1px solid var(--library-rule);
+}
+#albumsPanel .album-index-stats {
+   display: flex;
+   flex-wrap: wrap;
+   align-items: baseline;
+   gap: 0;
+   margin: 0;
+   color: var(--library-muted);
+   font: 400 11.5px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+}
+#albumsPanel .album-index-stats > * + *::before {
+   content: "·";
+   margin: 0 6px;
+}
+#albumsPanel .album-index-songs {
+   color: var(--library-ink);
+   font-weight: 600;
+}
+#albumsPanel .album-index-open {
+   display: inline-flex;
+   align-items: center;
+   gap: 5px;
+   flex: none;
+   color: var(--library-accent);
+   font: 600 12px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   white-space: nowrap;
+}
+#albumsPanel .album-index-open svg {
+   width: 14px;
+   height: 14px;
+   flex: none;
+   transition: transform 0.16s ease;
+}
+#albumsPanel .album-index-card:hover .album-index-open svg {
+   transform: translateX(2px);
+}
+
+/* ---- Bands ---- */
+@media screen and (min-width: 900px) {
+   #albumsPanel .album-index-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+   }
+   #albumsPanel .album-index-toolbar .cloud-search {
+      flex: 1 1 220px;
+      max-width: 560px;
+   }
+   #albumsPanel .album-index-card {
+      padding: 18px 20px 14px;
+   }
+   #albumsPanel .album-index-title {
+      font-size: 18px;
+   }
+   /* Two description lines and two chip rows are reserved so the cards in a
+      row keep one rhythm; without this a wrap in one card leaves a 60px hole
+      above its neighbour's footer. */
+   #albumsPanel .album-index-desc {
+      min-height: calc(1.5em * 2);
+   }
+   #albumsPanel .album-index-tracks {
+      min-height: 70px;
+   }
+}
+@media screen and (max-width: 680px) {
+   #albumsPanel .album-index-toolbar {
+      gap: 8px;
+      padding: 8px;
+      border-radius: 8px;
+   }
+   #albumsPanel .album-index-segments {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+   }
+   #albumsPanel .album-index-segments::-webkit-scrollbar {
+      display: none;
+   }
+   /* Sorting is a desktop affordance: albums already arrive newest first, and
+      the phone keeps one row of controls above the list. */
+   #albumsPanel .album-index-sort {
+      display: none;
+   }
+   #albumsPanel .album-index-card {
+      padding: 14px 14px 12px;
+   }
+   #albumsPanel .album-index-title {
+      font-size: 16px;
+   }
+   #albumsPanel .album-index-desc {
+      font-size: 12.5px;
+   }
+   #albumsPanel .album-index-foot {
+      gap: 8px;
+   }
+   #albumsPanel .album-index-toolbar .cloud-search input {
+      min-height: 44px;
+   }
+   #albumsPanel .album-index-segment {
+      min-height: 44px;
+   }
+   /* One line of counts on a phone: "Updated" is implied by the position and
+      dropping it keeps the dot separators off a wrapped second line. */
+   #albumsPanel .album-index-updated-prefix {
+      display: none;
+   }
+}
+@media (prefers-reduced-motion: reduce) {
+   #albumsPanel .album-index-card {
+      transition: none;
+   }
+   #albumsPanel .album-index-open svg {
+      transition: none;
+   }
+   #albumsPanel .album-index-card:hover .album-index-open svg {
+      transform: none;
+   }
+}
+.albums-toolbar-note {
+   align-self: center;
+   font-size: 12.5px;
+   color: var(--muted);
+}
+/* Album cards inside the My Songs-style carousel. */
+.song-card.is-album .song-card-mode-mark {
+   background: linear-gradient(135deg, var(--soft), var(--surface));
+   color: var(--dark-green);
+}
+.song-card.is-album .song-card-title {
+   font-size: 16.5px;
+}
+/* ======================================================================
+   ALBUM DETAIL — Stitch summary + My Songs index
+   The list deliberately reuses the My Songs row anatomy (`is-index-row`):
+   mode tile, song/artist, key, meter, arrangement, video, updated, actions.
+   Only the header, notation filter and the album-specific add row are new.
+   ====================================================================== */
+@media screen {
+   .cloud-album.library-redesign .cloud-album-head {
+      display: block;
+      min-height: 56px;
+      padding: 0;
+      border-bottom: 1px solid var(--library-rule);
+      background: var(--library-ground);
+   }
+   .album-detail-topbar-inner {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 18px;
+      width: min(1360px, 100%);
+      min-height: 56px;
+      margin: 0 auto;
+      padding: 0 32px;
+   }
+   .album-detail-tabs {
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      gap: 26px;
+      min-width: 0;
+   }
+   .album-detail-tab {
+      position: relative;
+      min-height: 44px;
+      padding: 0 2px;
+      border: 0;
+      background: transparent;
+      color: var(--library-muted);
+      cursor: pointer;
+      font: 600 14px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+      white-space: nowrap;
+   }
+   .album-detail-tab::after {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      height: 2px;
+      background: var(--library-accent);
+      content: "";
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 180ms ease-out;
+   }
+   .album-detail-tab:hover {
+      color: var(--library-ink);
+   }
+   .album-detail-tab.is-active,
+   .album-detail-tab[aria-current="page"] {
+      color: var(--library-ink);
+   }
+   .album-detail-tab.is-active::after,
+   .album-detail-tab[aria-current="page"]::after {
+      transform: scaleX(1);
+   }
+   .album-detail-tab:focus-visible {
+      outline: 3px solid var(--library-accent);
+      outline-offset: 2px;
+   }
+   .album-detail-appbar-end {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      min-width: 0;
+   }
+   .album-detail-account .account-button {
+      min-height: 40px;
+      gap: 9px;
+      padding: 4px 10px 4px 4px;
+      border: 1px solid var(--library-control);
+      border-radius: 10px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+      font: 600 13px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .album-detail-account .account-button:hover,
+   .album-detail-account .account-button[aria-expanded="true"] {
+      border-color: var(--library-control);
+      background: var(--library-surface);
+   }
+   .album-detail-account .account-avatar {
+      width: 32px;
+      height: 32px;
+      background: var(--library-raised);
+      color: var(--library-accent);
+      font: 700 13px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .album-detail-account .account-button.is-authed .account-avatar {
+      background: var(--library-raised);
+      color: var(--library-accent);
+   }
+   .album-detail-account .account-button:not(.is-authed) .account-avatar {
+      display: none;
+   }
+   .album-detail-account .account-label {
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+   }
+   .album-detail-account .account-popover {
+      z-index: 60;
+      width: min(300px, calc(100vw - 32px));
+      padding: 8px;
+      border: 1px solid var(--library-control);
+      border-radius: 14px;
+      background: var(--library-surface);
+      box-shadow: 0 12px 32px rgba(15, 35, 22, 0.16);
+   }
+   .album-detail-account .account-popover-id {
+      padding: 12px;
+   }
+   .album-detail-account .account-popover-avatar {
+      width: 40px;
+      height: 40px;
+      background: var(--library-raised);
+      color: var(--library-accent);
+      font: 700 15px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .album-detail-account .account-popover-who strong {
+      color: var(--library-ink);
+      font: 600 14px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .album-detail-account .account-popover-who small {
+      color: var(--library-muted);
+   }
+   .album-detail-account .account-popover-item {
+      color: var(--library-ink);
+   }
+   .album-detail-account .account-popover-item svg {
+      width: 15px;
+      height: 15px;
+      flex: none;
+   }
+   .album-detail-account .account-popover-item.is-signout {
+      color: var(--library-danger);
+   }
+   .cloud-album.library-redesign .album-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 36px;
+      padding: 0 9px 0 5px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--library-muted);
+      font: 600 12px/1.2 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-album.library-redesign .album-back:hover,
+   .cloud-album.library-redesign .album-back:focus-visible {
+      background: var(--library-raised);
+      color: var(--library-ink);
+      outline: none;
+   }
+   .cloud-album.library-redesign .album-back:focus-visible {
+      outline: 3px solid var(--library-accent);
+      outline-offset: 2px;
+   }
+   .cloud-album.library-redesign .cloud-album-body {
+      display: block;
+      flex: 1 1 auto;
+      width: min(1360px, 100%);
+      max-width: 100%;
+      min-height: 0;
+      margin: 0 auto;
+      padding: 18px 32px 52px;
+      overflow: auto;
+      overscroll-behavior: contain;
+   }
+
+   /* Summary card: the Stitch frame, kept no taller than the job needs. */
+   .album-detail-summary {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      align-items: start;
+      gap: 24px;
+      margin: 0 0 14px;
+      padding: 22px 24px;
+      border: 1px solid var(--library-line);
+      border-radius: 12px;
+      background: var(--library-surface);
+   }
+   .album-detail-summary-main {
+      min-width: 0;
+   }
+   .album-detail-eyebrow {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 7px;
+      min-height: 20px;
+      margin-bottom: 5px;
+   }
+   .cloud-album.library-redesign .cloud-album-hero {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      color: var(--library-accent);
+      place-items: center;
+   }
+   .cloud-album.library-redesign .cloud-album-hero span {
+      font: 700 18px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.02em;
+   }
+   .album-detail-eyebrow-label {
+      color: var(--library-accent);
+      font: 800 11px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+   }
+   .album-detail-eyebrow-sep {
+      color: var(--library-control);
+      font: 500 12px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .album-detail-eyebrow-sep[hidden] {
+      display: none !important;
+   }
+   .album-detail-eyebrow-meta {
+      color: var(--library-muted);
+      font: 500 11.5px/1.2 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-album.library-redesign .album-detail-summary .cloud-modal-title {
+      margin: 0;
+      color: var(--library-ink);
+      font: 700 28px/1.15 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: -0.03em;
+   }
+   .album-detail-summary #albumDescription {
+      max-width: 72ch;
+      margin: 8px 0 0;
+      color: var(--library-muted);
+      font: 400 13px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .album-detail-summary #albumMeta {
+      margin: 6px 0 0;
+      color: var(--library-muted);
+      font: 500 11.5px/1.4 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .album-detail-summary #albumDescription[hidden],
+   .album-detail-summary #albumMeta[hidden] {
+      display: none !important;
+   }
+   .album-detail-chips {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 14px;
+   }
+   .album-detail-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      padding: 0 9px;
+      border: 1px solid var(--library-line);
+      border-radius: 999px;
+      background: var(--library-head);
+      color: var(--library-muted);
+      font: 600 11.5px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      white-space: nowrap;
+   }
+   .album-detail-chip[hidden],
+   .album-detail-code[hidden] {
+      display: none !important;
+   }
+   .album-detail-chip-dot {
+      display: none;
+      flex: none;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--library-accent);
+   }
+   #albumRoleChip.is-owner {
+      border-color: color-mix(in srgb, var(--library-accent) 30%, transparent);
+      background: color-mix(in srgb, var(--library-accent) 12%, transparent);
+      color: var(--library-accent);
+   }
+   #albumRoleChip.is-owner .album-detail-chip-dot {
+      display: inline-block;
+   }
+   .album-detail-chip.is-button {
+      min-height: 30px;
+      padding: 0 10px;
+      border-color: var(--library-line);
+      background: var(--library-surface);
+      color: var(--library-ink);
+      cursor: pointer;
+   }
+   .album-detail-chip.is-button:hover,
+   .album-detail-chip.is-button:focus-visible {
+      border-color: var(--library-accent);
+      background: var(--library-raised);
+      outline: none;
+   }
+   .album-detail-chip.is-button:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 30%, transparent);
+      outline-offset: 1px;
+   }
+   .album-detail-chip.is-button .btn-icon {
+      width: 15px;
+      height: 15px;
+      margin: 0;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+   }
+   .album-detail-code {
+      gap: 2px;
+      padding: 0 4px 0 2px;
+      background: var(--library-surface);
+   }
+   .album-detail-code-manage {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 26px;
+      padding: 0 5px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--library-muted);
+      cursor: pointer;
+      font: 500 11px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .album-detail-code-manage:hover,
+   .album-detail-code-manage:focus-visible {
+      background: var(--library-raised);
+      color: var(--library-ink);
+      outline: none;
+   }
+   .album-detail-code-manage:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 30%, transparent);
+      outline-offset: 1px;
+   }
+   .album-detail-code-manage svg {
+      flex: none;
+      width: 13px;
+      height: 13px;
+   }
+   .album-detail-code-label {
+      color: var(--library-muted);
+      font: 500 11px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .album-detail-code code {
+      padding: 1px 4px;
+      border-radius: 4px;
+      background: var(--library-head);
+      color: var(--library-ink);
+      font: 700 11.5px/1.3 var(--mono);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.04em;
+   }
+   .album-detail-copy {
+      display: grid;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--library-muted);
+      cursor: pointer;
+      place-items: center;
+   }
+   .album-detail-copy:hover,
+   .album-detail-copy:focus-visible {
+      background: var(--library-raised);
+      color: var(--library-ink);
+      outline: none;
+   }
+   .album-detail-copy svg {
+      width: 14px;
+      height: 14px;
+   }
+
+   .cloud-album.library-redesign .album-detail-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: stretch;
+      align-self: center;
+      gap: 8px;
+      width: 360px;
+      min-width: 0;
+   }
+   .cloud-album.library-redesign .album-detail-actions.is-member {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 12px;
+   }
+   .album-detail-readonly {
+      margin: 0;
+      color: var(--library-muted);
+      font: 400 12.5px/1.45 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-album.library-redesign .album-detail-actions .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-width: 0;
+      min-height: 40px;
+      padding: 0 8px;
+      border-radius: 8px;
+      font: 600 12px/1.2 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      text-align: center;
+   }
+   .album-detail-actions .button .btn-icon {
+      width: 16px;
+      height: 16px;
+      margin-right: 7px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+   }
+   .cloud-album.library-redesign .album-detail-actions .button-ghost {
+      border: 1px solid var(--library-line);
+      background: var(--library-surface);
+      color: var(--library-ink);
+   }
+   .cloud-album.library-redesign .album-detail-actions .button-ghost:hover {
+      background: var(--library-raised);
+   }
+   .cloud-album.library-redesign .album-detail-actions #albumAddFromBtn {
+      border-color: color-mix(in srgb, var(--library-accent) 55%, transparent);
+      background: var(--library-surface);
+      color: var(--library-accent);
+   }
+   .cloud-album.library-redesign .album-detail-actions #albumAddFromBtn:hover,
+   .cloud-album.library-redesign .album-detail-actions #albumAddFromBtn:focus-visible {
+      border-color: var(--library-accent);
+      background: color-mix(in srgb, var(--library-accent) 9%, var(--library-surface));
+      color: var(--library-accent);
+   }
+   .cloud-album.library-redesign .album-detail-actions #albumLeaveBtn {
+      grid-column: 1 / -1;
+   }
+   .cloud-album.library-redesign .album-detail-actions .button.is-danger {
+      border-color: color-mix(in srgb, var(--library-danger) 28%, transparent);
+      background: color-mix(in srgb, var(--library-danger) 8%, var(--library-surface));
+      color: var(--library-danger);
+   }
+   .cloud-album.library-redesign .album-detail-actions .button.is-danger:hover {
+      background: color-mix(in srgb, var(--library-danger) 14%, var(--library-surface));
+   }
+
+   /* Filter row: the album's notation filter, then the same search field the
+      My Songs index uses. */
+   .album-song-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-width: 0;
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--library-line);
+      border-radius: 10px;
+      background: var(--library-surface);
+   }
+   .album-song-filters {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 0;
+      width: 100%;
+   }
+   .album-song-filter {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-height: 32px;
+      padding: 0 11px;
+      border: 1px solid var(--library-line);
+      border-radius: 999px;
+      background: var(--library-surface);
+      color: var(--library-ink);
+      cursor: pointer;
+      font: 600 11.5px/1 Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+      white-space: nowrap;
+   }
+   .album-song-filter:hover {
+      background: var(--library-raised);
+   }
+   .album-song-filter.is-active {
+      border-color: var(--library-primary);
+      background: var(--library-primary);
+      color: var(--library-primary-ink);
+   }
+   .album-song-filter:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 30%, transparent);
+      outline-offset: 2px;
+   }
+   .album-song-filter-icon {
+      display: grid;
+      flex: none;
+      width: 16px;
+      height: 16px;
+      color: var(--library-muted);
+      place-items: center;
+   }
+   .album-song-filter-icon svg {
+      width: 14px;
+      height: 14px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+   }
+   .album-song-filter-icon .mode-mark {
+      width: 16px;
+      height: 16px;
+      line-height: 0;
+   }
+   .album-song-filter-icon .mode-mark svg {
+      width: 14px;
+      height: 14px;
+   }
+   .cloud-album.library-redesign .album-song-filter.is-active .album-song-filter-icon,
+   .cloud-album.library-redesign .album-song-filter.is-active .album-song-filter-icon .mode-mark {
+      color: var(--library-primary-ink);
+   }
+   .album-song-filter-count {
+      font-variant-numeric: tabular-nums;
+      opacity: 0.72;
+   }
+   .album-song-filter-count::before {
+      content: "(";
+   }
+   .album-song-filter-count::after {
+      content: ")";
+   }
+   .album-song-filter.is-active .album-song-filter-count {
+      opacity: 0.9;
+   }
+   .album-song-search {
+      flex: 0 0 360px;
+      max-width: 100%;
+      min-width: 0;
+   }
+   .cloud-album.library-redesign .album-song-search input {
+      min-height: 36px;
+      padding: 8px 38px 8px 38px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: var(--library-head);
+      color: var(--library-ink);
+      font: 400 13px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+   }
+   .cloud-album.library-redesign .album-song-search input::placeholder {
+      color: var(--library-muted);
+      opacity: 1;
+   }
+   .cloud-album.library-redesign .album-song-search input:focus-visible {
+      border-color: transparent;
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 28%, transparent);
+      outline-offset: 0;
+      box-shadow: none;
+   }
+   .album-song-search .cloud-search-icon {
+      left: 13px;
+      display: grid;
+      color: var(--library-muted);
+      place-items: center;
+   }
+   .album-song-search .cloud-search-icon svg {
+      width: 16px;
+      height: 16px;
+   }
+   .album-song-search .library-search-clear {
+      right: 38px;
+   }
+
+   /* The sheet is the My Songs sheet: one header row, 64px rows. */
+   .album-detail-sheet {
+      margin-bottom: 16px;
+   }
+   .album-song-list[hidden] {
+      display: none !important;
+   }
+   /* The state shell disables pointer events; the album retry/clear controls
+      are real buttons and must stay clickable. */
+   .cloud-album.library-redesign .cloud-gallery-state .button {
+      pointer-events: auto;
+   }
+   .cloud-album.library-redesign .cloud-gallery-state .button-ghost {
+      border: 1px solid var(--library-control);
+      background: var(--library-surface);
+      color: var(--library-ink);
+   }
+   .cloud-album.library-redesign .cloud-gallery-state .button-ghost:hover,
+   .cloud-album.library-redesign .cloud-gallery-state .button-ghost:focus-visible {
+      border-color: var(--library-accent);
+      background: var(--library-raised);
+   }
+
+   /* The table head lives OUTSIDE the sheet and is a direct child of the
+      scrolling body, so sticky is guaranteed to follow the column names while
+      the rows scroll underneath. */
+   @media screen and (min-width: 1101px) {
+      /* Qualified with the album shell so the generic .library-table-head
+         `top: 0` (loaded after this sheet) cannot steal the sticky offset. */
+      .cloud-album.library-redesign .album-detail-tablehead {
+         position: -webkit-sticky;
+         position: sticky;
+         /* The scroll body owns 18px of top padding. Pull the sticky head up
+            by that amount so it sits flush under the app bar, with no row
+            content scrolling through a strip above the column names. */
+         top: -18px;
+         z-index: 12;
+         border: 1px solid var(--library-line);
+         border-bottom: 0;
+         border-radius: 10px 10px 0 0;
+         background: var(--library-head);
+      }
+      .album-detail-tablehead + .album-detail-sheet {
+         border-top: 0;
+         border-radius: 0 0 10px 10px;
+      }
+   }
+
+   /* 1101-1220px: the full My Songs template is a few pixels wider than the
+      sheet. Tighten the secondary columns instead of scrolling sideways. */
+   @media screen and (min-width: 1101px) and (max-width: 1220px) {
+      .album-detail-tablehead,
+      .album-detail-sheet .song-card.is-index-row {
+         grid-template-columns: 44px minmax(200px, 1.6fr) 84px 112px minmax(150px, 1fr) 76px 104px 108px;
+      }
+   }
+}
+
+
+@media screen and (max-width: 1100px) {
+   .album-detail-sheet .song-card .song-card-open {
+      display: none;
+   }
+   .cloud-album.library-redesign .album-detail-summary {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+   }
+   .cloud-album.library-redesign .album-detail-actions {
+      width: 100%;
+      max-width: 100%;
+   }
+}
+
+@media screen and (max-width: 1050px) {
+   .album-detail-topbar-inner {
+      padding: 0 24px;
+   }
+   .cloud-album.library-redesign .cloud-album-body {
+      padding: 16px 24px 52px;
+   }
+   .cloud-album.library-redesign .album-detail-summary {
+      padding: 20px;
+   }
+}
+
+@media screen and (max-width: 900px) {
+   .album-detail-readonly {
+      display: none;
+   }
+   .cloud-album.library-redesign .album-detail-summary {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+   }
+   .album-song-toolbar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+   }
+   .album-song-filters {
+      flex-wrap: nowrap;
+      gap: 3px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+      scrollbar-width: thin;
+   }
+   .album-song-search {
+      flex: 1 1 auto;
+      width: 100%;
+   }
+   .cloud-album.library-redesign .album-song-search input {
+      min-height: 40px;
+   }
+}
+
+@media screen and (max-width: 680px) {
+   .album-detail-topbar-inner {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas: "back account" "tabs tabs";
+      gap: 0 10px;
+      min-height: 0;
+      padding: 6px 16px 0;
+   }
+   .cloud-album.library-redesign .album-back {
+      grid-area: back;
+      justify-self: start;
+      min-height: 40px;
+   }
+   .album-detail-tabs {
+      grid-area: tabs;
+      justify-content: flex-start;
+      gap: 22px;
+   }
+   .album-detail-appbar-end {
+      grid-area: account;
+      justify-self: end;
+   }
+   .album-detail-account .account-button {
+      min-width: 44px;
+      justify-content: center;
+      padding: 4px;
+   }
+   .album-detail-account .account-button.is-authed .account-label {
+      display: none;
+   }
+   .cloud-album.library-redesign .cloud-album-body {
+      padding: 14px 16px 36px;
+   }
+   .cloud-album.library-redesign .album-detail-summary {
+      padding: 16px;
+      border-radius: 10px;
+   }
+   .cloud-album.library-redesign .cloud-album-hero {
+      display: none;
+   }
+   .cloud-album.library-redesign .album-detail-summary .cloud-modal-title {
+      font-size: 22px;
+      line-height: 1.2;
+   }
+   .album-detail-summary #albumDescription {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+   }
+   .album-detail-chips {
+      gap: 6px;
+      margin-top: 12px;
+   }
+   .album-detail-chip {
+      min-height: 32px;
+      font-size: 11px;
+   }
+   .album-detail-chip.is-button {
+      min-height: 40px;
+      padding: 0 12px;
+   }
+   .album-detail-copy {
+      width: 30px;
+      height: 30px;
+   }
+   .cloud-album.library-redesign .album-detail-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+   }
+   .cloud-album.library-redesign .album-detail-actions.is-member {
+      grid-template-columns: minmax(0, 1fr);
+   }
+   .cloud-album.library-redesign .album-detail-actions .button {
+      width: 100%;
+      min-width: 0;
+      min-height: 44px;
+      padding: 0 6px;
+      justify-content: center;
+      font-size: 11px;
+      white-space: normal;
+      line-height: 1.15;
+   }
+   .cloud-album.library-redesign .album-detail-actions .button .btn-icon {
+      width: 14px;
+      height: 14px;
+      margin-right: 5px;
+   }
+   .cloud-album.library-redesign .album-detail-actions .button .btn-label {
+      overflow: visible;
+      text-overflow: clip;
+   }
+   .album-song-toolbar {
+      padding: 10px;
+   }
+   .album-song-filter {
+      min-height: 38px;
+      padding: 0 5px;
+      font-size: 11px;
+   }
+   .album-detail-sheet .cloud-gallery-state {
+      margin: 10px 0;
+      padding: 20px 14px;
+   }
+}
+
+/* Album song search adopts the My Songs toolbar field at desktop widths:
+   a borderless inset field with the "/" shortcut hint. The extra toolbar
+   class is required because library.css loads after this sheet. */
+@media screen and (min-width: 1101px) {
+   .cloud-album.library-redesign .album-song-toolbar .album-song-search input {
+      min-height: 38px;
+      padding: 8px 78px 8px 38px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: var(--library-head);
+      color: var(--library-ink);
+      font-size: 13px;
+   }
+   .cloud-album.library-redesign .album-song-toolbar .album-song-search input::placeholder {
+      color: var(--library-muted);
+      opacity: 1;
+   }
+   .cloud-album.library-redesign .album-song-toolbar .album-song-search input:focus-visible {
+      border-color: transparent;
+      outline: 3px solid color-mix(in srgb, var(--library-accent) 28%, transparent);
+      outline-offset: 0;
+      box-shadow: none;
+   }
+   .cloud-album.library-redesign .album-song-toolbar .album-song-search .cloud-search-icon {
+      left: 13px;
+   }
+}
+

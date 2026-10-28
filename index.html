@@ -28,28 +28,42 @@
             document.documentElement.dataset.theme = theme;
             document.documentElement.style.colorScheme = theme;
             // Auth gate: show a full-screen login page until we know whether a
-            // session is restored. Skipped in automated tests (?test=...) so the
-            // editor suite keeps running without a real Firebase sign-in.
-            if (!new URLSearchParams(location.search).has("test")) {
+            // session is restored. The test bypass is local-only so a deployed
+            // URL cannot skip sign-in by appending a query parameter.
+            const params = new URLSearchParams(location.search);
+            const localHost = ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
+            const testMode = localHost && params.has("test");
+            document.documentElement.dataset.testMode = testMode ? "1" : "0";
+            if (!testMode) {
                document.documentElement.dataset.authGate = "pending";
             }
          })();
       </script>
-      <link rel="stylesheet" href="styles/styles.css" />
-      <link rel="stylesheet" href="styles/fonts.css?v=__BUILD__" />
-      <link rel="stylesheet" href="styles/preview.css?v=__BUILD__" />
-      <link rel="stylesheet" href="styles/ui.css?v=__BUILD__" />
-      <link rel="stylesheet" href="styles/auth.css?v=__BUILD__" />
-      <link rel="stylesheet" href="styles/chordpro.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/base/tokens.css" />
+      <link rel="stylesheet" href="styles/base/fonts.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/score/preview.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/score/preview-print.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/layout/shell.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/layout/responsive.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/components/editor.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/components/editor-chrome.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/components/gallery.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/components/album.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/components/library.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/components/library-desktop.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/themes/dark.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/base/print.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/pages/auth.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/score/chordpro.css?v=__BUILD__" />
       <!-- ======================================================================
            STRUCTURAL fallback for the ChordPro mode (deliberately INLINE).
            These four rules decide which workspace exists on screen (beat grid vs
            ChordPro) and the side-by-side split. They live in the document itself
            so the swap can never depend on a second stylesheet arriving: if
-           styles/chordpro.css 404s or is served stale (service-worker / HTTP
+           styles/score/chordpro.css 404s or is served stale (service-worker / HTTP
            cache), ChordPro still replaces the grid instead of showing both.
            Everything VISUAL (panels, cards, print geometry, gold accents) stays in
-           styles/chordpro.css. render.js additionally sets the same swap with
+           styles/score/chordpro.css. render.js additionally sets the same swap with
            inline styles, so the behaviour holds even if this block is stale too.
            ====================================================================== -->
       <style>
@@ -430,7 +444,7 @@
                         <span><kbd>Shift</kbd> + <kbd>Enter</kbd> previous beat</span>
                         <span>Paste a sentence to distribute words automatically</span>
                      </div>
-                     <!-- Auto-syllable feature temporarily disabled (kept for future use). Logic remains in src/notation.js + src/events.js.
+                     <!-- Auto-syllable feature temporarily disabled (kept for future use). Logic remains in src/notation/notation.js + src/events.js.
                      <div class="palette-group auto-syllable" aria-label="Auto-split lyrics into syllables">
                         <div>
                            <span class="palette-label">Auto syllables</span>
@@ -610,11 +624,11 @@
 
          <!-- ============== CHORDPRO WORKSPACE (third writing mode) ==============
               Side-by-side editor (left) + live preview (right), shown only while
-              body[data-editor-mode="chordpro"] (see styles/chordpro.css). It lives
+              body[data-editor-mode="chordpro"] (see styles/score/chordpro.css). It lives
               NEXT TO the beat-grid workspace instead of replacing it, so the two
               original modes keep their markup, styles and print rules untouched.
               Every class here is `cp-`-prefixed on purpose: the print rules in
-              preview.css/ui.css are not id-scoped, so reusing names like
+              score/preview.css and the component sheets are not id-scoped, so reusing names like
               `.preview-section` or `.section-tools` would leak grid geometry in. -->
          <div class="cp-workspace" id="cpWorkspace">
             <aside class="cp-editor" aria-label="ChordPro editor">
@@ -835,12 +849,19 @@
            driven by openConfirmDialog() in cloudUI.js. The title/message/labels
            and the accent of the confirm button are all set at open time, so the
            same markup serves Sign out today and any future confirmations. -->
-      <div class="confirm-dialog" id="confirmDialog" hidden role="dialog" aria-modal="true" aria-labelledby="confirmDialogTitle" aria-describedby="confirmDialogDesc">
+      <div class="confirm-dialog library-dialog" id="confirmDialog" hidden role="dialog" aria-modal="true" aria-labelledby="confirmDialogTitle" aria-describedby="confirmDialogDesc">
          <div class="confirm-dialog-backdrop" data-confirm-dismiss></div>
          <div class="confirm-dialog-card" role="document">
-            <div class="confirm-dialog-icon" id="confirmDialogIcon" aria-hidden="true">↷</div>
-            <h2 class="confirm-dialog-title" id="confirmDialogTitle">Are you sure?</h2>
-            <p class="confirm-dialog-desc" id="confirmDialogDesc"></p>
+            <button class="library-dialog-close" type="button" aria-label="Close" data-confirm-dismiss>
+               <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+            <div class="confirm-dialog-head">
+               <div class="confirm-dialog-icon" id="confirmDialogIcon" aria-hidden="true"></div>
+               <div class="confirm-dialog-head-text">
+                  <h2 class="confirm-dialog-title" id="confirmDialogTitle">Are you sure?</h2>
+                  <p class="confirm-dialog-desc" id="confirmDialogDesc"></p>
+               </div>
+            </div>
             <div class="confirm-dialog-actions">
                <button class="button button-ghost" id="confirmDialogCancel" type="button" data-confirm-dismiss>Cancel</button>
                <button class="button button-primary" id="confirmDialogConfirm" type="button">Confirm</button>
@@ -851,18 +872,40 @@
       <!-- Attach Link dialog. Themed replacement for prompt(): the user pastes a
            share link (or raw payload) from another user, and we decode it into a
            preview + import. Driven by the #attachLinkBtn handler in cloudUI.js. -->
-      <div class="confirm-dialog library-dialog" id="attachLinkDialog" hidden role="dialog" aria-modal="true" aria-labelledby="attachLinkTitle" aria-describedby="attachLinkDesc">
+      <div class="confirm-dialog library-dialog attach-link-dialog" id="attachLinkDialog" hidden role="dialog" aria-modal="true" aria-labelledby="attachLinkTitle" aria-describedby="attachLinkDesc">
          <div class="confirm-dialog-backdrop" data-attach-dismiss></div>
          <div class="confirm-dialog-card library-dialog-card attach-link-card" role="document">
-            <button class="library-dialog-close" type="button" aria-label="Close" data-attach-dismiss>&times;</button>
-            <div class="library-dialog-head">
-               <h2 class="confirm-dialog-title" id="attachLinkTitle">Attach a shared song</h2>
-               <p class="confirm-dialog-desc" id="attachLinkDesc">Paste a share link or payload to preview the song before importing it.</p>
+            <button class="library-dialog-close" type="button" aria-label="Close" data-attach-dismiss>
+               <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+            <div class="library-dialog-head has-media attach-link-head">
+               <div class="library-dialog-icon attach-link-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l2.13-2.13a5 5 0 0 0-7.07-7.07l-1.4 1.4"/><path d="M14 11a5 5 0 0 0-7.54-.54L4.33 12.6a5 5 0 0 0 7.07 7.07l1.4-1.4"/></svg>
+               </div>
+               <div class="library-dialog-head-text">
+                  <h2 class="confirm-dialog-title" id="attachLinkTitle">Attach a shared song</h2>
+                  <p class="confirm-dialog-desc" id="attachLinkDesc">Paste a share link or payload. Preview it before importing.</p>
+               </div>
             </div>
+            <ol class="attach-link-steps" aria-label="How attaching a song works">
+               <li><span class="attach-link-step-number">1</span><span>Paste</span></li>
+               <li><span class="attach-link-step-number">2</span><span>Preview</span></li>
+               <li><span class="attach-link-step-number">3</span><span>Load into editor</span></li>
+            </ol>
             <div class="new-song-name attach-link-field">
                <label class="new-song-name-label" for="attachLinkInput">Share link or payload</label>
-               <textarea class="attach-link-input" id="attachLinkInput" rows="3" placeholder="Paste the shared song link" aria-describedby="attachLinkDesc attachLinkPrivacy"></textarea>
-               <p class="new-song-name-hint" id="attachLinkPrivacy">The link is decoded on this device. Its contents are not sent to a server.</p>
+               <div class="attach-link-paste">
+                  <span class="attach-link-paste-icon" aria-hidden="true">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l2.13-2.13a5 5 0 0 0-7.07-7.07l-1.4 1.4"/><path d="M14 11a5 5 0 0 0-7.54-.54L4.33 12.6a5 5 0 0 0 7.07 7.07l1.4-1.4"/></svg>
+                  </span>
+                  <textarea class="attach-link-input" id="attachLinkInput" rows="3" placeholder="Paste the shared song link" aria-describedby="attachLinkDesc attachLinkPrivacy"></textarea>
+               </div>
+               <p class="new-song-name-hint attach-link-privacy" id="attachLinkPrivacy">
+                  <span class="attach-link-privacy-icon" aria-hidden="true">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+                  </span>
+                  <span>The link is decoded on this device. Its contents are not sent to a server.</span>
+               </p>
             </div>
             <div class="confirm-dialog-actions">
                <button class="button button-ghost" id="attachLinkCancel" type="button" data-attach-dismiss>Cancel</button>
@@ -895,99 +938,140 @@
            versions, shared albums (including the member read-only rules), writing
            the score, and paper/playback. This is static markup — keep it in sync
            whenever a feature ships. -->
-      <div class="confirm-dialog howto-dialog" id="howToDialog" hidden role="dialog" aria-modal="true" aria-labelledby="howToDialogTitle" aria-describedby="howToDialogDesc">
+      <div class="confirm-dialog howto-dialog library-dialog" id="howToDialog" hidden role="dialog" aria-modal="true" aria-labelledby="howToDialogTitle" aria-describedby="howToDialogDesc">
          <div class="confirm-dialog-backdrop" data-howto-dismiss></div>
          <div class="confirm-dialog-card howto-dialog-card" role="document">
-            <div class="confirm-dialog-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
-            <h2 class="confirm-dialog-title" id="howToDialogTitle">How to use this score app?</h2>
-            <p class="confirm-dialog-desc" id="howToDialogDesc">From writing a chord chart to sharing it with your worship team — here's everything the app can do.</p>
-            <ul class="howto-list">
-               <li class="howto-group">Your cloud library</li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg></span>
-                  <span class="howto-item-text"><strong>Save to Cloud</strong> — keeps the score in your own account (you sign in once). An <em>amber dot</em> on the button means there are unsaved changes; leaving the editor then asks <em>Save &amp; leave</em> / <em>Leave without saving</em> / <em>Cancel</em>.</span>
+            <button class="library-dialog-close" type="button" aria-label="Close help" data-howto-dismiss>
+               <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+            <div class="library-dialog-head has-media howto-dialog-head">
+               <div class="library-dialog-icon howto-dialog-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+               </div>
+               <div class="library-dialog-head-text">
+                  <h2 class="confirm-dialog-title" id="howToDialogTitle">How to use this score app?</h2>
+                  <p class="confirm-dialog-desc" id="howToDialogDesc">Write a score, share it, and rehearse with your team. Each topic takes a minute to learn.</p>
+               </div>
+            </div>
+            <ul class="howto-list" id="howtoTopicList">
+               <li class="howto-group">Your library</li>
+               <li class="howto-item" style="--howto-i: 0">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">Save and return</strong>
+                     <span class="howto-item-desc">The amber dot on Save means changes are waiting. When you leave, choose <em>Save and leave</em> or <em>Leave without saving</em>.</span>
+                  </span>
                </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
-                  <span class="howto-item-text"><strong>Versions of a song</strong> — the pill next to the title lists every arrangement of that song: switch between them, add <em>+ New version</em>, rename one, or give one its own YouTube link (✎). The link of the arrangement you are editing also appears as a <strong>▶ chip in the topbar</strong> (click to watch — a saved start time like <code>?t=3214</code> is kept — and ✎ to change it), and an arrangement without a video shows a quiet <strong>No video</strong> pill (click it to paste one) in the same spot, so you always know which version has a video. Title, artist, key and time signature are shared by all versions of the song.</span>
+               <li class="howto-item" style="--howto-i: 1">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">One song, many arrangements</strong>
+                     <span class="howto-item-desc">Open the version pill beside the title to switch arrangements or add one. Each arrangement keeps its own writing mode and YouTube link.</span>
+                  </span>
                </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
-                  <span class="howto-item-text"><strong>Share &amp; import</strong> — in <em>My Songs</em>, <em>Copy Link</em> (🔗) on a card puts a share link on your clipboard; anyone who pastes it into <em>Attach Link</em> gets the song in their own library. <em>New Song</em> and <em>Attach Link</em> belong to the My Songs tab (they hide while Albums is open).</span>
+               <li class="howto-item" style="--howto-i: 2">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">Share and import</strong>
+                     <span class="howto-item-desc">Use <em>Copy Link</em> on a song row to share it. In My Songs, <em>Attach Link</em> opens a preview before the song loads for editing.</span>
+                  </span>
                </li>
-               <li class="howto-group">Albums — share with your team</li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg></span>
-                  <span class="howto-item-text"><strong>Create or join</strong> — <em>New Album</em> creates an album with an invite code (rotate it any time from <em>Invite</em>); teammates join with <em>Join Album</em>. Everyone uses their own account, so the album stays curatable. Hover an album card for <em>📝 Edit details</em> to change its name and description (MDs only).</span>
+               <li class="howto-group">Albums</li>
+               <li class="howto-item" style="--howto-i: 3">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">Create or join</strong>
+                     <span class="howto-item-desc"><em>New Album</em> creates a shared album with an invite code. Teammates open <em>Join Album</em> and enter the code with their own account.</span>
+                  </span>
                </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01Z"/></svg></span>
-                  <span class="howto-item-text"><strong>MD vs Member</strong> — the <em>MD</em> (Music Director — the app's name for an album owner) invites people, adds songs, promotes a member to MD and can remove songs; a <em>Member</em> only reads. The last MD can never be demoted or removed, so the album can never be left without one. Anyone — a member <em>or</em> an MD — can walk away with the red <em>Leave</em> button in the album header; the last MD is asked to promote another MD first (or delete the album).</span>
+               <li class="howto-item" style="--howto-i: 4">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01Z"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">Roles and access</strong>
+                     <span class="howto-item-desc">An <em>MD</em> (Music Director) manages songs and people. A <em>Member</em> can play, transpose, change key, meter and BPM, then export or save a private copy. The last MD cannot be removed.</span>
+                  </span>
                </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg></span>
-                  <span class="howto-item-text"><strong>Add from My Songs</strong> — copies the chosen song into the album <em>together with all of its versions</em>; the album holds its own copy and your library is untouched. <em>New Song</em> inside an album creates a brand-new song there instead.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg></span>
-                  <span class="howto-item-text"><strong>Member read-only canvas</strong> — as a member you can still change <em>Key</em>, <em>Time signature</em>, <em>BPM</em> and <em>transpose</em> (handy for rehearsal), while chords, lyrics, bars and sections are locked. Use <em>Save a copy</em> to get your own editable copy in My Songs.</span>
+               <li class="howto-item" style="--howto-i: 5">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">Add and copy songs</strong>
+                     <span class="howto-item-desc"><em>Add from My Songs</em> copies a song with all of its versions into the album. <em>New Song</em> inside an album starts a fresh song there.</span>
+                  </span>
                </li>
                <li class="howto-group">Writing the score</li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg></span>
-                  <span class="howto-item-text"><strong>Three writing modes</strong> — <em>+ New Song</em> asks for the first arrangement's name, then shows three cards (each with a small live preview): <strong>🎸 Chords</strong> (<code>C</code>, <code>Am7</code>, <code>G/B</code> with live suggestions), <strong>🔢 Numeric Notation + Lyrics</strong> (<code>1</code>–<code>7</code> with high/low octaves, half-step <code>♯</code>/<code>♭</code> and a lyrics field under every beat) or <strong>♬ ChordPro</strong> (just lyrics with chords in <code>[brackets]</code> — the easiest one, no rhythm notation). The mode badge sits next to the title; in Chord Chart mode you can also show letter chords above the numbers.</span>
+               <li class="howto-item" style="--howto-i: 6">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">Three writing modes</strong>
+                     <span class="howto-item-desc">Chord Chart uses chords and rhythm. Numeric Notation uses degrees 1 to 7 with optional lyrics. ChordPro uses lyrics with chords in [brackets].</span>
+                  </span>
                </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">♯</span>
-                  <span class="howto-item-text"><strong>Half-step numbers (naik ½ / turun ½)</strong> — in <strong>Numerical Notation</strong> (and in the number row of Chord Chart) a degree can be raised or lowered a semitone. Type the accidental <em>first</em> — <code>#1</code> to raise, <code>b1</code> or <code>♭1</code> to lower (the popover also shows three chips <code>♮ ♯ ♭</code> for touch screens) — then pick the octave you want: <code>1</code>, high <code>1̇</code>, low <code>1̣</code> — and with an accidental, the same three forms of that family (<code>#1</code>, <code>#1̇</code>, <code>#1̣</code>). The chips <strong>filter</strong> the suggestion list, which therefore always shows exactly what you are about to place (<code>♮</code> → <code>1</code>, <code>1̇</code>, <code>1̣</code>; <code>♯</code> → <code>#1</code>, <code>#1̇</code>, <code>#1̣</code>; <code>♭</code> → <code>♭1</code>, <code>♭1̇</code>, <code>♭1̣</code>) — a crossed number is never mixed into the plain list. On the score, a raised degree prints as the number <em>crossed by a slash rising to the right</em> (<code>/</code>) and a lowered one as a slash falling to the right (<code>\</code>) — the notation Indonesian not-angka books use, drawn boldly and a touch longer than the digit so the coret is unmistakable. Playback follows the notation: a raised number sounds one semitone higher, a lowered one a semitone lower, in the octave you wrote (a lowered <code>1</code> really does sound <em>below</em> the tonic). The mark is drawn by CSS without taking any width, so the printed bars, barlines and pagination stay exactly as they are.</span>
+               <li class="howto-item" style="--howto-i: 7">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">Add or change a chord</strong>
+                     <span class="howto-item-desc">Click an empty beat and type. Pick a suggestion or press Enter. Click a placed chord to edit it; clear the field and confirm to remove it. Slash chords such as D/F♯ work as typed.</span>
+                  </span>
                </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6h11"/><path d="M10 12h11"/><path d="M10 18h11"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg></span>
-                  <span class="howto-item-text"><strong>Chords above the numbers</strong> — in <strong>Chord Chart</strong> mode every section has its own <strong>Chords On/Off</strong> switch in its heading. Turn it on and a chord row opens above every beat of <em>that section</em>: write the Nashville number on the beat (type <code>1</code>, <code>5</code>, <code>6m</code>, <code>1̇</code>, <code>♭7</code>) and its chord above it (<code>C</code>, <code>G</code>, <code>Am</code>) — you read the <em>melody</em> and the <em>harmony</em> on the same line, and <em>▶ Play</em> sounds both together. It is per section on purpose, so turn it on only where it is needed. The row transposes with the key, follows rhythm subdivisions and prints with the score, while bars where it is switched off keep their height so the barlines stay lined up.</span>
+               <li class="howto-item" style="--howto-i: 8">
+                  <span class="howto-item-icon howto-item-glyph" aria-hidden="true">♯</span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">Half-step numbers (naik ½ / turun ½)</strong>
+                     <span class="howto-item-desc">Type the accidental first: <code>#1</code> raises the degree and <code>b1</code> or <code>♭1</code> lowers it. The <code>♮ ♯ ♭</code> chips filter the suggestions. The score shows a rising slash for a raise and a falling slash for a lower.</span>
+                  </span>
                </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">♬</span>
-                  <span class="howto-item-text"><strong>ChordPro, step by step</strong> — choose <strong>♬ ChordPro</strong> in the New Song dialog and the editor opens with two ready sections: <em>Intro</em> (<code>[C] [Am7] [Dm7] [G7] [Cmaj7]</code>) and <em>Verse</em> (<code>[C]Type your lyric here…</code>). Type chords inside <code>[brackets]</code> straight in the lyrics — <code>[C]Ama[G]zing grace</code> — and the preview on the right updates as you type. Use <code>{sov}</code>/<code>{eoc}</code> (or <code>{soc}</code>) for a section header, <code>{c: play softly}</code> for a comment, and a bracket-only line like <code>[Chorus]</code> becomes a section label. There is no chord palette and no rhythm notation here — typing brackets is the whole point — and everything else still works: rename or reorder sections (↑ ↓), add more with <em>+ Add section</em>, transpose the whole song (chords and key), and <em>Export .pdf</em> prints exactly what the preview shows.</span>
+               <li class="howto-item" style="--howto-i: 9">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6h11"/><path d="M10 12h11"/><path d="M10 18h11"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">Chords above the numbers</strong>
+                     <span class="howto-item-desc">In Chord Chart, turn on <strong>Chords On/Off</strong> for a section. A number can then sit on the beat with its chord above it, and playback sounds both.</span>
+                  </span>
                </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg></span>
-                  <span class="howto-item-text"><strong>Add or change a chord</strong> — click an empty beat and type it (pick a suggestion or press <code>Enter</code>); click a placed chord to retype it, or clear the field and confirm to remove it. Typing a slash sets the bass in one go, like <code>D/F#</code>. A chord the palette doesn't list is fine too: type it your way (<code>Bm7♭5</code>, <code>Bmaj9</code>, <code>B6/9</code>) and pick your own spelling at the top of the list — when nothing matches at all, <em>Use custom chord</em> (or <code>Enter</code>) keeps exactly what you typed. Custom chords transpose with the key and print like any other chord.</span>
+               <li class="howto-item" style="--howto-i: 10">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">ChordPro, step by step</strong>
+                     <span class="howto-item-desc">Start with <em>Intro</em> (<code>[C] [Am7] [Dm7] [G7] [Cmaj7]</code>) and <em>Verse</em> (<code>[C]Type your lyric here…</code>). Type chords in <code>[brackets]</code> beside the words. Use <code>{sov}</code>/<code>{eoc}</code> for a section header and <code>{c: play softly}</code> for a comment.</span>
+                  </span>
                </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="6"/><path d="M12 2v6"/></svg></span>
-                  <span class="howto-item-text"><strong>Split the rhythm</strong> — right-click a beat (long-press on touch) to split it into <code>½</code>, <code>⅓</code> or <code>¼</code> beats when the chords change faster than the beat.</span>
+               <li class="howto-item" style="--howto-i: 11">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="6"/><path d="M12 2v6"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">Rhythm and holds</strong>
+                     <span class="howto-item-desc">Right-click a beat, or long-press on touch, to split it into <code>½</code>, <code>⅓</code>, or <code>¼</code>. Fermata adds extra held beats while the metronome keeps ticking.</span>
+                  </span>
                </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
-                  <span class="howto-item-text"><strong>Fermata (hold)</strong> — right-click a beat (long-press on touch) → <em>Fermata (hold)…</em> and type how many <strong>extra beats</strong> to hold before the next beat plays. The note is sustained and the <strong>metronome keeps ticking on each held beat</strong>, so the pause stays in tempo — but it only affects playback; the score and the printed PDF just show the fermata sign above the chord or number.</span>
+               <li class="howto-item" style="--howto-i: 12">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 9h16"/><path d="M9 9v11"/><path d="M14 13h3"/><path d="M14 17h3"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">Bars, sections, and lyrics</strong>
+                     <span class="howto-item-desc">Use the section tools to add bars or sections, and click a section name to rename it. Turn on <em>Lyrics</em> for a field under each beat; paste a full line to spread it across the beats.</span>
+                  </span>
                </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
-                  <span class="howto-item-text"><strong>Bars &amp; sections</strong> — <em>+ Add 1 bar</em> and <em>×</em> live under each section, click a section name to rename it, and <em>+ Add section</em> in a section's tools inserts a new part right after it (the footer button still adds at the end). Select a section, then press Play in the topbar to start from that section; the same button turns into Stop while playback is running. Copy a bar (⧉) and paste it (⎘) somewhere else, or use a section menu (<em>•••</em>) → <em>Copy bars</em> to grab a whole range at once.</span>
+               <li class="howto-item" style="--howto-i: 13">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">Key, time, and undo</strong>
+                     <span class="howto-item-desc">Click the title, key, or time signature to edit it inline. The arrows beside the key transpose every chord. Undo and Redo keep the last 50 changes.</span>
+                  </span>
                </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg></span>
-                  <span class="howto-item-text"><strong>Key, time signature &amp; transpose</strong> — click the key, the time signature or the song title in the header to edit them inline, and use <em>▲ / ▼</em> beside the key to shift every chord up or down a semitone. Choose <code>1/4</code> for a single-beat bar and the score is drawn as <em>one growing bar</em>: no bar line between the beats, but every line of the score still opens and closes with one — every beat you add just extends the line, the editor counts in beats (<code>+ Add 1 beat</code>), and no bar numbers are printed.</span>
+               <li class="howto-group">Paper and playback</li>
+               <li class="howto-item" style="--howto-i: 14">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">Export a PDF</strong>
+                     <span class="howto-item-desc"><em>Export .pdf</em> previews the page before saving. Adjust chord size, lyric size, beat spacing, and bar numbers; each song remembers its own settings.</span>
+                  </span>
                </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></span>
-                  <span class="howto-item-text"><strong>Lyrics</strong> — turn lyrics on for the song (or for a single section) to get a field under each beat; paste a whole line into the first field to spread the words across the beats, or use <em>Auto-syllable</em> to split a line into singable syllables.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg></span>
-                  <span class="howto-item-text"><strong>Undo &amp; redo</strong> — the <em>Undo</em> / <em>Redo</em> buttons or <code>⌘Z</code> / <code>Ctrl+Z</code> and <code>⌘⇧Z</code> / <code>Ctrl+Shift+Z</code> (50 steps). <code>Alt+1…5</code> switches the toolbar tabs and <code>Esc</code> clears a selected chord.</span>
-               </li>
-               <li class="howto-group">Paper &amp; sound</li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg></span>
-                  <span class="howto-item-text"><strong>Export .pdf</strong> — the dialog previews the printed page live; chord size, lyric size, beat spacing, paper, margins and the <em>Bars → Bar numbers</em> stamp above the barline (Off / Line starts / Every bar, <em>on by default</em>, <em>Chord Chart scores only</em>) are remembered <em>per song</em>, so adjusting one sheet never changes another.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">▶</span>
-                  <span class="howto-item-text"><strong>Playback &amp; tempo</strong> — <em>▶</em> plays the score at the tempo saved with the song (each song keeps its own <em>BPM</em>, not a fixed 120). If it is still playing when you leave, the app asks first and stops it for you.</span>
+               <li class="howto-item" style="--howto-i: 15">
+                  <span class="howto-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14l11-7Z"/></svg></span>
+                  <span class="howto-item-text">
+                     <strong class="howto-item-title">Playback and tempo</strong>
+                     <span class="howto-item-desc"><em>Play</em> starts from the active section at the song's BPM. The same button becomes Stop, and leaving the editor asks before playback is interrupted.</span>
+                  </span>
                </li>
             </ul>
-            <div class="confirm-dialog-actions">
+            <div class="confirm-dialog-actions howto-dialog-actions">
                <button class="button button-primary" id="howToCloseBtn" type="button" data-howto-dismiss>Got it</button>
             </div>
          </div>
@@ -1001,10 +1085,17 @@
       <div class="confirm-dialog mode-picker-dialog library-dialog" id="newSongDialog" hidden role="dialog" aria-modal="true" aria-labelledby="newSongTitle" aria-describedby="newSongDesc">
          <div class="confirm-dialog-backdrop" data-mode-dismiss></div>
          <div class="confirm-dialog-card mode-picker-card" role="document">
-            <button class="mode-picker-close" id="newSongClose" type="button" aria-label="Close" data-mode-dismiss>&times;</button>
-            <div class="library-dialog-head">
-               <h2 class="confirm-dialog-title" id="newSongTitle">New Song</h2>
-               <p class="confirm-dialog-desc" id="newSongDesc">Name the first arrangement, then pick a writing mode to start.</p>
+            <button class="mode-picker-close" id="newSongClose" type="button" aria-label="Close" data-mode-dismiss>
+               <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+            <div class="library-dialog-head has-media new-song-dialog-head">
+               <div class="library-dialog-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+               </div>
+               <div class="library-dialog-head-text">
+                  <h2 class="confirm-dialog-title" id="newSongTitle">New Song</h2>
+                  <p class="confirm-dialog-desc" id="newSongDesc">Name the first arrangement, then pick a writing mode to start.</p>
+               </div>
             </div>
 
             <div class="new-song-name">
@@ -1019,33 +1110,64 @@
                   spellcheck="false"
                   aria-describedby="newSongNameHint newSongVersionError"
                />
-               <p class="new-song-name-hint" id="newSongNameHint">Each arrangement gets its own name — e.g. “Original”, “Pop”, “2024”.</p>
+               <p class="new-song-name-hint" id="newSongNameHint">Each arrangement gets its own name. For example, “Original”, “Pop”, or “2024”.</p>
                <p class="new-song-name-error" id="newSongVersionError" role="alert" hidden>Version name is required — enter a name to continue.</p>
             </div>
 
             <fieldset class="mode-picker-fieldset">
                <legend class="new-song-name-label">Writing mode</legend>
                <div class="mode-picker-grid">
-                  <button class="mode-card" id="modeCardChords" type="button" data-mode="chords" aria-pressed="false">
-                     <span class="mode-card-visual" aria-hidden="true"><span class="mode-card-score">C&nbsp; Am7&nbsp; F&nbsp; G</span><span class="mode-card-beats">| &nbsp;| &nbsp;| &nbsp;|</span></span>
+                  <button class="mode-card mode-card-chords" id="modeCardChords" type="button" data-mode="chords" aria-pressed="false">
+                     <span class="mode-card-visual is-chords" aria-hidden="true">
+                        <span class="mode-card-score mode-preview-chords">
+                           <span class="mode-preview-token">C</span>
+                           <span class="mode-preview-token">Am7</span>
+                           <span class="mode-preview-token">F</span>
+                           <span class="mode-preview-token">G</span>
+                        </span>
+                        <span class="mode-card-beats mode-preview-caption"><span></span><span></span><span></span><span></span></span>
+                     </span>
                      <span class="mode-card-body">
-                        <span class="mode-card-title">Chord Chart</span>
+                        <span class="mode-card-heading">
+                           <span class="mode-card-title">Chord Chart</span>
+                           <span class="mode-card-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg></span>
+                        </span>
                         <span class="mode-card-sub">Write chords like <code>C</code>, <code>Am7</code>, <code>G/B</code>, or numbered degrees <code>1</code>–<code>7</code>.</span>
                         <span class="mode-card-points"><span>Live chord suggestions</span><span>Numbers with chords above</span><span>No lyric line</span></span>
                      </span>
                   </button>
-                  <button class="mode-card" id="modeCardNumbers" type="button" data-mode="numbers" aria-pressed="false">
-                     <span class="mode-card-visual" aria-hidden="true"><span class="mode-card-score">1&nbsp; 4&nbsp; 5&nbsp; 1̇</span><span class="mode-card-beats">| &nbsp;| &nbsp;| &nbsp;|</span></span>
+                  <button class="mode-card mode-card-numbers" id="modeCardNumbers" type="button" data-mode="numbers" aria-pressed="false">
+                     <span class="mode-card-visual is-numbers" aria-hidden="true">
+                        <span class="mode-card-score mode-preview-numbers">
+                           <span class="mode-preview-token">1</span>
+                           <span class="mode-preview-token">4</span>
+                           <span class="mode-preview-token">5</span>
+                           <span class="mode-preview-token">1̇</span>
+                        </span>
+                        <span class="mode-card-beats mode-preview-caption"><span></span><span></span><span></span><span></span></span>
+                     </span>
                      <span class="mode-card-body">
-                        <span class="mode-card-title">Numeric Notation + Lyrics</span>
+                        <span class="mode-card-heading">
+                           <span class="mode-card-title">Numeric Notation + Lyrics</span>
+                           <span class="mode-card-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg></span>
+                        </span>
                         <span class="mode-card-sub">Write degrees <code>1</code>–<code>7</code> with high/low octaves and half-step <code>♯</code>/<code>♭</code>, then add lyrics.</span>
-                        <span class="mode-card-points"><span>Number-only input</span><span>Lyrics row — optional (Lyrics toggle)</span><span>No chord suggestions</span></span>
+                        <span class="mode-card-points"><span>Number-only input</span><span>Lyrics row, optional (Lyrics toggle)</span><span>No chord suggestions</span></span>
                      </span>
                   </button>
                   <button class="mode-card mode-card-chordpro" id="modeCardChordPro" type="button" data-mode="chordpro" aria-pressed="false">
-                     <span class="mode-card-visual" aria-hidden="true"><span class="mode-card-score">[C] Amazing [G] grace</span><span class="mode-card-beats">lyrics + inline chords</span></span>
+                     <span class="mode-card-visual is-chordpro" aria-hidden="true">
+                        <span class="mode-card-score mode-preview-chordpro">
+                           <span class="mode-preview-chordpro-line">[C] Amazing [G] grace</span>
+                           <span class="mode-preview-sweep"></span>
+                        </span>
+                        <span class="mode-card-beats">lyrics + inline chords</span>
+                     </span>
                      <span class="mode-card-body">
-                        <span class="mode-card-title">ChordPro</span>
+                        <span class="mode-card-heading">
+                           <span class="mode-card-title">ChordPro</span>
+                           <span class="mode-card-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg></span>
+                        </span>
                         <span class="mode-card-sub">Type lyrics and put chords in <code>[brackets]</code>, without rhythm notation.</span>
                         <span class="mode-card-points"><span>Easiest for beginners</span><span>Paste lyrics, add chords</span><span>Transpose any key</span></span>
                      </span>
@@ -1531,7 +1653,7 @@
                      </button>
                      <div class="library-filter-menu-sep" role="separator"></div>
                      <button class="library-filter-option" type="button" role="menuitemcheckbox" aria-checked="false" data-filter-video>
-                        <span class="library-filter-option-mark" aria-hidden="true">▶</span>
+                        <span class="library-filter-option-mark is-video" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3z" fill="currentColor" stroke="none"/></svg></span>
                         <span class="library-filter-option-label">With video</span>
                         <span class="library-filter-count" data-filter-count="video">0</span>
                         <svg class="library-filter-check" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
@@ -1755,6 +1877,7 @@
                      <button class="library-search-clear" id="albumSongSearchClear" type="button" aria-label="Clear song search" hidden>
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
                      </button>
+                     <kbd class="library-search-kbd" aria-hidden="true">/</kbd>
                   </div>
                </div>
 
@@ -1805,33 +1928,48 @@
       <!-- ==================== JOIN ALBUM =============================
            Self-service join: the member types an invite code. Firestore rules
            verify the code server-side (member doc carries it only for the write). -->
-      <div class="confirm-dialog library-dialog" id="joinAlbumDialog" hidden role="dialog" aria-modal="true" aria-labelledby="joinAlbumTitle" aria-describedby="joinAlbumDesc">
+      <div class="confirm-dialog library-dialog join-album-dialog" id="joinAlbumDialog" hidden role="dialog" aria-modal="true" aria-labelledby="joinAlbumTitle" aria-describedby="joinAlbumDesc">
          <div class="confirm-dialog-backdrop" data-joinalbum-dismiss></div>
          <div class="confirm-dialog-card" role="document">
-            <div class="confirm-dialog-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></div>
-             <h2 class="confirm-dialog-title" id="joinAlbumTitle">Join an album</h2>
-             <p class="confirm-dialog-desc" id="joinAlbumDesc">Enter the invite code your music leader shared — you will get read-only access to the album's arrangements.</p>
-             <div class="album-code-field">
-                <label class="new-song-name-label" for="joinAlbumCode">Invite code</label>
-                <input class="new-song-name-input album-code-input" id="joinAlbumCode" type="text" placeholder="ABCD-1234" autocomplete="off" spellcheck="false" maxlength="9" aria-describedby="joinAlbumError" />
+            <button class="library-dialog-close" type="button" aria-label="Close" data-joinalbum-dismiss>
+               <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+            <div class="library-dialog-head has-media">
+               <div class="library-dialog-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+               </div>
+               <div class="library-dialog-head-text">
+                  <h2 class="confirm-dialog-title" id="joinAlbumTitle">Join an album</h2>
+                  <p class="confirm-dialog-desc" id="joinAlbumDesc">Enter the invite code from your music leader. You will get read-only access to the album.</p>
+               </div>
+            </div>
+            <div class="album-code-field">
+               <label class="new-song-name-label" for="joinAlbumCode">Invite code</label>
+               <input class="new-song-name-input album-code-input" id="joinAlbumCode" type="text" placeholder="ABCD-1234" autocomplete="off" spellcheck="false" maxlength="9" aria-describedby="joinAlbumError joinAlbumHint" />
+               <p class="new-song-name-hint" id="joinAlbumHint">Use the 8-character code from your MD. Letters and numbers only.</p>
                <p class="new-song-name-error" id="joinAlbumError" role="alert" hidden></p>
             </div>
             <div class="confirm-dialog-actions">
-               <button class="button button-primary" id="joinAlbumOk" type="button">Join album</button>
                <button class="button button-ghost" id="joinAlbumCancel" type="button" data-joinalbum-dismiss>Cancel</button>
+               <button class="button button-primary" id="joinAlbumOk" type="button">Join album</button>
             </div>
          </div>
       </div>
 
       <!-- ==================== NEW ALBUM ============================= -->
-      <div class="confirm-dialog library-dialog" id="newAlbumDialog" hidden role="dialog" aria-modal="true" aria-labelledby="newAlbumTitle" aria-describedby="newAlbumSub">
+      <div class="confirm-dialog library-dialog new-album-dialog" id="newAlbumDialog" hidden role="dialog" aria-modal="true" aria-labelledby="newAlbumTitle" aria-describedby="newAlbumSub">
          <div class="confirm-dialog-backdrop" data-newalbum-dismiss></div>
          <div class="confirm-dialog-card" role="document">
-            <div class="vd-dialog-head">
-               <div class="confirm-dialog-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></div>
-               <div class="vd-dialog-head-text">
+            <button class="library-dialog-close" type="button" aria-label="Close" data-newalbum-dismiss>
+               <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+            <div class="library-dialog-head has-media">
+               <div class="library-dialog-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
+               </div>
+               <div class="library-dialog-head-text">
                   <h2 class="confirm-dialog-title" id="newAlbumTitle">New Album</h2>
-                  <p class="confirm-dialog-desc" id="newAlbumSub">Create a shared album — you become the owner and can invite musicians with a code.</p>
+                  <p class="confirm-dialog-desc" id="newAlbumSub">Create a shared album. You become the owner and can invite musicians with a code.</p>
                </div>
             </div>
             <div class="album-fields">
@@ -1846,8 +1984,8 @@
                </div>
             </div>
             <div class="confirm-dialog-actions">
-               <button class="button button-primary" id="newAlbumOk" type="button">Create album</button>
                <button class="button button-ghost" id="newAlbumCancel" type="button" data-newalbum-dismiss>Cancel</button>
+               <button class="button button-primary" id="newAlbumOk" type="button">Create album</button>
             </div>
          </div>
       </div>
@@ -1962,6 +2100,11 @@
                   <p class="confirm-dialog-desc" id="albumMembersDesc">MDs can promote members to MD and remove them.</p>
                </div>
             </div>
+            <div class="member-dialog-summary" id="memberDialogSummary" hidden>
+               <span class="member-dialog-stat"><strong id="memberMdCount">0</strong><span id="memberMdLabel">MDs</span></span>
+               <span class="member-dialog-stat"><strong id="memberMemberCount">0</strong><span id="memberMemberLabel">Members</span></span>
+               <span class="member-dialog-summary-note" id="memberDialogSummaryNote"></span>
+            </div>
             <div class="member-list" id="memberList" role="list" aria-label="Album members"></div>
             <div class="confirm-dialog-actions">
                <button class="button button-primary" id="albumMembersClose" type="button" data-albummembers-dismiss>Done</button>
@@ -2038,8 +2181,8 @@
             const STAMP_KEY = "chordSheetBuildStamp";
             const RELOAD_KEY = "chordSheetSwReloadedFor";
             const params = new URLSearchParams(location.search);
-            // The automated test harness (?test=...) must never touch caches.
-            if (params.has("test")) return;
+            // The automated test harness (local ?test=...) must never touch caches.
+            if (document.documentElement.dataset.testMode === "1") return;
 
             const read = (bag, key) => {
                try {
