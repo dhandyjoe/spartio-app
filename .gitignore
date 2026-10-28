@@ -1,8 +1,26 @@
 # Editor / OS
 .DS_Store
+Thumbs.db
+*.swp
+
+# Per-editor settings (machine-specific; the old tasks.json hardcoded a local path)
+.vscode/
 
 # Test & tooling artifacts
+playwright-report/
+test-results/
+blob-report/
+coverage/
 .playwright-mcp/
+
+# Firebase CLI caches and debug logs
+.firebase/
+*.log
+
+# Environment files (never commit secrets)
+.env
+.env.*
+!.env.example
 
 # Installed agent skills (third-party; reinstall via the `skills` CLI.
 # skills-lock.json stays tracked so the pinned versions are recorded).
